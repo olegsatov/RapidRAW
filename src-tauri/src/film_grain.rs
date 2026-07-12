@@ -474,6 +474,28 @@ pub(crate) fn load_processed_for_grain(
     Ok((processed, source_path))
 }
 
+/// Reveal a freshly saved file in the OS file manager (best-effort,
+/// fire-and-forget). On macOS the file is selected in Finder (`open -R`).
+pub(crate) fn reveal_in_file_manager(path: &std::path::Path) {
+    #[cfg(target_os = "macos")]
+    {
+        let _ = std::process::Command::new("open").arg("-R").arg(path).spawn();
+    }
+    #[cfg(target_os = "windows")]
+    {
+        let _ = std::process::Command::new("explorer")
+            .arg(format!("/select,{}", path.display()))
+            .spawn();
+    }
+    #[cfg(all(target_os = "linux", not(target_os = "android")))]
+    {
+        if let Some(parent) = path.parent() {
+            let _ = std::process::Command::new("xdg-open").arg(parent).spawn();
+        }
+    }
+    let _ = path;
+}
+
 // ---------------------------------------------------------------------------
 // Tauri command: render the current (fully processed) image through the film
 // grain model and save it as a new file next to the original.
@@ -537,6 +559,7 @@ pub async fn render_film_grain(
             .map_err(|e| format!("Failed to save image: {e}"))?;
 
         let _ = crate::exif_processing::write_rrexif_sidecar(&source_str, &output_path);
+        reveal_in_file_manager(&output_path);
 
         let out_str = output_path.to_string_lossy().to_string();
         let _ = app_handle.emit("film-grain-complete", out_str.clone());

@@ -76,6 +76,28 @@ export default function FilmPanel({ adjustments, setAdjustments, onDragStateChan
     };
   }, []);
 
+  // Realtime preview: rebake the grain field (debounced) whenever the crystal
+  // parameters change. The field is a flat-field render of the model, so the
+  // mono flag and strength don't affect it (they are shader-side).
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      invoke('bake_crystal_grain_field', {
+        options: { filling: xtalOpts.filling, size: xtalOpts.size, layers: xtalOpts.layers, std: xtalOpts.std, seed: 1 },
+      }).catch((e) => console.warn('Crystal grain bake failed:', e));
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [xtalOpts.filling, xtalOpts.size, xtalOpts.layers, xtalOpts.std]);
+
+  // A fresh baked texture needs a re-render to become visible.
+  useEffect(() => {
+    const unBaked = listen('crystal-grain-baked', () => {
+      setAdjustments((prev: Partial<Adjustments>) => ({ ...prev }));
+    });
+    return () => {
+      unBaked.then((f) => f());
+    };
+  }, [setAdjustments]);
+
   const handleAdjustmentChange = (key: string, value: string) => {
     const numericValue = parseInt(value, 10);
     setAdjustments((prev: Partial<Adjustments>) => ({ ...prev, [key]: numericValue }));
@@ -437,6 +459,28 @@ export default function FilmPanel({ adjustments, setAdjustments, onDragStateChan
           step={0.05}
           value={xtalOpts.std}
         />
+        <div className="my-2 border-t border-card-active pt-2">
+          <Text variant={TextVariants.label} className="mb-1 text-text-secondary">
+            {t('adjustments.effects.xtalRealtime')}
+          </Text>
+          <Slider
+            label={t('adjustments.effects.amount')}
+            max={100}
+            min={0}
+            onChange={(e: any) => handleAdjustmentChange(FilmAdjustment.CrystalGrainAmount, e.target.value)}
+            step={1}
+            value={adjustments.crystalGrainAmount}
+            onDragStateChange={onDragStateChange}
+          />
+          <Switch
+            id="switch-grain-mono-rt"
+            label={t('adjustments.effects.grainMonochrome')}
+            checked={!!adjustments.crystalGrainMono}
+            onChange={(v: boolean) =>
+              setAdjustments((prev: Partial<Adjustments>) => ({ ...prev, crystalGrainMono: v ? 1 : 0 }))
+            }
+          />
+        </div>
         <Switch
           id="switch-grain-mono-xtal"
           label={t('adjustments.effects.grainMonochrome')}

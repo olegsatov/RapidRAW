@@ -143,6 +143,10 @@ struct GlobalAdjustments {
     film_chroma: f32,     // 0..0.5 (radial chromatic aberration)
     film_grain_amount: f32, // 0..0.1 (Krea PoC grain, per-pixel + clump)
     film_grain_size: f32,   // 0..2 (clump coarseness; fine grain stays 1px)
+
+    // Crystal grain (Pierre) realtime preview: baked coverage field sampled
+    // in the film post-pass. x = amount 0..1, y = mono flag, zw = pad.
+    crystal_grain: vec4<f32>,
 }
 
 struct MaskAdjustments {

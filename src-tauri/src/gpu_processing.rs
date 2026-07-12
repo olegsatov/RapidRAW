@@ -407,6 +407,7 @@ pub fn get_or_init_gpu_context(
         queue: Arc::new(queue),
         limits,
         display: Arc::new(std::sync::Mutex::new(display_opt)),
+        crystal_grain_view: None,
     };
     *context_lock = Some(new_context.clone());
     Ok(new_context)
@@ -506,14 +507,18 @@ struct BlurParams {
 #[repr(C)]
 #[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
 struct FilmPostParams {
-    chroma: f32,    // pixel-space radial shift factor (PoC chroma * 0.02)
-    center_x: f32,  // image center in tile-local coords
+    chroma: f32,       // pixel-space radial shift factor (PoC chroma * 0.02)
+    center_x: f32,     // image center in tile-local coords
     center_y: f32,
-    clamp_w: f32,   // content width - 1 (source textures are tile-local)
-    clamp_h: f32,   // content height - 1
+    clamp_w: f32,      // content width - 1 (source textures are tile-local)
+    clamp_h: f32,      // content height - 1
+    origin_x: f32,     // tile origin in full-image coords (for grain sampling)
+    origin_y: f32,
+    grain_amount: f32, // crystal grain strength mix 0..1 (0 = off)
+    grain_tile: f32,   // baked grain field tile size (px)
+    grain_mono: f32,   // 1 = single shared field (B&W), 0 = per-channel
     _pad1: f32,
     _pad2: f32,
-    _pad3: f32,
 }
 
 #[repr(C)]
@@ -564,6 +569,9 @@ pub struct GpuProcessor {
     film_blur_view: wgpu::TextureView,
     pub film_post_texture: wgpu::Texture,
     film_post_view: wgpu::TextureView,
+    /// 1×1 fallback grain field (G = 1 = no-op), used until the first
+    /// crystal grain bake lands in `context.crystal_grain_view`.
+    dummy_grain_view: wgpu::TextureView,
 
     pub tile_output_texture: wgpu::Texture,
     pub tile_output_texture_view: wgpu::TextureView,
@@ -687,6 +695,17 @@ impl GpuProcessor {
                         ty: wgpu::BufferBindingType::Uniform,
                         has_dynamic_offset: false,
                         min_binding_size: None,
+                    },
+                    count: None,
+                },
+                // Baked crystal grain coverage field (Pierre), rgba16float.
+                wgpu::BindGroupLayoutEntry {
+                    binding: 3,
+                    visibility: wgpu::ShaderStages::COMPUTE,
+                    ty: wgpu::BindingType::Texture {
+                        sample_type: wgpu::TextureSampleType::Float { filterable: false },
+                        view_dimension: wgpu::TextureViewDimension::D2,
+                        multisampled: false,
                     },
                     count: None,
                 },
@@ -1101,6 +1120,44 @@ impl GpuProcessor {
         });
         let film_post_view = film_post_texture.create_view(&Default::default());
 
+        // 1×1 fallback crystal grain field: G = 1 per channel means
+        // "no change" in the film post-pass grain formula.
+        let dummy_grain_texture = device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("Dummy Crystal Grain Texture"),
+            size: wgpu::Extent3d {
+                width: 1,
+                height: 1,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: wgpu::TextureFormat::Rgba16Float,
+            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+            view_formats: &[],
+        });
+        let one = half::f16::from_f32(1.0);
+        context.queue.write_texture(
+            wgpu::TexelCopyTextureInfo {
+                texture: &dummy_grain_texture,
+                mip_level: 0,
+                origin: wgpu::Origin3d::ZERO,
+                aspect: wgpu::TextureAspect::All,
+            },
+            bytemuck::cast_slice(&[one, one, one, one]),
+            wgpu::TexelCopyBufferLayout {
+                offset: 0,
+                bytes_per_row: Some(8),
+                rows_per_image: Some(1),
+            },
+            wgpu::Extent3d {
+                width: 1,
+                height: 1,
+                depth_or_array_layers: 1,
+            },
+        );
+        let dummy_grain_view = dummy_grain_texture.create_view(&Default::default());
+
         let tile_output_texture = device.create_texture(&wgpu::TextureDescriptor {
             label: Some("Tile Output Texture"),
             size: max_tile_size,
@@ -1177,6 +1234,7 @@ impl GpuProcessor {
             film_blur_view,
             film_post_texture,
             film_post_view,
+            dummy_grain_view,
             tile_output_texture,
             tile_output_texture_view,
             working_texture,
@@ -1629,7 +1687,8 @@ impl GpuProcessor {
                 // overlap, so the cropped center has no seams.
                 let film_blur = adjustments.global.film_blur;
                 let film_chroma = adjustments.global.film_chroma;
-                let film_post_active = film_blur > 0.0 || film_chroma > 0.0;
+                let crystal_grain = adjustments.global.crystal_grain_amount;
+                let film_post_active = film_blur > 0.0 || film_chroma > 0.0 || crystal_grain > 0.0;
                 if film_post_active {
                     if film_blur > 0.0 {
                         // Gaussian blur of the graded tile. The source is
@@ -1727,9 +1786,13 @@ impl GpuProcessor {
                         center_y: height as f32 / 2.0 - input_y_start as f32,
                         clamp_w: (input_width - 1) as f32,
                         clamp_h: (input_height - 1) as f32,
+                        origin_x: input_x_start as f32,
+                        origin_y: input_y_start as f32,
+                        grain_amount: crystal_grain,
+                        grain_tile: crate::crystal_grain::GRAIN_FIELD_TILE as f32,
+                        grain_mono: adjustments.global.crystal_grain_mono,
                         _pad1: 0.0,
                         _pad2: 0.0,
-                        _pad3: 0.0,
                     };
                     queue.write_buffer(
                         &self.film_post_params_buffer,
@@ -1756,6 +1819,15 @@ impl GpuProcessor {
                             wgpu::BindGroupEntry {
                                 binding: 2,
                                 resource: self.film_post_params_buffer.as_entire_binding(),
+                            },
+                            wgpu::BindGroupEntry {
+                                binding: 3,
+                                resource: wgpu::BindingResource::TextureView(
+                                    self.context
+                                        .crystal_grain_view
+                                        .as_ref()
+                                        .unwrap_or(&self.dummy_grain_view),
+                                ),
                             },
                         ],
                     });

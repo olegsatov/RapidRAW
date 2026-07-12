@@ -133,6 +133,7 @@
       "xtalLayers": "Emulsion Layers",
       "xtalStd": "Size Variation (σ)",
       "xtalRenderDesc": "Simulates a stack of silver-halide crystal layers (slow, saves a new file)",
+      "xtalRealtime": "Realtime Preview",
       "tone": "Tone",
       "whiteBalance": "White Balance",
       "filmContrast": "Contrast",

@@ -28,6 +28,7 @@
 //! - The seed ratio `value` is clamped to (0.001, 0.999) before erfinv
 //!   (the reference relied on scipy returning ±inf outside the domain).
 
+use crate::app_state::AppState;
 use crate::film_grain::{Prng, load_processed_for_grain};
 use base64::{Engine as _, engine::general_purpose};
 use image::{DynamicImage, ImageFormat, Rgb, Rgb32FImage};
@@ -35,7 +36,7 @@ use rayon::prelude::*;
 use serde::Deserialize;
 use std::io::Cursor;
 use std::sync::atomic::{AtomicUsize, Ordering as AtomicOrdering};
-use tauri::{AppHandle, Emitter};
+use tauri::{AppHandle, Emitter, Manager};
 
 // ---------------------------------------------------------------------------
 // Options
@@ -453,6 +454,7 @@ pub async fn render_crystal_grain(
             .map_err(|e| format!("Failed to save image: {e}"))?;
 
         let _ = crate::exif_processing::write_rrexif_sidecar(&source_str, &output_path);
+        crate::film_grain::reveal_in_file_manager(&output_path);
 
         let out_str = output_path.to_string_lossy().to_string();
         let _ = app_handle.emit("crystal-grain-complete", out_str.clone());
@@ -460,6 +462,118 @@ pub async fn render_crystal_grain(
     })
     .await
     .map_err(|e| format!("Crystal grain task failed: {e}"))?
+}
+
+// ---------------------------------------------------------------------------
+// Baked grain field for the realtime preview (variant "bake-and-sample"):
+// the crystal-stack model is linear in the local intensity u over its whole
+// working range (seed values, convolution and the overlap clip all scale
+// with u), so result = u·D(x) where the coverage fraction D is independent
+// of the image. Rendering a flat u=0.5 field and extracting
+// G = (out − u²) / ((1−u)·u) = 4·out − 1 therefore yields a pure
+// multiplicative grain texture; the film post-pass then evaluates the full
+// model out = u² + (u − u²)·G per pixel in one texture fetch. The only
+// approximation is the highlight headroom depletion, which the printing
+// model hides anyway.
+// ---------------------------------------------------------------------------
+
+/// Baked field tile size (px). Sampled with mirrored wrap, so it tiles
+/// seamlessly; must match `grain_tile` in the film post-pass params.
+pub const GRAIN_FIELD_TILE: usize = 1024;
+
+/// Bake the mean-normalized coverage field G into an RGBA16F buffer
+/// (three decorrelated fields in RGB, alpha = 1). G is clamped to [0, 32]
+/// (f16-friendly); each channel is normalized to mean exactly 1 before
+/// clamping, so the preview preserves the average brightness.
+pub fn bake_grain_field(opts: &CrystalGrainOptions, tile: usize) -> Vec<half::f16> {
+    let mut flat = Rgb32FImage::new(tile as u32, tile as u32);
+    for p in flat.pixels_mut() {
+        *p = Rgb([0.5, 0.5, 0.5]);
+    }
+    let mut ch_opts = *opts;
+    // Always bake three decorrelated fields; the shader picks R for mono.
+    ch_opts.monochrome = false;
+    let out = apply_crystal_grain_rgb(&flat, &ch_opts, None);
+
+    let n = (tile * tile) as f32;
+    let mut mean = [0.0f32; 3];
+    for p in out.pixels() {
+        for c in 0..3 {
+            mean[c] += 4.0 * p[c] - 1.0;
+        }
+    }
+    for m in &mut mean {
+        *m = (*m / n).max(1e-6);
+    }
+
+    let mut buf = Vec::with_capacity(tile * tile * 4);
+    for p in out.pixels() {
+        for c in 0..3 {
+            let g = ((4.0 * p[c] - 1.0) / mean[c]).clamp(0.0, 32.0);
+            buf.push(half::f16::from_f32(g));
+        }
+        buf.push(half::f16::from_f32(1.0));
+    }
+    buf
+}
+
+/// Tauri command: bake the crystal grain field on the CPU and upload it as
+/// an RGBA16F texture into the shared GPU context. Emits
+/// "crystal-grain-baked" when the texture is live.
+#[tauri::command]
+pub async fn bake_crystal_grain_field(
+    options: Option<CrystalGrainOptions>,
+    app_handle: AppHandle,
+) -> Result<(), String> {
+    tokio::task::spawn_blocking(move || {
+        let opts = options.unwrap_or_default();
+        let tile = GRAIN_FIELD_TILE;
+        let data = bake_grain_field(&opts, tile);
+
+        let state = app_handle.state::<AppState>();
+        // Make sure the GPU context exists before we lock it for the swap.
+        let _ = crate::gpu_processing::get_or_init_gpu_context(&state, &app_handle)?;
+        let mut lock = state.gpu_context.lock().map_err(|e| e.to_string())?;
+        let ctx = lock.as_mut().ok_or("GPU context not initialized")?;
+
+        let size = wgpu::Extent3d {
+            width: tile as u32,
+            height: tile as u32,
+            depth_or_array_layers: 1,
+        };
+        let texture = ctx.device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("Crystal Grain Field"),
+            size,
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: wgpu::TextureFormat::Rgba16Float,
+            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+            view_formats: &[],
+        });
+        ctx.queue.write_texture(
+            wgpu::TexelCopyTextureInfo {
+                texture: &texture,
+                mip_level: 0,
+                origin: wgpu::Origin3d::ZERO,
+                aspect: wgpu::TextureAspect::All,
+            },
+            bytemuck::cast_slice(&data),
+            wgpu::TexelCopyBufferLayout {
+                offset: 0,
+                bytes_per_row: Some((tile * 4 * 2) as u32),
+                rows_per_image: Some(tile as u32),
+            },
+            size,
+        );
+        ctx.crystal_grain_view = Some(texture.create_view(&Default::default()));
+        drop(lock);
+
+        let _ = app_handle.emit("crystal-grain-baked", "");
+        Ok(())
+    })
+    .await
+    .map_err(|e| format!("Crystal grain bake task failed: {e}"))?
 }
 
 // ---------------------------------------------------------------------------
@@ -632,6 +746,40 @@ mod tests {
         assert!((mr / n - r).abs() < 0.06, "R mean {}", mr / n);
         assert!((mg / n - g).abs() < 0.06, "G mean {}", mg / n);
         assert!((mb / n - b).abs() < 0.06, "B mean {}", mb / n);
+    }
+
+    /// The baked field must be mean-normalized per channel (brightness
+    /// preserving), in range, and deterministic.
+    #[test]
+    fn bake_is_normalized_and_deterministic() {
+        let opts = CrystalGrainOptions {
+            layers: 5,
+            size: 3.0,
+            filling: 0.3,
+            seed: 7,
+            ..Default::default()
+        };
+        let tile = 64usize;
+        let a = bake_grain_field(&opts, tile);
+        let b = bake_grain_field(&opts, tile);
+        assert_eq!(a.len(), tile * tile * 4);
+        assert_eq!(a, b);
+
+        let n = (tile * tile) as f32;
+        for c in 0..3 {
+            let mean: f32 = (0..tile * tile)
+                .map(|i| a[i * 4 + c].to_f32())
+                .sum::<f32>()
+                / n;
+            assert!(
+                (mean - 1.0).abs() < 0.05,
+                "channel {c}: mean {mean} (expected ~1)"
+            );
+        }
+        for &v in &a {
+            let f = v.to_f32();
+            assert!((0.0..=32.0).contains(&f), "out of range: {f}");
+        }
     }
 
     #[test]

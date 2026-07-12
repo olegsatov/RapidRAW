@@ -24,6 +24,9 @@ look, накладываемый поверх отработанного изо�
 
 - **после** тон-маппера (т.е. после того, как RapidRAW привёл изображение к
   нормальному контрасту — сначала нейтральная картинка, потом плёнка);
+- **после** B&W-конверсии (раздел `blackAndWhite`): ч/б-сведение применяется к
+  тон-мапнутому sRGB до плёнки, поэтому плёночный грейд работает и поверх
+  монохромной картинки;
 - **до** пользовательских кривых, LUT и нативного зерна.
 
 `apply_film_look` работает в sRGB (на входе и выходе sRGB, внутри — переход в linear
@@ -300,6 +303,44 @@ log-normal размер, случайный поворот), яркость I/N 
 - Проверка: `cargo test --lib crystal_grain` (7 тестов, включая known-answer
   по ядру кристалла и сохранение средней яркости), example
   `cargo run --example crystal_grain_check -- <in.png> [out] [filling] [size] [layers] [std]`.
+
+## Realtime-превью кристаллического зерна (bake-and-sample)
+
+Офлайн-рендер Pierre остаётся эталоном для экспорта, но для интерактива есть
+realtime-режим, основанный на линеаризации модели: в рабочем диапазоне
+значения зёрен (`u/N`), свёртка и клиппинг перекрытий линейны по локальной
+яркости `u`, поэтому `result = u·D(x)` — доля покрытия `D` не зависит от
+изображения. Единственная нелинейность (истощение headroom в светах) живёт
+там, где printing model зерно всё равно гасит.
+
+- **Bake**: `bake_grain_field()` в `crystal_grain.rs` рендерит плоское поле
+  `u=0.5` через `apply_crystal_grain_rgb` (3 декоррелированных поля),
+  извлекает `G = (out − u²)/((1−u)·u) = 4·out − 1`, нормирует каждый канал
+  на mean=1 (сохранение средней яркости становится численно точным) и пакует
+  в RGBA16F (G ∈ [0, 32]). Тайл 1024² (`GRAIN_FIELD_TILE`), ~0.5–1 с на CPU.
+- **Команда** `bake_crystal_grain_field(options)` — bake на CPU → upload
+  RGBA16F текстуры в `GpuContext.crystal_grain_view` → событие
+  `crystal-grain-baked`. До первого bake'а используется dummy 1×1 (G=1,
+  no-op) из `GpuProcessor`.
+- **GPU**: film post-pass (`film_post.wgsl`) получил binding(3) с полем G;
+  `FilmPostParams` — `origin_x/y` (тайл в координатах изображения),
+  `grain_amount`, `grain_tile`, `grain_mono`. Сэмплинг по глобальным
+  пиксельным координатам с mirrored wrap (numpy `symm`) — швы между тайлами
+  и повтор тайла незаметны (стационарное случайное поле). Формула на пиксель:
+  `out = u² + (u−u²)·G` — мультипликативное зерно + printing model, ~10 ALU
+  + 1 fetch. Mono — одно поле на luma с hue-preserving gain; color — три
+  поля поканально. `film_post_active` теперь включается и по
+  `crystal_grain_amount > 0`.
+- **Adjustments**: `crystalGrainAmount` (0..100 → 0..1, strength-mix) и
+  `crystalGrainMono` (0/1) — поля `crystal_grain_amount/mono` в
+  `GlobalAdjustments` (layout-тест на sync Rust↔WGSL).
+- **UI**: подблок «Realtime Preview» в группе Crystal Grain — Amount +
+  Monochrome. Параметры кристаллов (filling/size/layers/std) общие для
+  realtime и офлайна; их изменение триггерит debounce-bake (400 мс),
+  событие `crystal-grain-baked` пинает ре-рендер.
+- **Ограничения**: превью ≠ пиксель-в-пиксель офлайн-рендеру (линеаризация,
+  фиксированный тайл); для финального файла — Render & Save. IPOL-зерно
+  realtime не получило (его Boolean-модель так не линеаризуется).
 
 ## Тестирование
 

@@ -2330,6 +2330,7 @@ pub fn run() {
             denoising::apply_denoising,
             denoising::batch_denoise_images,
             denoising::save_denoised_image,
+            crystal_grain::bake_crystal_grain_field,
             crystal_grain::render_crystal_grain,
             film_grain::render_film_grain,
             image_loader::load_image,

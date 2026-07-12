@@ -111,6 +111,8 @@ export enum FilmAdjustment {
   FilmChroma = 'filmChroma',
   FilmGrainAmount = 'filmGrainAmount',
   FilmGrainSize = 'filmGrainSize',
+  CrystalGrainAmount = 'crystalGrainAmount',
+  CrystalGrainMono = 'crystalGrainMono',
 }
 
 export enum TransformAdjustment {
@@ -197,6 +199,8 @@ export interface Adjustments {
   filmCurves: Array<number>;
   filmGrainAmount: number;
   filmGrainSize: number;
+  crystalGrainAmount: number;
+  crystalGrainMono: number;
   filmHighlights: number;
   filmProfile: string | null;
   filmRolloff: number;
@@ -559,6 +563,8 @@ export const INITIAL_ADJUSTMENTS: Adjustments = {
   filmCurves: buildIdentityFilmCurves(),
   filmGrainAmount: 0,
   filmGrainSize: 50,
+  crystalGrainAmount: 0,
+  crystalGrainMono: 0,
   filmHighlights: 0,
   filmProfile: null,
   filmRolloff: 0,
@@ -743,6 +749,8 @@ export const normalizeLoadedAdjustments = (loadedAdjustments: Adjustments): any 
     filmChroma: loadedAdjustments.filmChroma ?? INITIAL_ADJUSTMENTS.filmChroma,
     filmGrainAmount: loadedAdjustments.filmGrainAmount ?? INITIAL_ADJUSTMENTS.filmGrainAmount,
     filmGrainSize: loadedAdjustments.filmGrainSize ?? INITIAL_ADJUSTMENTS.filmGrainSize,
+    crystalGrainAmount: loadedAdjustments.crystalGrainAmount ?? INITIAL_ADJUSTMENTS.crystalGrainAmount,
+    crystalGrainMono: loadedAdjustments.crystalGrainMono ?? INITIAL_ADJUSTMENTS.crystalGrainMono,
     filmBaseColor:
       loadedAdjustments.filmBaseColor?.length === 3
         ? loadedAdjustments.filmBaseColor

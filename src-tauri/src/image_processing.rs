@@ -1528,6 +1528,14 @@ pub struct GlobalAdjustments {
     pub film_chroma: f32,
     pub film_grain_amount: f32,
     pub film_grain_size: f32,
+
+    // Crystal grain (Pierre) realtime preview — baked coverage field sampled
+    // in the film post-pass. amount 0..1 (strength mix), mono 0/1, 2 pads.
+    // Layout MUST match shader.wgsl GlobalAdjustments.
+    pub crystal_grain_amount: f32,
+    pub crystal_grain_mono: f32,
+    _pad_crystal1: f32,
+    _pad_crystal2: f32,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, Pod, Zeroable, Default)]
@@ -2444,6 +2452,13 @@ fn get_global_adjustments_from_json(
         film_chroma: get_val("film", "filmChroma", 200.0, None),
         film_grain_amount: get_val("film", "filmGrainAmount", 1000.0, None),
         film_grain_size: get_val("film", "filmGrainSize", 50.0, Some(50.0)),
+
+        // Crystal grain (Pierre) realtime preview: amount 0..100 -> 0..1
+        // (strength mix in the film post-pass), mono as a 0/1 flag.
+        crystal_grain_amount: get_val("film", "crystalGrainAmount", 100.0, None),
+        crystal_grain_mono: get_val("film", "crystalGrainMono", 1.0, Some(0.0)),
+        _pad_crystal1: 0.0,
+        _pad_crystal2: 0.0,
     }
 }
 
@@ -2618,6 +2633,10 @@ pub struct GpuContext {
     pub queue: Arc<wgpu::Queue>,
     pub limits: wgpu::Limits,
     pub display: Arc<std::sync::Mutex<Option<WgpuDisplay>>>,
+    /// Baked crystal grain coverage field (Pierre, mean-normalized),
+    /// uploaded by `bake_crystal_grain_field`. The view keeps the texture
+    /// alive; sampled by the film post-pass when crystal grain is active.
+    pub crystal_grain_view: Option<wgpu::TextureView>,
 }
 
 #[inline(always)]
@@ -3589,6 +3608,7 @@ mod film_layout_tests {
 
     // The Rust GlobalAdjustments is uploaded to the GPU with bytemuck; its byte
     // layout MUST equal the WGSL struct of the same name. Catch drift here.
+    // Size-only check: append new uniform fields at the struct tail on both sides.
     #[test]
     fn global_adjustments_layout_matches_wgsl() {
         let module = parse_main_shader();
