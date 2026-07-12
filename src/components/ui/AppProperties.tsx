@@ -209,6 +209,7 @@ export interface AppSettings {
   folderIcons?: Record<string, string>;
   exifOverlay?: ExifOverlay;
   language?: string;
+  uiScale?: number;
   folderTreeSort?: FolderTreeSort;
 }
 

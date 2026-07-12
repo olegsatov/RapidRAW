@@ -2524,7 +2524,9 @@ function SettingsPanel({
         onMouseLeave={() => setIsMaskControlHovered(false)}
         className="flex flex-col gap-2"
       >
-        {Object.keys(ADJUSTMENT_SECTIONS).map((sectionName) => {
+        {Object.keys(ADJUSTMENT_SECTIONS)
+          .filter((sectionName) => sectionName !== 'film') // film sim is global-only
+          .map((sectionName) => {
           const SectionComponent: any = {
             basic: BasicAdjustments,
             curves: CurveGraph,

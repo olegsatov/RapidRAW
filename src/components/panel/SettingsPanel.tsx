@@ -1082,6 +1082,25 @@ export default function SettingsPanel({
                       />
                     </SettingItem>
 
+                    <SettingItem label={t('settings.general.uiScale')} description={t('settings.general.uiScaleDesc')}>
+                      <Dropdown
+                        onChange={(value: any) => onSettingsChange({ ...appSettings, uiScale: value })}
+                        options={[
+                          { value: 0.6, label: '60%' },
+                          { value: 0.65, label: '65%' },
+                          { value: 0.7, label: '70%' },
+                          { value: 0.75, label: '75%' },
+                          { value: 0.8, label: '80%' },
+                          { value: 0.85, label: '85%' },
+                          { value: 0.9, label: '90%' },
+                          { value: 0.95, label: '95%' },
+                          { value: 1, label: '100%' },
+                        ]}
+                        value={appSettings?.uiScale ?? 1}
+                        triggerClassName="bg-bg-primary"
+                      />
+                    </SettingItem>
+
                     <div className="space-y-4">
                       <SettingItem
                         label={t('settings.general.xmpSync')}

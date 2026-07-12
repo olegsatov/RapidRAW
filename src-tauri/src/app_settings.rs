@@ -433,6 +433,8 @@ pub struct AppSettings {
     #[serde(default)]
     pub language: Option<String>,
     #[serde(default)]
+    pub ui_scale: Option<f32>,
+    #[serde(default)]
     pub folder_tree_sort: Option<FolderTreeSort>,
 }
 
@@ -519,6 +521,7 @@ impl Default for AppSettings {
             apply_preprocessing_to_non_raws: Some(false),
             exif_overlay: Some("off".to_string()),
             language: Some("en".to_string()),
+            ui_scale: Some(1.0),
             folder_tree_sort: Some(FolderTreeSort::default()),
         }
     }

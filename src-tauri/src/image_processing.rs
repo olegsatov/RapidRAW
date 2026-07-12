@@ -1505,6 +1505,29 @@ pub struct GlobalAdjustments {
     pub halation_amount: f32,
     pub flare_amount: f32,
     pub sharpness_threshold: f32,
+
+    // Film simulation (Krea port) — layout MUST match shader.wgsl GlobalAdjustments.
+    pub film_strength: f32,
+    pub film_contrast: f32,
+    pub film_saturation: f32,
+    pub film_rolloff: f32,
+    pub film_bleed: f32,
+    pub film_cross: f32,
+    _pad_film1: f32,
+    _pad_film2: f32,
+    pub film_base_color: [f32; 4],
+    pub film_shadow_tint: [f32; 4],
+    pub film_curves: [[[f32; 4]; 16]; 16],
+
+    // Film simulation — extended dials. Layout MUST match shader.wgsl.
+    pub film_temp: f32,
+    pub film_tint: f32,
+    pub film_shadows: f32,
+    pub film_highlights: f32,
+    pub film_blur: f32,
+    pub film_chroma: f32,
+    pub film_grain_amount: f32,
+    pub film_grain_size: f32,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, Pod, Zeroable, Default)]
@@ -2034,6 +2057,46 @@ pub fn is_image_edited(
     bytemuck::bytes_of(&current_adj) != bytemuck::bytes_of(&default_adj)
 }
 
+// Film simulation: parse a [r, g, b] 0-255 array into a padded 0..1 vec.
+fn parse_film_color(value: &serde_json::Value, default: [f32; 3]) -> [f32; 4] {
+    let arr = value.as_array();
+    let channel = |i: usize, d: f32| -> f32 {
+        arr.and_then(|a| a.get(i))
+            .and_then(|v| v.as_f64())
+            .map(|v| (v as f32 / 255.0).clamp(0.0, 1.0))
+            .unwrap_or(d)
+    };
+    [
+        channel(0, default[0]),
+        channel(1, default[1]),
+        channel(2, default[2]),
+        0.0,
+    ]
+}
+
+// Film curves: flat 768-entry array (r,g,b interleaved, 0..1) -> 16x16 chunks of
+// padded vec3 (arrays > 32 lack Default, hence the chunking). Falls back to the
+// identity curve so a stale/partial sidecar can never black out the image.
+fn parse_film_curves(value: &serde_json::Value) -> [[[f32; 4]; 16]; 16] {
+    let mut out = [[[0.0f32; 4]; 16]; 16];
+    for (i, chunk) in out.iter_mut().flatten().enumerate() {
+        let v = i as f32 / 255.0;
+        *chunk = [v, v, v, 0.0];
+    }
+    if let Some(arr) = value.as_array() {
+        if arr.len() == 768 {
+            for i in 0..256 {
+                let d = i as f32 / 255.0;
+                let r = arr[i * 3].as_f64().map(|v| v as f32).unwrap_or(d);
+                let g = arr[i * 3 + 1].as_f64().map(|v| v as f32).unwrap_or(d);
+                let b = arr[i * 3 + 2].as_f64().map(|v| v as f32).unwrap_or(d);
+                out[i / 16][i % 16] = [r, g, b, 0.0];
+            }
+        }
+    }
+    out
+}
+
 fn get_global_adjustments_from_json(
     js_adjustments: &serde_json::Value,
     is_raw: bool,
@@ -2049,6 +2112,24 @@ fn get_global_adjustments_from_json(
 
     let get_val = |section: &str, key: &str, scale: f32, default: Option<f64>| -> f32 {
         if is_visible(section) {
+            js_adjustments[key]
+                .as_f64()
+                .unwrap_or(default.unwrap_or(0.0)) as f32
+                / scale
+        } else {
+            if let Some(d) = default {
+                d as f32 / scale
+            } else {
+                0.0
+            }
+        }
+    };
+
+    // Like get_val, but active when ANY of the sections is visible. Used for
+    // dials that live in both the Effects and Film sections (grain, vignette,
+    // halation): the effect applies if either host section is enabled.
+    let get_val_any = |sections: &[&str], key: &str, scale: f32, default: Option<f64>| -> f32 {
+        if sections.iter().any(|s| is_visible(s)) {
             js_adjustments[key]
                 .as_f64()
                 .unwrap_or(default.unwrap_or(0.0)) as f32
@@ -2190,21 +2271,22 @@ fn get_global_adjustments_from_json(
         dehaze: get_val("details", "dehaze", SCALES.dehaze, None),
         structure: get_val("details", "structure", SCALES.structure, None),
         centré: get_val("details", "centré", SCALES.centré, None),
-        vignette_amount: get_val("effects", "vignetteAmount", SCALES.vignette_amount, None),
-        vignette_midpoint: get_val(
-            "effects",
+        // Also editable from the Film section -> active if either is visible.
+        vignette_amount: get_val_any(&["effects", "film"], "vignetteAmount", SCALES.vignette_amount, None),
+        vignette_midpoint: get_val_any(
+            &["effects", "film"],
             "vignetteMidpoint",
             SCALES.vignette_midpoint,
             Some(50.0),
         ),
-        vignette_roundness: get_val(
-            "effects",
+        vignette_roundness: get_val_any(
+            &["effects", "film"],
             "vignetteRoundness",
             SCALES.vignette_roundness,
             Some(0.0),
         ),
-        vignette_feather: get_val(
-            "effects",
+        vignette_feather: get_val_any(
+            &["effects", "film"],
             "vignetteFeather",
             SCALES.vignette_feather,
             Some(50.0),
@@ -2312,7 +2394,8 @@ fn get_global_adjustments_from_json(
         _pad_end4: 0.0,
 
         glow_amount: get_val("effects", "glowAmount", SCALES.glow, None),
-        halation_amount: get_val("effects", "halationAmount", SCALES.halation, None),
+        // Also editable from the Film section -> active if either is visible.
+        halation_amount: get_val_any(&["effects", "film"], "halationAmount", SCALES.halation, None),
         flare_amount: get_val("effects", "flareAmount", SCALES.flares, None),
         sharpness_threshold: get_val(
             "details",
@@ -2320,6 +2403,47 @@ fn get_global_adjustments_from_json(
             SCALES.sharpness_threshold,
             Some(15.0),
         ),
+
+        film_strength: get_val("film", "filmStrength", 100.0, None),
+        film_contrast: get_val("film", "filmContrast", 100.0, Some(100.0)),
+        film_saturation: get_val("film", "filmSaturation", 100.0, Some(100.0)),
+        film_rolloff: get_val("film", "filmRolloff", 100.0, None),
+        film_bleed: get_val("film", "filmBleed", 100.0, None),
+        film_cross: if is_visible("film") && js_adjustments["filmCross"].as_bool().unwrap_or(false) {
+            1.0
+        } else {
+            0.0
+        },
+        _pad_film1: 0.0,
+        _pad_film2: 0.0,
+        film_base_color: if is_visible("film") {
+            parse_film_color(&js_adjustments["filmBaseColor"], [1.0, 1.0, 1.0])
+        } else {
+            [1.0, 1.0, 1.0, 0.0]
+        },
+        film_shadow_tint: if is_visible("film") {
+            parse_film_color(&js_adjustments["filmShadowTint"], [0.0, 0.0, 0.0])
+        } else {
+            [0.0, 0.0, 0.0, 0.0]
+        },
+        film_curves: if is_visible("film") {
+            parse_film_curves(&js_adjustments["filmCurves"])
+        } else {
+            parse_film_curves(&serde_json::Value::Null)
+        },
+
+        // Extended film dials. temp in Kelvin (6500 neutral); tint/shadows/
+        // highlights raw -100..100; blur 0..1 (sigma = *3 px in the post-pass);
+        // chroma 0..0.5 (radial shift in the post-pass); grain amount 0..0.1,
+        // size 0..2 (Krea PoC grain — separate from the native Effects grain).
+        film_temp: get_val("film", "filmTemp", 1.0, Some(6500.0)),
+        film_tint: get_val("film", "filmTint", 1.0, None),
+        film_shadows: get_val("film", "filmShadows", 1.0, None),
+        film_highlights: get_val("film", "filmHighlights", 1.0, None),
+        film_blur: get_val("film", "filmBlur", 100.0, None),
+        film_chroma: get_val("film", "filmChroma", 200.0, None),
+        film_grain_amount: get_val("film", "filmGrainAmount", 1000.0, None),
+        film_grain_size: get_val("film", "filmGrainSize", 50.0, Some(50.0)),
     }
 }
 
@@ -3427,4 +3551,59 @@ pub fn calculate_auto_adjustments(
     let results = perform_auto_analysis(&original_image);
 
     Ok(auto_results_to_json(&results))
+}
+
+#[cfg(test)]
+mod film_layout_tests {
+    use super::*;
+
+    fn parse_main_shader() -> naga::Module {
+        let src = include_str!("shaders/shader.wgsl");
+        naga::front::wgsl::parse_str(src).expect("shader.wgsl must parse")
+    }
+
+    #[test]
+    fn main_shader_validates() {
+        let module = parse_main_shader();
+        let mut validator = naga::valid::Validator::new(
+            naga::valid::ValidationFlags::all(),
+            naga::valid::Capabilities::all(),
+        );
+        validator.validate(&module).expect("shader.wgsl must validate");
+    }
+
+    #[test]
+    fn aux_shaders_validate() {
+        for (name, src) in [
+            ("blur.wgsl", include_str!("shaders/blur.wgsl")),
+            ("film_post.wgsl", include_str!("shaders/film_post.wgsl")),
+        ] {
+            let module = naga::front::wgsl::parse_str(src).unwrap_or_else(|e| panic!("{name} must parse: {e}"));
+            let mut validator = naga::valid::Validator::new(
+                naga::valid::ValidationFlags::all(),
+                naga::valid::Capabilities::all(),
+            );
+            validator.validate(&module).unwrap_or_else(|e| panic!("{name} must validate: {e}"));
+        }
+    }
+
+    // The Rust GlobalAdjustments is uploaded to the GPU with bytemuck; its byte
+    // layout MUST equal the WGSL struct of the same name. Catch drift here.
+    #[test]
+    fn global_adjustments_layout_matches_wgsl() {
+        let module = parse_main_shader();
+        let mut layouter = naga::proc::Layouter::default();
+        layouter.update(module.to_ctx()).unwrap();
+        let (handle, _) = module
+            .types
+            .iter()
+            .find(|(_, t)| t.name.as_deref() == Some("GlobalAdjustments"))
+            .expect("GlobalAdjustments struct in WGSL");
+        let wgsl_size = layouter[handle].size as usize;
+        let rust_size = std::mem::size_of::<GlobalAdjustments>();
+        assert_eq!(
+            rust_size, wgsl_size,
+            "Rust GlobalAdjustments ({rust_size} bytes) != WGSL ({wgsl_size} bytes)"
+        );
+    }
 }

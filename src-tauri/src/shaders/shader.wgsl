@@ -115,6 +115,34 @@ struct GlobalAdjustments {
     halation_amount: f32,
     flare_amount: f32,
     sharpness_threshold: f32,
+
+    // Film simulation (Krea port). film_curves is chunked 16x16 to keep the
+    // Rust mirror Pod/Default-friendly (fixed arrays > 32 lack Default).
+    film_strength: f32,
+    film_contrast: f32,
+    film_saturation: f32,
+    film_rolloff: f32,
+    film_bleed: f32,
+    film_cross: f32,
+    _pad_film1: f32,
+    _pad_film2: f32,
+    film_base_color: vec3<f32>,
+    _pad_film3: f32,
+    film_shadow_tint: vec3<f32>,
+    _pad_film4: f32,
+    film_curves: array<array<vec3<f32>, 16>, 16>,
+
+    // Film simulation — extended dials (Krea PoC "Film look" group). temp/tint
+    // and shadows/highlights are applied per-pixel in apply_film_look; blur and
+    // chroma are spatial and drive the film post-pass (film_post.wgsl).
+    film_temp: f32,       // Kelvin, 6500 = neutral
+    film_tint: f32,       // -100..100, 0 = neutral
+    film_shadows: f32,    // -100..100
+    film_highlights: f32, // -100..100
+    film_blur: f32,       // 0..1 (emulsion blur, sigma = film_blur * 3 px)
+    film_chroma: f32,     // 0..0.5 (radial chromatic aberration)
+    film_grain_amount: f32, // 0..0.1 (Krea PoC grain, per-pixel + clump)
+    film_grain_size: f32,   // 0..2 (clump coarseness; fine grain stays 1px)
 }
 
 struct MaskAdjustments {
@@ -317,6 +345,19 @@ fn gradient_noise(p: vec2<f32>) -> f32 {
     let top_interp = mix(dot_01, dot_11, u.x);
 
     return mix(bottom_interp, top_interp, u.y);
+}
+
+// Smooth value noise (bilinear-interpolated lattice hash) for the low-frequency
+// clump component of the film grain (Krea PoC port).
+fn film_value_noise(p: vec2<f32>) -> f32 {
+    let i = floor(p);
+    let f = fract(p);
+    let u = f * f * (3.0 - 2.0 * f);
+    let a = hash(i);
+    let b = hash(i + vec2<f32>(1.0, 0.0));
+    let c = hash(i + vec2<f32>(0.0, 1.0));
+    let d = hash(i + vec2<f32>(1.0, 1.0));
+    return mix(mix(a, b, u.x), mix(c, d, u.x), u.y);
 }
 
 fn dither(coords: vec2<u32>) -> f32 {
@@ -1437,6 +1478,124 @@ fn apply_halation(
     return contrast_reduced + halation_glow * amount * 2.5;
 }
 
+// --- Film simulation (ported from the Krea WebGL2 film PoC) ---
+// sRGB in -> sRGB out. Chain: sRGB->linear -> highlight rolloff -> per-channel
+// dye curves -> shadow tint (base fog) -> color bleed -> linear->sRGB ->
+// contrast/saturation -> base blend -> optional cross-process -> strength blend
+// against the untouched input. Inserted right after the tonemapper, so user
+// curves/LUT/grain apply on top of the film look.
+fn film_curve_lookup(idx: u32) -> vec3<f32> {
+    return adjustments.global.film_curves[idx >> 4u][idx & 15u];
+}
+
+fn apply_film_look(color_in: vec3<f32>) -> vec3<f32> {
+    let strength = adjustments.global.film_strength;
+    if (strength <= 0.0) {
+        return color_in;
+    }
+
+    var c = srgb_to_linear(clamp(color_in, vec3<f32>(0.0), vec3<f32>(1.0)));
+
+    // Highlight rolloff: per-channel soft shoulder above 0.6.
+    let rolloff = adjustments.global.film_rolloff;
+    if (rolloff > 0.0) {
+        let hm = clamp((c - vec3<f32>(0.6)) / 0.4, vec3<f32>(0.0), vec3<f32>(1.0));
+        let d = max(c - vec3<f32>(0.6), vec3<f32>(0.0));
+        let comp = vec3<f32>(0.6) + vec3<f32>(0.4) * (vec3<f32>(1.0) - exp(-5.0 * d * (1.0 - rolloff)));
+        c = mix(c, comp, hm);
+    }
+
+    // Dye response curves: 256-entry LUT per channel, manual linear interp.
+    let t = clamp(c, vec3<f32>(0.0), vec3<f32>(1.0)) * 255.0;
+    let fl = floor(t);
+    let f = t - fl;
+    let i = vec3<u32>(fl);
+    let j = min(i + vec3<u32>(1u), vec3<u32>(255u));
+    let cr0 = film_curve_lookup(i.x);
+    let cr1 = film_curve_lookup(j.x);
+    let cg0 = film_curve_lookup(i.y);
+    let cg1 = film_curve_lookup(j.y);
+    let cb0 = film_curve_lookup(i.z);
+    let cb1 = film_curve_lookup(j.z);
+    c = vec3<f32>(mix(cr0.x, cr1.x, f.x), mix(cg0.y, cg1.y, f.y), mix(cb0.z, cb1.z, f.z));
+
+    // Shadow tint (film base fog), fixed strength 0.2 as in the PoC.
+    let st = adjustments.global.film_shadow_tint;
+    if (max(st.x, max(st.y, st.z)) > 0.0) {
+        let lt = dot(c, vec3<f32>(0.299, 0.587, 0.114));
+        var sm = clamp(1.0 - lt * 2.0, 0.0, 1.0);
+        sm = pow(sm, 1.5);
+        c = clamp(c + sm * 0.2 * st, vec3<f32>(0.0), vec3<f32>(1.0));
+    }
+
+    // Color bleed (dye crosstalk), computed from the pre-bleed value.
+    let bleed = adjustments.global.film_bleed;
+    if (bleed > 0.0) {
+        let o = c;
+        c = clamp(vec3<f32>(
+            o.x + o.z * bleed * 0.15,
+            o.y + (o.x + o.z) * bleed * 0.05,
+            o.z + o.x * bleed * 0.10,
+        ), vec3<f32>(0.0), vec3<f32>(1.0));
+    }
+
+    // Back to sRGB: contrast (pivot 0.5) + saturation.
+    c = linear_to_srgb(c);
+    c = (c - vec3<f32>(0.5)) * adjustments.global.film_contrast + vec3<f32>(0.5);
+    let ld = dot(c, vec3<f32>(0.299, 0.587, 0.114));
+    c = clamp(mix(vec3<f32>(ld), c, adjustments.global.film_saturation), vec3<f32>(0.0), vec3<f32>(1.0));
+
+    // Base fog blend.
+    c = mix(c, adjustments.global.film_base_color, 0.03);
+
+    // Film white balance (sRGB, creative) — same numeric model as the RAW WB but
+    // applied post-grade, so it tints the developed image instead of changing
+    // the channel balance entering the tone window.
+    let temp_n = (adjustments.global.film_temp - 6500.0) / 100.0 * 0.01;
+    c = vec3<f32>(c.x * (1.0 + temp_n), c.y, c.z * (1.0 - temp_n));
+    if (adjustments.global.film_tint != 0.0) {
+        let tm = (adjustments.global.film_tint / 50.0) * 0.18;
+        c = vec3<f32>(c.x * (1.0 + tm), c.y * (1.0 - tm), c.z * (1.0 + tm));
+    }
+
+    // Optional cross-process.
+    if (adjustments.global.film_cross > 0.5) {
+        c = (c - vec3<f32>(0.5)) * 1.5 + vec3<f32>(0.5);
+        c = vec3<f32>(min(1.0, c.x * 1.2), c.y * 0.9, min(1.0, c.z * 1.1));
+        let lx = dot(c, vec3<f32>(0.299, 0.587, 0.114));
+        c = mix(vec3<f32>(lx), c, 1.3);
+    }
+
+    // Film shadows / highlights (sRGB, luma-masked, same math as the PoC).
+    let fsh = adjustments.global.film_shadows;
+    let fhi = adjustments.global.film_highlights;
+    if (fsh != 0.0 || fhi != 0.0) {
+        let lf = dot(c, LUMA_COEFF);
+        if (fsh != 0.0) {
+            let s = fsh / 100.0;
+            var sm = clamp(1.0 - lf * 2.0, 0.0, 1.0);
+            sm = sm * sm;
+            if (s < 0.0) {
+                c = c * (1.0 - (-s) * sm);
+            } else {
+                c = c + s * sm * (vec3<f32>(1.0) - c);
+            }
+        }
+        if (fhi != 0.0) {
+            let h = fhi / 100.0;
+            var hm = clamp((lf - 0.5) * 2.0, 0.0, 1.0);
+            hm = hm * hm;
+            if (h < 0.0) {
+                c = c - (-h) * hm * clamp(c - vec3<f32>(0.5), vec3<f32>(0.0), vec3<f32>(1.0));
+            } else {
+                c = c + h * hm * (vec3<f32>(1.0) - c);
+            }
+        }
+    }
+
+    return mix(color_in, clamp(c, vec3<f32>(0.0), vec3<f32>(1.0)), clamp(strength, 0.0, 1.0));
+}
+
 @compute @workgroup_size(8, 8, 1)
 fn main(@builtin(global_invocation_id) id: vec3<u32>) {
     let out_dims = vec2<u32>(textureDimensions(output_texture));
@@ -1675,6 +1834,30 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
         base_srgb = mix(srgb_emulated, contrast_curve, CONTRAST_MIX);
     } else {
         base_srgb = linear_to_srgb(composite_rgb_linear);
+    }
+
+    // Film simulation (Krea): applied to the tonemapped sRGB image, before the
+    // user's curves/LUT/grain so they stack on top of the film look.
+    base_srgb = apply_film_look(base_srgb);
+
+    // Film grain (Krea PoC port). Deliberately separate from the native grain
+    // below (Effects section): different noise model (per-pixel fine grain +
+    // low-frequency clump, exposure mask, per-channel variation), not scaled by
+    // film_strength — it is part of the stock's look. Coords are divided by
+    // `scale` so the grain keeps a constant on-screen size in previews.
+    if (adjustments.global.film_grain_amount > 0.0) {
+        let g_amount = adjustments.global.film_grain_amount;
+        let g_size = adjustments.global.film_grain_size;
+        let px = vec2<f32>(absolute_coord_i) / scale;
+        let l = dot(base_srgb, vec3<f32>(0.299, 0.587, 0.114));
+        let grain_mask = clamp((1.0 - abs(l - 0.5) * 2.0) * 1.5, 0.3, 1.0);
+        let fine = hash(floor(px)) - 0.5;
+        let clump = film_value_noise(px * (1.0 / max(4.0, g_size * 10.0))) - 0.5;
+        let g = (fine * 0.75 + clump * 0.25) * g_amount;
+        let vr = (hash(px + vec2<f32>(173.0, 11.0)) - 0.5) * 2.0 * g_amount * 0.3;
+        let vg = (hash(px + vec2<f32>(311.0, 47.0)) - 0.5) * 2.0 * g_amount * 0.3;
+        let vb = (hash(px + vec2<f32>(97.0, 223.0)) - 0.5) * 2.0 * g_amount * 0.3;
+        base_srgb = clamp(base_srgb + vec3<f32>(g + vr, g + vg, g + vb) * grain_mask, vec3<f32>(0.0), vec3<f32>(1.0));
     }
 
     var final_rgb = apply_all_curves(base_srgb,

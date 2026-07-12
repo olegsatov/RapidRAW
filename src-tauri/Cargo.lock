@@ -37,6 +37,7 @@ dependencies = [
  "memmap2",
  "mimalloc",
  "mozjpeg-rs",
+ "naga",
  "nalgebra",
  "ndarray",
  "ndk-context",

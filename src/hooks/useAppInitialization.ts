@@ -310,6 +310,13 @@ export const useAppInitialization = ({
     }
   }, [appSettings?.language, i18n.language]);
 
+  // Interface scale: the whole UI is Tailwind rem-based, so the root font-size
+  // scales every element proportionally. Runs on settings load and on change.
+  useEffect(() => {
+    const scale = appSettings?.uiScale ?? 1;
+    document.documentElement.style.fontSize = `${scale * 16}px`;
+  }, [appSettings?.uiScale]);
+
   useEffect(() => {
     if (isInitialMount.current || !appSettings) return;
     if (!currentFolderPath && !activeAlbumId) return;

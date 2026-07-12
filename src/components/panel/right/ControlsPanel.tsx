@@ -8,6 +8,7 @@ import CurveGraph from '../../adjustments/Curves';
 import ColorPanel from '../../adjustments/Color';
 import DetailsPanel from '../../adjustments/Details';
 import EffectsPanel from '../../adjustments/Effects';
+import FilmPanel from '../../adjustments/Film';
 import CollapsibleSection from '../../ui/CollapsibleSection';
 import Waveform from '../editor/Waveform';
 import Resizer from '../../ui/Resizer';
@@ -279,6 +280,7 @@ export default function Controls() {
             color: ColorPanel,
             details: DetailsPanel,
             effects: EffectsPanel,
+            film: FilmPanel,
           }[sectionName];
 
           const title = t(`editor.adjustments.sections.${sectionName}`);

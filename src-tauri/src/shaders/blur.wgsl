@@ -4,7 +4,11 @@ struct BlurParams {
     tile_offset_y: u32,
     input_width: u32,
     input_height: u32,
-    _pad1: u32,
+    // Horizontal sample clamp (max x in source-texture coords). u32::MAX = use
+    // the source texture width (input blurs read the full image). The film
+    // emulsion blur reads a tile-local texture whose content is smaller than
+    // the texture, so it clamps to the content width explicitly.
+    clamp_x_max: u32,
     _pad2: u32,
     _pad3: u32,
 }
@@ -31,6 +35,7 @@ fn horizontal_blur(@builtin(global_invocation_id) id: vec3<u32>) {
 
     let absolute_coord = vec2<u32>(id.x + params.tile_offset_x, id.y + params.tile_offset_y);
     let full_dims = vec2<i32>(textureDimensions(input_texture));
+    let max_x = min(full_dims.x - 1, i32(params.clamp_x_max));
 
     let center_color = clamp(textureLoad(input_texture, absolute_coord, 0).rgb, vec3(0.0), vec3(F16_MAX));
 
@@ -38,7 +43,7 @@ fn horizontal_blur(@builtin(global_invocation_id) id: vec3<u32>) {
     var total_weight = 0.0;
 
     for (var offset = -radius; offset <= radius; offset = offset + 1) {
-        let sample_x = clamp(i32(absolute_coord.x) + offset, 0, full_dims.x - 1);
+        let sample_x = clamp(i32(absolute_coord.x) + offset, 0, max_x);
         let sample_coord = vec2<i32>(sample_x, i32(absolute_coord.y));
 
         let sample_color = clamp(textureLoad(input_texture, vec2<u32>(sample_coord), 0).rgb, vec3(0.0), vec3(F16_MAX));

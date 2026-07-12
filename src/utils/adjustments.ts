@@ -92,6 +92,27 @@ export enum CreativeAdjustment {
   FlareAmount = 'flareAmount',
 }
 
+export enum FilmAdjustment {
+  FilmProfile = 'filmProfile',
+  FilmStrength = 'filmStrength',
+  FilmContrast = 'filmContrast',
+  FilmSaturation = 'filmSaturation',
+  FilmRolloff = 'filmRolloff',
+  FilmBleed = 'filmBleed',
+  FilmCross = 'filmCross',
+  FilmBaseColor = 'filmBaseColor',
+  FilmShadowTint = 'filmShadowTint',
+  FilmCurves = 'filmCurves',
+  FilmTemp = 'filmTemp',
+  FilmTint = 'filmTint',
+  FilmShadows = 'filmShadows',
+  FilmHighlights = 'filmHighlights',
+  FilmBlur = 'filmBlur',
+  FilmChroma = 'filmChroma',
+  FilmGrainAmount = 'filmGrainAmount',
+  FilmGrainSize = 'filmGrainSize',
+}
+
 export enum TransformAdjustment {
   TransformDistortion = 'transformDistortion',
   TransformVertical = 'transformVertical',
@@ -167,6 +188,24 @@ export interface Adjustments {
   crop: Crop | null;
   dehaze: number;
   exposure: number;
+  filmBaseColor: Array<number>;
+  filmBleed: number;
+  filmBlur: number;
+  filmChroma: number;
+  filmContrast: number;
+  filmCross: boolean;
+  filmCurves: Array<number>;
+  filmGrainAmount: number;
+  filmGrainSize: number;
+  filmHighlights: number;
+  filmProfile: string | null;
+  filmRolloff: number;
+  filmSaturation: number;
+  filmShadows: number;
+  filmShadowTint: Array<number>;
+  filmStrength: number;
+  filmTemp: number;
+  filmTint: number;
   flipHorizontal: boolean;
   flipVertical: boolean;
   flareAmount: number;
@@ -341,6 +380,7 @@ export interface Sections {
   color: Array<string>;
   details: Array<string>;
   effects: Array<string>;
+  film: Array<string>;
 }
 
 export interface SectionVisibility {
@@ -350,6 +390,7 @@ export interface SectionVisibility {
   color: boolean;
   details: boolean;
   effects: boolean;
+  film: boolean;
 }
 
 export const COLOR_LABELS: Array<Color> = [
@@ -455,6 +496,7 @@ export const INITIAL_MASK_ADJUSTMENTS: MaskAdjustments = {
     color: true,
     details: true,
     effects: true,
+    film: true,
   },
   shadows: 0,
   sharpness: 0,
@@ -473,6 +515,19 @@ export const INITIAL_MASK_CONTAINER: MaskContainer = {
   opacity: 100,
   subMasks: [],
   visible: true,
+};
+
+// Identity film curves (r=g=b=i/255, flat 768) — local copy to avoid a circular
+// import with filmProfiles.ts. Wire format must match Rust parse_film_curves.
+const buildIdentityFilmCurves = (): Array<number> => {
+  const out = new Array<number>(768);
+  for (let i = 0; i < 256; i++) {
+    const v = i / 255;
+    out[i * 3] = v;
+    out[i * 3 + 1] = v;
+    out[i * 3 + 2] = v;
+  }
+  return out;
 };
 
 export const INITIAL_ADJUSTMENTS: Adjustments = {
@@ -495,6 +550,24 @@ export const INITIAL_ADJUSTMENTS: Adjustments = {
   curveMode: 'point',
   dehaze: 0,
   exposure: 0,
+  filmBaseColor: [255, 255, 255],
+  filmBleed: 0,
+  filmBlur: 0,
+  filmChroma: 0,
+  filmContrast: 100,
+  filmCross: false,
+  filmCurves: buildIdentityFilmCurves(),
+  filmGrainAmount: 0,
+  filmGrainSize: 50,
+  filmHighlights: 0,
+  filmProfile: null,
+  filmRolloff: 0,
+  filmSaturation: 100,
+  filmShadows: 0,
+  filmShadowTint: [0, 0, 0],
+  filmStrength: 0,
+  filmTemp: 6500,
+  filmTint: 0,
   flipHorizontal: false,
   flipVertical: false,
   flareAmount: 0,
@@ -541,6 +614,7 @@ export const INITIAL_ADJUSTMENTS: Adjustments = {
     color: true,
     details: true,
     effects: true,
+    film: true,
   },
   shadows: 0,
   sharpness: 0,
@@ -654,6 +728,33 @@ export const normalizeLoadedAdjustments = (loadedAdjustments: Adjustments): any 
     flareAmount: loadedAdjustments.flareAmount ?? INITIAL_ADJUSTMENTS.flareAmount,
     glowAmount: loadedAdjustments.glowAmount ?? INITIAL_ADJUSTMENTS.glowAmount,
     halationAmount: loadedAdjustments.halationAmount ?? INITIAL_ADJUSTMENTS.halationAmount,
+    filmProfile: loadedAdjustments.filmProfile ?? INITIAL_ADJUSTMENTS.filmProfile,
+    filmStrength: loadedAdjustments.filmStrength ?? INITIAL_ADJUSTMENTS.filmStrength,
+    filmContrast: loadedAdjustments.filmContrast ?? INITIAL_ADJUSTMENTS.filmContrast,
+    filmSaturation: loadedAdjustments.filmSaturation ?? INITIAL_ADJUSTMENTS.filmSaturation,
+    filmRolloff: loadedAdjustments.filmRolloff ?? INITIAL_ADJUSTMENTS.filmRolloff,
+    filmBleed: loadedAdjustments.filmBleed ?? INITIAL_ADJUSTMENTS.filmBleed,
+    filmCross: loadedAdjustments.filmCross ?? INITIAL_ADJUSTMENTS.filmCross,
+    filmTemp: loadedAdjustments.filmTemp ?? INITIAL_ADJUSTMENTS.filmTemp,
+    filmTint: loadedAdjustments.filmTint ?? INITIAL_ADJUSTMENTS.filmTint,
+    filmShadows: loadedAdjustments.filmShadows ?? INITIAL_ADJUSTMENTS.filmShadows,
+    filmHighlights: loadedAdjustments.filmHighlights ?? INITIAL_ADJUSTMENTS.filmHighlights,
+    filmBlur: loadedAdjustments.filmBlur ?? INITIAL_ADJUSTMENTS.filmBlur,
+    filmChroma: loadedAdjustments.filmChroma ?? INITIAL_ADJUSTMENTS.filmChroma,
+    filmGrainAmount: loadedAdjustments.filmGrainAmount ?? INITIAL_ADJUSTMENTS.filmGrainAmount,
+    filmGrainSize: loadedAdjustments.filmGrainSize ?? INITIAL_ADJUSTMENTS.filmGrainSize,
+    filmBaseColor:
+      loadedAdjustments.filmBaseColor?.length === 3
+        ? loadedAdjustments.filmBaseColor
+        : INITIAL_ADJUSTMENTS.filmBaseColor,
+    filmShadowTint:
+      loadedAdjustments.filmShadowTint?.length === 3
+        ? loadedAdjustments.filmShadowTint
+        : INITIAL_ADJUSTMENTS.filmShadowTint,
+    filmCurves:
+      loadedAdjustments.filmCurves?.length === 768
+        ? loadedAdjustments.filmCurves
+        : INITIAL_ADJUSTMENTS.filmCurves,
     lensCorrectionMode: loadedAdjustments.lensCorrectionMode || 'manual',
     lensMaker: loadedAdjustments.lensMaker ?? INITIAL_ADJUSTMENTS.lensMaker,
     lensModel: loadedAdjustments.lensModel ?? INITIAL_ADJUSTMENTS.lensModel,
@@ -767,6 +868,31 @@ export const ADJUSTMENT_GROUPS: Record<string, AdjustmentGroup[]> = {
       keys: [Effect.LutIntensity, Effect.LutName, Effect.LutPath, Effect.LutSize, Effect.LutData],
     },
   ],
+  film: [
+    {
+      label: 'modals.copyPaste.groups.film',
+      keys: [
+        FilmAdjustment.FilmProfile,
+        FilmAdjustment.FilmStrength,
+        FilmAdjustment.FilmContrast,
+        FilmAdjustment.FilmSaturation,
+        FilmAdjustment.FilmRolloff,
+        FilmAdjustment.FilmBleed,
+        FilmAdjustment.FilmCross,
+        FilmAdjustment.FilmBaseColor,
+        FilmAdjustment.FilmShadowTint,
+        FilmAdjustment.FilmCurves,
+        FilmAdjustment.FilmTemp,
+        FilmAdjustment.FilmTint,
+        FilmAdjustment.FilmShadows,
+        FilmAdjustment.FilmHighlights,
+        FilmAdjustment.FilmBlur,
+        FilmAdjustment.FilmChroma,
+        FilmAdjustment.FilmGrainAmount,
+        FilmAdjustment.FilmGrainSize,
+      ],
+    },
+  ],
   geometry: [
     { label: 'modals.copyPaste.groups.cropAspectRatio', keys: ['crop', 'aspectRatio'] },
     {
@@ -857,5 +983,25 @@ export const ADJUSTMENT_SECTIONS: Sections = {
     Effect.VignetteFeather,
     Effect.VignetteMidpoint,
     Effect.VignetteRoundness,
+  ],
+  film: [
+    FilmAdjustment.FilmProfile,
+    FilmAdjustment.FilmStrength,
+    FilmAdjustment.FilmContrast,
+    FilmAdjustment.FilmSaturation,
+    FilmAdjustment.FilmRolloff,
+    FilmAdjustment.FilmBleed,
+    FilmAdjustment.FilmCross,
+    FilmAdjustment.FilmBaseColor,
+    FilmAdjustment.FilmShadowTint,
+    FilmAdjustment.FilmCurves,
+    FilmAdjustment.FilmTemp,
+    FilmAdjustment.FilmTint,
+    FilmAdjustment.FilmShadows,
+    FilmAdjustment.FilmHighlights,
+    FilmAdjustment.FilmBlur,
+    FilmAdjustment.FilmChroma,
+    FilmAdjustment.FilmGrainAmount,
+    FilmAdjustment.FilmGrainSize,
   ],
 };

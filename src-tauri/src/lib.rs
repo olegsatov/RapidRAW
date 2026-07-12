@@ -17,6 +17,8 @@ mod culling;
 mod denoising;
 mod exif_processing;
 mod export_processing;
+pub mod crystal_grain;
+pub mod film_grain;
 mod file_management;
 mod formats;
 mod gpu_processing;
@@ -2328,6 +2330,8 @@ pub fn run() {
             denoising::apply_denoising,
             denoising::batch_denoise_images,
             denoising::save_denoised_image,
+            crystal_grain::render_crystal_grain,
+            film_grain::render_film_grain,
             image_loader::load_image,
             image_loader::is_image_cached,
             panorama_stitching::stitch_panorama,
