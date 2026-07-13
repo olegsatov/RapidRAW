@@ -369,6 +369,9 @@ export const useAppInitialization = ({
   // Persist the image open in the editor so "Continue Session" can reopen it.
   useEffect(() => {
     if (isInitialMount.current || !appSettings) return;
+    // Without a loaded library there is no session state to update yet — this also
+    // prevents wiping the saved image path at startup, before the session is restored.
+    if (!currentFolderPath && !activeAlbumId) return;
     const prevFolderState = appSettings.lastFolderState;
     if (!prevFolderState) return;
     if ((prevFolderState.lastSelectedImage ?? null) === selectedImagePath) return;
@@ -377,7 +380,7 @@ export const useAppInitialization = ({
       ...appSettings,
       lastFolderState: { ...prevFolderState, lastSelectedImage: selectedImagePath },
     });
-  }, [selectedImagePath, appSettings, handleSettingsChange]);
+  }, [selectedImagePath, currentFolderPath, activeAlbumId, appSettings, handleSettingsChange]);
 
   // Persist the active editor tab (right panel) across restarts.
   useEffect(() => {
