@@ -361,7 +361,21 @@ pub(crate) fn process_image_for_export_pipeline(
             if grain_mono {
                 all_adjustments.global.crystal_grain_mono = 1.0;
             }
-            if all_adjustments.global.crystal_grain_amount > 0.0 {
+            // The editor engine mode zeroes the GPU-gated global amount (IPOL
+            // gets no canvas grain), but `fast` is an explicit export choice:
+            // read the raw slider value, still honoring the grain section
+            // toggle and the flim panel master switch.
+            let amount = if grain_section_visible(js_adjustments) && flim_panel_on(js_adjustments) {
+                js_adjustments
+                    .get("crystalGrainAmount")
+                    .and_then(|v| v.as_f64())
+                    .unwrap_or(0.0) as f32
+                    / 100.0
+            } else {
+                0.0
+            };
+            all_adjustments.global.crystal_grain_amount = amount;
+            if amount > 0.0 {
                 let opts = crate::crystal_grain::options_from_adjustments(js_adjustments);
                 grain_view = Some(get_export_grain_view(context, state, &opts)?);
             }
@@ -635,6 +649,22 @@ fn process_image_for_export(
     Ok(image)
 }
 
+/// Grain section visibility (the Film-tab Grain section eye toggle).
+/// Missing key means an old sidecar — default to visible.
+fn grain_section_visible(js_adjustments: &Value) -> bool {
+    js_adjustments
+        .get("sectionVisibility")
+        .and_then(|v| v.get("grain"))
+        .and_then(|s| s.as_bool())
+        .unwrap_or(true)
+}
+
+/// Grain modules live in the Film tab and run only while the flim
+/// tonemapper panel is on.
+fn flim_panel_on(js_adjustments: &Value) -> bool {
+    js_adjustments.get("toneMapper").and_then(|v| v.as_str()) == Some("flim")
+}
+
 /// Full-quality grain for export: the complete Pierre/IPOL model on the
 /// CPU, mixed by the editor's Amount slider so the file tracks the preview
 /// strength. Serialized across export jobs — the renderers already use all
@@ -649,6 +679,12 @@ fn apply_export_grain_cpu(
     state: &tauri::State<AppState>,
     grain_px_scale: f32,
 ) -> Result<DynamicImage, String> {
+    // Grain section toggled off in the editor: the file stays clean even if
+    // a stale export preset asks for grain.
+    if !grain_section_visible(js_adjustments) {
+        return Ok(image);
+    }
+
     // Strength follows the editor's Amount slider; a missing key means the
     // image never had grain configured — no grain, even with the export
     // toggle on (WYSIWYG: the preview showed none either).
@@ -1621,4 +1657,21 @@ pub async fn estimate_export_sizes(
     };
 
     Ok(single_image_extrapolated_size * paths.len())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn grain_section_visibility_defaults_and_override() {
+        // Missing key (old sidecars) defaults to visible.
+        assert!(grain_section_visible(&serde_json::json!({})));
+        assert!(grain_section_visible(&serde_json::json!({
+            "sectionVisibility": { "grain": true }
+        })));
+        assert!(!grain_section_visible(&serde_json::json!({
+            "sectionVisibility": { "grain": false }
+        })));
+    }
 }

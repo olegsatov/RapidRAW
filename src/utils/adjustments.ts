@@ -116,6 +116,7 @@ export enum FilmAdjustment {
   IpolGrainSigmaR = 'ipolGrainSigmaR',
   IpolGrainSigmaFilter = 'ipolGrainSigmaFilter',
   IpolGrainMonteCarlo = 'ipolGrainMonteCarlo',
+  GrainEngine = 'grainEngine',
   FlimPreset = 'flimPreset',
   FlimEv = 'flimEv',
   FlimStrength = 'flimStrength',
@@ -250,6 +251,7 @@ export interface Adjustments {
   ipolGrainSigmaR: number;
   ipolGrainSigmaFilter: number;
   ipolGrainMonteCarlo: number;
+  grainEngine: string;
   filmHighlights: number;
   filmProfile: string | null;
   filmRolloff: number;
@@ -476,6 +478,7 @@ export interface SectionVisibility {
   effects: boolean;
   blackAndWhite: boolean;
   film: boolean;
+  grain: boolean;
 }
 
 export const COLOR_LABELS: Array<Color> = [
@@ -583,6 +586,7 @@ export const INITIAL_MASK_ADJUSTMENTS: MaskAdjustments = {
     effects: true,
     blackAndWhite: false,
     film: true,
+    grain: true,
   },
   shadows: 0,
   sharpness: 0,
@@ -779,6 +783,7 @@ export const INITIAL_ADJUSTMENTS: Adjustments = {
   ipolGrainSigmaR: 0,
   ipolGrainSigmaFilter: 0.8,
   ipolGrainMonteCarlo: 100,
+  grainEngine: 'pierre',
   filmHighlights: 0,
   filmProfile: null,
   filmRolloff: 0,
@@ -846,6 +851,7 @@ export const INITIAL_ADJUSTMENTS: Adjustments = {
     effects: true,
     blackAndWhite: false,
     film: true,
+    grain: true,
   },
   shadows: 0,
   sharpness: 0,
@@ -995,6 +1001,7 @@ export const normalizeLoadedAdjustments = (loadedAdjustments: Adjustments): any 
     ipolGrainSigmaR: loadedAdjustments.ipolGrainSigmaR ?? INITIAL_ADJUSTMENTS.ipolGrainSigmaR,
     ipolGrainSigmaFilter: loadedAdjustments.ipolGrainSigmaFilter ?? INITIAL_ADJUSTMENTS.ipolGrainSigmaFilter,
     ipolGrainMonteCarlo: loadedAdjustments.ipolGrainMonteCarlo ?? INITIAL_ADJUSTMENTS.ipolGrainMonteCarlo,
+    grainEngine: loadedAdjustments.grainEngine ?? INITIAL_ADJUSTMENTS.grainEngine,
     crystalGrainAmount: loadedAdjustments.crystalGrainAmount ?? INITIAL_ADJUSTMENTS.crystalGrainAmount,
     crystalGrainMono: loadedAdjustments.crystalGrainMono ?? INITIAL_ADJUSTMENTS.crystalGrainMono,
     flimPreset: loadedAdjustments.flimPreset ?? INITIAL_ADJUSTMENTS.flimPreset,
@@ -1158,6 +1165,17 @@ export const ADJUSTMENT_GROUPS: Record<string, AdjustmentGroup[]> = {
         FilmAdjustment.FilmShadows,
         FilmAdjustment.FilmHighlights,
         FilmAdjustment.FilmBlur,
+        FilmAdjustment.GrainEngine,
+        FilmAdjustment.CrystalGrainAmount,
+        FilmAdjustment.CrystalGrainMono,
+        FilmAdjustment.CrystalGrainFilling,
+        FilmAdjustment.CrystalGrainSize,
+        FilmAdjustment.CrystalGrainLayers,
+        FilmAdjustment.CrystalGrainStd,
+        FilmAdjustment.IpolGrainMuR,
+        FilmAdjustment.IpolGrainSigmaR,
+        FilmAdjustment.IpolGrainSigmaFilter,
+        FilmAdjustment.IpolGrainMonteCarlo,
         FilmAdjustment.FlimPreset,
         FilmAdjustment.FlimEv,
         FilmAdjustment.FlimStrength,

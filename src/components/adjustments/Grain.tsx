@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
+import clsx from 'clsx';
 import Slider from '../ui/Slider';
 import Text from '../ui/Text';
 import { TextVariants } from '../../types/typography';
@@ -16,9 +17,11 @@ interface GrainPanelProps {
   onDragStateChange?: (isDragging: boolean) => void;
 }
 
-// The two physical grain engines (IPOL 2017 and Pierre crystal grain).
-// Both render offline into a file; the crystal engine also has a realtime
-// baked-field preview. Native RapidRAW grain stays in the Effects section.
+// The two physical grain engines (IPOL 2017 and Pierre crystal grain). A
+// per-image mode toggle selects which engine is configured and exported;
+// only the Pierre engine has a realtime baked-field canvas preview. Both
+// engines render offline into a file via their buttons. Native RapidRAW
+// grain stays in the Effects section.
 export default function GrainPanel({ adjustments, setAdjustments, onDragStateChange }: GrainPanelProps) {
   const { t } = useTranslation();
   const selectedImage = useEditorStore((s: any) => s.selectedImage);
@@ -29,6 +32,10 @@ export default function GrainPanel({ adjustments, setAdjustments, onDragStateCha
   const [xtalRendering, setXtalRendering] = useState(false);
   const [xtalProgress, setXtalProgress] = useState('');
   const [xtalPreview, setXtalPreview] = useState<string | null>(null);
+
+  const grainEngine = adjustments.grainEngine === 'ipol' ? 'ipol' : 'pierre';
+  const grainVisible = adjustments.sectionVisibility?.grain !== false;
+
   // Grain engine parameters live in the adjustments (persisted to the sidecar)
   // so the export pipeline can reproduce them without the editor being open.
   const grainOpts = {
@@ -73,18 +80,23 @@ export default function GrainPanel({ adjustments, setAdjustments, onDragStateCha
   }, []);
 
   // Realtime preview: rebake the grain field (debounced) whenever the crystal
-  // parameters change. The field is a flat-field render of the model, so the
-  // mono flag and strength don't affect it (they are shader-side). The
-  // `crystal-grain-baked` listener in useTauriListeners bumps the store's
-  // renderGeneration, which re-renders the image with the fresh texture.
+  // parameters change — only while the Pierre engine is selected and the
+  // section is enabled (IPOL has no GPU preview). The field is a flat-field
+  // render of the model, so the mono flag and strength don't affect it (they
+  // are shader-side). The `crystal-grain-baked` listener in useTauriListeners
+  // bumps the store's renderGeneration, which re-renders the image with the
+  // fresh texture.
   useEffect(() => {
+    if (grainEngine !== 'pierre' || !grainVisible) {
+      return;
+    }
     const timer = setTimeout(() => {
       invoke('bake_crystal_grain_field', {
         options: { ...xtalOpts, seed: 1 },
       }).catch((e) => console.warn('Crystal grain bake failed:', e));
     }, 400);
     return () => clearTimeout(timer);
-  }, [xtalOpts.filling, xtalOpts.size, xtalOpts.layers, xtalOpts.std]);
+  }, [grainEngine, grainVisible, xtalOpts.filling, xtalOpts.size, xtalOpts.layers, xtalOpts.std]);
 
   const handleAdjustmentChange = (key: string, value: string) => {
     const numericValue = parseInt(value, 10);
@@ -155,166 +167,183 @@ export default function GrainPanel({ adjustments, setAdjustments, onDragStateCha
   return (
     <div className="space-y-4">
       <div className="p-2 bg-bg-tertiary rounded-md">
-        <Text variant={TextVariants.heading} className="mb-2">
-          {t('adjustments.effects.filmPhysicalGrain')}
-        </Text>
-        <Slider
-          defaultValue={0.1}
-          label={t('adjustments.effects.filmGrainRadius')}
-          max={2}
-          min={0.05}
-          onChange={(e: any) => handleGrainOptChange('muR', e.target.value)}
-          step={0.05}
-          value={grainOpts.muR}
-        />
-        <Slider
-          defaultValue={0}
-          label={t('adjustments.effects.filmGrainRadiusVar')}
-          max={1}
-          min={0}
-          onChange={(e: any) => handleGrainOptChange('sigmaR', e.target.value)}
-          step={0.05}
-          value={grainOpts.sigmaR}
-        />
-        <Slider
-          defaultValue={0.8}
-          label={t('adjustments.effects.filmGrainFilter')}
-          max={2}
-          min={0}
-          onChange={(e: any) => handleGrainOptChange('sigmaFilter', e.target.value)}
-          step={0.1}
-          value={grainOpts.sigmaFilter}
-        />
-        <Slider
-          defaultValue={100}
-          label={t('adjustments.effects.filmGrainMonteCarlo')}
-          max={800}
-          min={25}
-          onChange={(e: any) => handleGrainOptChange('nMonteCarlo', e.target.value)}
-          step={25}
-          value={grainOpts.nMonteCarlo}
-        />
-        <Switch
-          id="switch-grain-mono-ipol"
-          label={t('adjustments.effects.grainMonochrome')}
-          checked={ipolMono}
-          onChange={setIpolMono}
-        />
-        <div className="flex gap-2">
-          <Button
-            onClick={() => handleRenderGrain(true)}
-            disabled={grainRendering || !selectedImage?.path}
-            className="flex-1 bg-surface"
-          >
-            {t('adjustments.effects.filmGrainPreview')}
-          </Button>
-          <Button
-            onClick={() => handleRenderGrain(false)}
-            disabled={grainRendering || !selectedImage?.path}
-            className="flex-1 bg-surface"
-          >
-            {t('adjustments.effects.filmRenderGrain')}
-          </Button>
+        <div className="flex gap-1 mb-2">
+          {(['pierre', 'ipol'] as const).map((mode) => (
+            <button
+              key={mode}
+              className={clsx(
+                'flex-1 px-2 py-1 text-sm font-medium rounded-md transition-colors',
+                grainEngine === mode
+                  ? 'bg-accent text-button-text'
+                  : 'bg-card-active text-text-secondary hover:bg-surface',
+              )}
+              onClick={() => setAdjustments((prev: Partial<Adjustments>) => ({ ...prev, grainEngine: mode }))}
+            >
+              {t(`adjustments.effects.grainModes.${mode}`)}
+            </button>
+          ))}
         </div>
-        {grainProgress && <p className="text-xs text-text-secondary mt-2">{grainProgress}</p>}
-        {grainPreview && (
-          <img
-            src={grainPreview}
-            alt="Grain preview"
-            className="mt-2 w-full rounded-sm border border-card-active"
-          />
-        )}
-        <p className="text-xs text-text-secondary mt-2">{t('adjustments.effects.filmRenderGrainDesc')}</p>
+        <Slider
+          label={t('adjustments.effects.amount')}
+          max={100}
+          min={0}
+          onChange={(e: any) => handleAdjustmentChange(FilmAdjustment.CrystalGrainAmount, e.target.value)}
+          step={1}
+          value={adjustments.crystalGrainAmount}
+          onDragStateChange={onDragStateChange}
+        />
+        <p className="text-xs text-text-secondary mt-1">
+          {grainEngine === 'pierre'
+            ? t('adjustments.effects.grainAmountPierreHint')
+            : t('adjustments.effects.grainAmountIpolHint')}
+        </p>
       </div>
 
-      <div className="p-2 bg-bg-tertiary rounded-md">
-        <Text variant={TextVariants.heading} className="mb-2">
-          {t('adjustments.effects.filmCrystalGrain')}
-        </Text>
-        <Slider
-          defaultValue={0.25}
-          label={t('adjustments.effects.xtalFilling')}
-          max={0.8}
-          min={0.05}
-          onChange={(e: any) => handleXtalOptChange('filling', e.target.value)}
-          step={0.05}
-          value={xtalOpts.filling}
-        />
-        <Slider
-          defaultValue={5}
-          label={t('adjustments.effects.xtalSize')}
-          max={15}
-          min={1}
-          onChange={(e: any) => handleXtalOptChange('size', e.target.value)}
-          step={1}
-          value={xtalOpts.size}
-        />
-        <Slider
-          defaultValue={30}
-          label={t('adjustments.effects.xtalLayers')}
-          max={60}
-          min={5}
-          onChange={(e: any) => handleXtalOptChange('layers', e.target.value)}
-          step={5}
-          value={xtalOpts.layers}
-        />
-        <Slider
-          defaultValue={0.5}
-          label={t('adjustments.effects.xtalStd')}
-          max={2}
-          min={0}
-          onChange={(e: any) => handleXtalOptChange('std', e.target.value)}
-          step={0.05}
-          value={xtalOpts.std}
-        />
-        <div className="my-2 border-t border-card-active pt-2">
-          <Text variant={TextVariants.label} className="mb-1 text-text-secondary">
-            {t('adjustments.effects.xtalRealtime')}
+      {grainEngine === 'ipol' ? (
+        <div className="p-2 bg-bg-tertiary rounded-md">
+          <Text variant={TextVariants.heading} className="mb-2">
+            {t('adjustments.effects.filmPhysicalGrain')}
           </Text>
           <Slider
-            label={t('adjustments.effects.amount')}
-            max={100}
+            defaultValue={0.1}
+            label={t('adjustments.effects.filmGrainRadius')}
+            max={2}
+            min={0.05}
+            onChange={(e: any) => handleGrainOptChange('muR', e.target.value)}
+            step={0.05}
+            value={grainOpts.muR}
+          />
+          <Slider
+            defaultValue={0}
+            label={t('adjustments.effects.filmGrainRadiusVar')}
+            max={1}
             min={0}
-            onChange={(e: any) => handleAdjustmentChange(FilmAdjustment.CrystalGrainAmount, e.target.value)}
+            onChange={(e: any) => handleGrainOptChange('sigmaR', e.target.value)}
+            step={0.05}
+            value={grainOpts.sigmaR}
+          />
+          <Slider
+            defaultValue={0.8}
+            label={t('adjustments.effects.filmGrainFilter')}
+            max={2}
+            min={0}
+            onChange={(e: any) => handleGrainOptChange('sigmaFilter', e.target.value)}
+            step={0.1}
+            value={grainOpts.sigmaFilter}
+          />
+          <Slider
+            defaultValue={100}
+            label={t('adjustments.effects.filmGrainMonteCarlo')}
+            max={800}
+            min={25}
+            onChange={(e: any) => handleGrainOptChange('nMonteCarlo', e.target.value)}
+            step={25}
+            value={grainOpts.nMonteCarlo}
+          />
+          <Switch
+            id="switch-grain-mono-ipol"
+            label={t('adjustments.effects.grainMonochrome')}
+            checked={ipolMono}
+            onChange={setIpolMono}
+          />
+          <div className="flex gap-2">
+            <Button
+              onClick={() => handleRenderGrain(true)}
+              disabled={grainRendering || !selectedImage?.path}
+              className="flex-1 bg-surface"
+            >
+              {t('adjustments.effects.filmGrainPreview')}
+            </Button>
+            <Button
+              onClick={() => handleRenderGrain(false)}
+              disabled={grainRendering || !selectedImage?.path}
+              className="flex-1 bg-surface"
+            >
+              {t('adjustments.effects.filmRenderGrain')}
+            </Button>
+          </div>
+          {grainProgress && <p className="text-xs text-text-secondary mt-2">{grainProgress}</p>}
+          {grainPreview && (
+            <img src={grainPreview} alt="Grain preview" className="mt-2 w-full rounded-sm border border-card-active" />
+          )}
+          <p className="text-xs text-text-secondary mt-2">{t('adjustments.effects.filmRenderGrainDesc')}</p>
+        </div>
+      ) : (
+        <div className="p-2 bg-bg-tertiary rounded-md">
+          <Text variant={TextVariants.heading} className="mb-2">
+            {t('adjustments.effects.filmCrystalGrain')}
+          </Text>
+          <Slider
+            defaultValue={0.25}
+            label={t('adjustments.effects.xtalFilling')}
+            max={0.8}
+            min={0.05}
+            onChange={(e: any) => handleXtalOptChange('filling', e.target.value)}
+            step={0.05}
+            value={xtalOpts.filling}
+          />
+          <Slider
+            defaultValue={5}
+            label={t('adjustments.effects.xtalSize')}
+            max={15}
+            min={1}
+            onChange={(e: any) => handleXtalOptChange('size', e.target.value)}
             step={1}
-            value={adjustments.crystalGrainAmount}
-            onDragStateChange={onDragStateChange}
+            value={xtalOpts.size}
           />
-        </div>
-        <Switch
-          id="switch-grain-mono-xtal"
-          label={t('adjustments.effects.grainMonochrome')}
-          checked={!!adjustments.crystalGrainMono}
-          onChange={(v: boolean) =>
-            setAdjustments((prev: Partial<Adjustments>) => ({ ...prev, crystalGrainMono: v ? 1 : 0 }))
-          }
-        />
-        <div className="flex gap-2">
-          <Button
-            onClick={() => handleRenderXtal(true)}
-            disabled={xtalRendering || !selectedImage?.path}
-            className="flex-1 bg-surface"
-          >
-            {t('adjustments.effects.filmGrainPreview')}
-          </Button>
-          <Button
-            onClick={() => handleRenderXtal(false)}
-            disabled={xtalRendering || !selectedImage?.path}
-            className="flex-1 bg-surface"
-          >
-            {t('adjustments.effects.filmRenderGrain')}
-          </Button>
-        </div>
-        {xtalProgress && <p className="text-xs text-text-secondary mt-2">{xtalProgress}</p>}
-        {xtalPreview && (
-          <img
-            src={xtalPreview}
-            alt="Crystal grain preview"
-            className="mt-2 w-full rounded-sm border border-card-active"
+          <Slider
+            defaultValue={30}
+            label={t('adjustments.effects.xtalLayers')}
+            max={60}
+            min={5}
+            onChange={(e: any) => handleXtalOptChange('layers', e.target.value)}
+            step={5}
+            value={xtalOpts.layers}
           />
-        )}
-        <p className="text-xs text-text-secondary mt-2">{t('adjustments.effects.xtalRenderDesc')}</p>
-      </div>
+          <Slider
+            defaultValue={0.5}
+            label={t('adjustments.effects.xtalStd')}
+            max={2}
+            min={0}
+            onChange={(e: any) => handleXtalOptChange('std', e.target.value)}
+            step={0.05}
+            value={xtalOpts.std}
+          />
+          <Switch
+            id="switch-grain-mono-xtal"
+            label={t('adjustments.effects.grainMonochrome')}
+            checked={!!adjustments.crystalGrainMono}
+            onChange={(v: boolean) =>
+              setAdjustments((prev: Partial<Adjustments>) => ({ ...prev, crystalGrainMono: v ? 1 : 0 }))
+            }
+          />
+          <div className="flex gap-2">
+            <Button
+              onClick={() => handleRenderXtal(true)}
+              disabled={xtalRendering || !selectedImage?.path}
+              className="flex-1 bg-surface"
+            >
+              {t('adjustments.effects.filmGrainPreview')}
+            </Button>
+            <Button
+              onClick={() => handleRenderXtal(false)}
+              disabled={xtalRendering || !selectedImage?.path}
+              className="flex-1 bg-surface"
+            >
+              {t('adjustments.effects.filmRenderGrain')}
+            </Button>
+          </div>
+          {xtalProgress && <p className="text-xs text-text-secondary mt-2">{xtalProgress}</p>}
+          {xtalPreview && (
+            <img
+              src={xtalPreview}
+              alt="Crystal grain preview"
+              className="mt-2 w-full rounded-sm border border-card-active"
+            />
+          )}
+          <p className="text-xs text-text-secondary mt-2">{t('adjustments.effects.xtalRenderDesc')}</p>
+        </div>
+      )}
     </div>
   );
 }

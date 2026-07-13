@@ -249,6 +249,10 @@ export default function ExportPanel({
     })),
   );
 
+  // Grain is configured per image in the Film tab; export can only add grain
+  // when the flim panel and the Grain section are both on for this image.
+  const grainAvailable = adjustments?.toneMapper === 'flim' && adjustments?.sectionVisibility?.grain !== false;
+
   const [isAdvancedExpanded, setIsAdvancedExpanded] = useState(false);
   const initDone = useRef(false);
 
@@ -316,6 +320,12 @@ export default function ExportPanel({
     };
     fetchDims();
   }, [pathsToExport, isLibraryContext, selectedImage, enableWatermark, numImages, isVisible]);
+
+  // Export grain mode follows the engine selected in the editor; the user
+  // can still override it via the dropdown until the image or engine changes.
+  useEffect(() => {
+    setGrainMode(adjustments?.grainEngine === 'ipol' ? 'ipol' : 'pierre');
+  }, [selectedImage?.path, adjustments?.grainEngine]);
 
   useEffect(() => {
     const fetchWatermarkDimensions = async () => {
@@ -787,12 +797,17 @@ export default function ExportPanel({
                 <Section title={t('export.sections.grain')}>
                   <Switch
                     label={t('export.grain.addGrain')}
-                    checked={grainEnabled}
+                    checked={grainEnabled && grainAvailable}
                     onChange={setGrainEnabled}
-                    disabled={isExporting}
+                    disabled={isExporting || !grainAvailable}
                     trackClassName="bg-surface"
                   />
-                  {grainEnabled && (
+                  {!grainAvailable && (
+                    <Text variant={TextVariants.small} color={TextColors.secondary}>
+                      {t('export.grain.disabledHint')}
+                    </Text>
+                  )}
+                  {grainEnabled && grainAvailable && (
                     <div className="space-y-4 pl-2 border-l-2 border-surface">
                       <Dropdown
                         options={[

@@ -141,6 +141,12 @@
       "xtalStd": "Size Variation (σ)",
       "xtalRenderDesc": "Simulates a stack of silver-halide crystal layers (slow, saves a new file)",
       "xtalRealtime": "Realtime Preview",
+      "grainModes": {
+        "pierre": "Pierre",
+        "ipol": "IPOL"
+      },
+      "grainAmountPierreHint": "Realtime preview strength; also applied at export.",
+      "grainAmountIpolHint": "Applied at export — this engine has no realtime preview.",
       "tone": "Tone",
       "filmContrast": "Contrast",
       "filmCross": "Cross-Process",
@@ -911,6 +917,7 @@
     "grain": {
       "addGrain": "Add film grain",
       "mono": "B&W noise (shared grain field)",
+      "disabledHint": "Enable the flim panel and the Grain section in the Film tab to add grain at export.",
       "modes": {
         "fast": "Fast (matches preview)",
         "pierre": "High quality — crystal emulsion (slow)",

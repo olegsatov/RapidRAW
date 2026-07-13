@@ -21,7 +21,7 @@ export function useExportSettings() {
   const [watermarkSpacing, setWatermarkSpacing] = useState(5);
   const [watermarkOpacity, setWatermarkOpacity] = useState(75);
   const [grainEnabled, setGrainEnabled] = useState(false);
-  const [grainMode, setGrainMode] = useState<'fast' | 'pierre' | 'ipol'>('fast');
+  const [grainMode, setGrainMode] = useState<'fast' | 'pierre' | 'ipol'>('pierre');
   const [grainMono, setGrainMono] = useState(false);
 
   const handleApplyPreset = useCallback((preset: ExportPreset) => {

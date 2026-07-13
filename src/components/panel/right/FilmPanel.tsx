@@ -513,10 +513,10 @@ export default function FilmPanel() {
         </CollapsibleSection>
 
         <CollapsibleSection
-          canToggleVisibility={false}
-          isContentVisible={true}
+          isContentVisible={sectionVisibility.grain}
           isOpen={grainOpen}
           onToggle={() => setGrainOpen((v) => !v)}
+          onToggleVisibility={() => handleToggleVisibility('grain')}
           title={t('adjustments.effects.grain')}
         >
           <GrainPanel

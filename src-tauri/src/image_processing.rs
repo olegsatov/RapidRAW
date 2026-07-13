@@ -2541,7 +2541,7 @@ fn get_global_adjustments_from_json(
     // master toggle: they run only while the flim tonemapper is on.
     let flim_panel_on = tone_mapper == "flim";
     let is_visible = |section: &str| -> bool {
-        if !flim_panel_on && matches!(section, "film" | "blackAndWhite") {
+        if !flim_panel_on && matches!(section, "film" | "blackAndWhite" | "grain") {
             return false;
         }
         visibility
@@ -2932,9 +2932,15 @@ fn get_global_adjustments_from_json(
         ],
 
         // Crystal grain (Pierre) realtime preview: amount 0..100 -> 0..1
-        // (strength mix in the film post-pass), mono as a 0/1 flag.
-        crystal_grain_amount: get_val("film", "crystalGrainAmount", 100.0, None),
-        crystal_grain_mono: get_val("film", "crystalGrainMono", 1.0, Some(0.0)),
+        // (strength mix in the film post-pass), mono as a 0/1 flag. Gated by
+        // the Grain section toggle; the IPOL engine is CPU-only and gets no
+        // GPU preview grain at all.
+        crystal_grain_amount: if js_adjustments["grainEngine"].as_str() == Some("ipol") {
+            0.0
+        } else {
+            get_val("grain", "crystalGrainAmount", 100.0, None)
+        },
+        crystal_grain_mono: get_val("grain", "crystalGrainMono", 1.0, Some(0.0)),
         _pad_crystal1: 0.0,
         _pad_crystal2: 0.0,
 
@@ -4316,5 +4322,38 @@ mod film_layout_tests {
         assert!((on.film_contrast - 1.3).abs() < 1e-6);
         assert!((on.crystal_grain_amount - 0.5).abs() < 1e-6);
         assert_eq!(on.bw_weights[3], 1.0);
+    }
+
+    #[test]
+    fn crystal_grain_follows_grain_section_and_engine() {
+        let base = serde_json::json!({
+            "toneMapper": "flim",
+            "sectionVisibility": { "grain": true },
+            "crystalGrainAmount": 50,
+            "crystalGrainMono": 1
+        });
+        // Section visible + default (Pierre) engine: values pass through.
+        let on = get_global_adjustments_from_json(&base, true, None);
+        assert!((on.crystal_grain_amount - 0.5).abs() < 1e-6);
+        assert_eq!(on.crystal_grain_mono, 1.0);
+
+        // Grain section off: zeroed.
+        let mut off_json = base.clone();
+        off_json["sectionVisibility"] = serde_json::json!({ "grain": false });
+        let off = get_global_adjustments_from_json(&off_json, true, None);
+        assert_eq!(off.crystal_grain_amount, 0.0, "grain section off must zero amount");
+        assert_eq!(off.crystal_grain_mono, 0.0, "grain section off must zero mono");
+
+        // IPOL engine: no GPU grain on the canvas (CPU-only engine).
+        let mut ipol_json = base.clone();
+        ipol_json["grainEngine"] = serde_json::json!("ipol");
+        let ipol = get_global_adjustments_from_json(&ipol_json, true, None);
+        assert_eq!(ipol.crystal_grain_amount, 0.0, "ipol engine must have no GPU grain");
+
+        // Flim panel off gates grain too (grain lives in the Film tab).
+        let mut panel_off = base.clone();
+        panel_off["toneMapper"] = serde_json::json!("basic");
+        let gated = get_global_adjustments_from_json(&panel_off, true, None);
+        assert_eq!(gated.crystal_grain_amount, 0.0, "flim panel off must gate grain");
     }
 }
