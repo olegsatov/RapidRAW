@@ -556,7 +556,8 @@
       "presets": {
         "default": "Default",
         "nostalgia": "Nostalgia",
-        "silver": "Silver"
+        "silver": "Silver",
+        "custom": "Custom"
       },
       "ev": "Exposure (EV)",
       "strength": "Strength",
@@ -569,7 +570,34 @@
       "halation": "Halation",
       "adjacency": "Adjacency",
       "hiTint": "Highlight tint",
-      "shTint": "Shadow tint"
+      "shTint": "Shadow tint",
+      "advanced": "Advanced",
+      "resetImage": "Reset image",
+      "savePreset": "Save as new preset",
+      "savePresetConfirm": "Save",
+      "presetNamePlaceholder": "Preset name",
+      "adv": {
+        "preExposure": "Pre-exposure",
+        "negExposure": "Negative exposure",
+        "negDensity": "Negative density",
+        "printExposure": "Print exposure",
+        "printDensity": "Print density",
+        "shoulderBase": "Shoulder base",
+        "backlightR": "Backlight R",
+        "backlightG": "Backlight G",
+        "backlightB": "Backlight B",
+        "midtoneSat": "Midtone saturation",
+        "blackAuto": "Auto black point",
+        "blackPoint": "Black point",
+        "preFilterHue": "Pre-filter hue",
+        "preFilterStrength": "Pre-filter strength",
+        "postFilterHue": "Post-filter hue",
+        "postFilterStrength": "Post-filter strength",
+        "gamutExpand": "Gamut expand",
+        "paletteRotate": "Palette rotate",
+        "pushR": "Red push",
+        "pushB": "Blue push"
+      }
     },
     "masks": {
       "actions": {

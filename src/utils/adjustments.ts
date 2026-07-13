@@ -587,7 +587,7 @@ export const INITIAL_MASK_ADJUSTMENTS: MaskAdjustments = {
     color: true,
     details: true,
     effects: true,
-    blackAndWhite: true,
+    blackAndWhite: false,
     film: true,
   },
   shadows: 0,
@@ -806,6 +806,7 @@ export const INITIAL_ADJUSTMENTS: Adjustments = {
   flimAdjacency: 0,
   flimHiTint: 0,
   flimShTint: 0,
+  ...FLIM_BUILTIN_PRESETS[0],
   flipHorizontal: false,
   flipVertical: false,
   flareAmount: 0,
@@ -904,6 +905,21 @@ const deepCloneParametric = (pCurve: any): ParametricCurve => ({
   green: { ...DEFAULT_PARAMETRIC_CURVE_SETTINGS, ...(pCurve?.green || {}) },
   blue: { ...DEFAULT_PARAMETRIC_CURVE_SETTINGS, ...(pCurve?.blue || {}) },
 });
+
+// Advanced flim keys are always present after normalization. Old sidecars
+// (no flimAdv* keys) derive them from the stored builtin preset index so the
+// picture does not change on load; afterwards the absolute keys are the
+// single source of truth for the flim preset.
+const normalizeFlimAdv = (loaded: Partial<Adjustments>): FlimPresetParams => {
+  const presetIdx = Math.min(Math.max(loaded.flimPreset ?? 0, 0), FLIM_BUILTIN_PRESETS.length - 1);
+  const source: Partial<Adjustments> =
+    loaded.flimAdvPreExposure !== undefined ? loaded : FLIM_BUILTIN_PRESETS[presetIdx];
+  const result = {} as FlimPresetParams;
+  for (const key of FLIM_ADV_KEYS) {
+    result[key] = (source[key] as number | undefined) ?? INITIAL_ADJUSTMENTS[key];
+  }
+  return result;
+};
 
 export const normalizeLoadedAdjustments = (loadedAdjustments: Adjustments): any => {
   if (!loadedAdjustments) {
@@ -1004,6 +1020,7 @@ export const normalizeLoadedAdjustments = (loadedAdjustments: Adjustments): any 
     flimAdjacency: loadedAdjustments.flimAdjacency ?? INITIAL_ADJUSTMENTS.flimAdjacency,
     flimHiTint: loadedAdjustments.flimHiTint ?? INITIAL_ADJUSTMENTS.flimHiTint,
     flimShTint: loadedAdjustments.flimShTint ?? INITIAL_ADJUSTMENTS.flimShTint,
+    ...normalizeFlimAdv(loadedAdjustments),
     filmBaseColor:
       loadedAdjustments.filmBaseColor?.length === 3
         ? loadedAdjustments.filmBaseColor
@@ -1166,6 +1183,26 @@ export const ADJUSTMENT_GROUPS: Record<string, AdjustmentGroup[]> = {
         FilmAdjustment.FlimAdjacency,
         FilmAdjustment.FlimHiTint,
         FilmAdjustment.FlimShTint,
+        FilmAdjustment.FlimAdvPreExposure,
+        FilmAdjustment.FlimAdvNegExposure,
+        FilmAdjustment.FlimAdvNegDensity,
+        FilmAdjustment.FlimAdvPrintExposure,
+        FilmAdjustment.FlimAdvPrintDensity,
+        FilmAdjustment.FlimAdvLog2Max,
+        FilmAdjustment.FlimAdvBacklightR,
+        FilmAdjustment.FlimAdvBacklightG,
+        FilmAdjustment.FlimAdvBacklightB,
+        FilmAdjustment.FlimAdvSaturation,
+        FilmAdjustment.FlimAdvBlackAuto,
+        FilmAdjustment.FlimAdvBlackPoint,
+        FilmAdjustment.FlimAdvPreFilterHue,
+        FilmAdjustment.FlimAdvPreFilterStrength,
+        FilmAdjustment.FlimAdvPostFilterHue,
+        FilmAdjustment.FlimAdvPostFilterStrength,
+        FilmAdjustment.FlimAdvGamutExpand,
+        FilmAdjustment.FlimAdvPaletteRotate,
+        FilmAdjustment.FlimAdvPushR,
+        FilmAdjustment.FlimAdvPushB,
       ],
     },
   ],
@@ -1289,5 +1326,25 @@ export const ADJUSTMENT_SECTIONS: Sections = {
     FilmAdjustment.FlimAdjacency,
     FilmAdjustment.FlimHiTint,
     FilmAdjustment.FlimShTint,
+    FilmAdjustment.FlimAdvPreExposure,
+    FilmAdjustment.FlimAdvNegExposure,
+    FilmAdjustment.FlimAdvNegDensity,
+    FilmAdjustment.FlimAdvPrintExposure,
+    FilmAdjustment.FlimAdvPrintDensity,
+    FilmAdjustment.FlimAdvLog2Max,
+    FilmAdjustment.FlimAdvBacklightR,
+    FilmAdjustment.FlimAdvBacklightG,
+    FilmAdjustment.FlimAdvBacklightB,
+    FilmAdjustment.FlimAdvSaturation,
+    FilmAdjustment.FlimAdvBlackAuto,
+    FilmAdjustment.FlimAdvBlackPoint,
+    FilmAdjustment.FlimAdvPreFilterHue,
+    FilmAdjustment.FlimAdvPreFilterStrength,
+    FilmAdjustment.FlimAdvPostFilterHue,
+    FilmAdjustment.FlimAdvPostFilterStrength,
+    FilmAdjustment.FlimAdvGamutExpand,
+    FilmAdjustment.FlimAdvPaletteRotate,
+    FilmAdjustment.FlimAdvPushR,
+    FilmAdjustment.FlimAdvPushB,
   ],
 };

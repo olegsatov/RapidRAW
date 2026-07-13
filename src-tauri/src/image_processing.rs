@@ -2543,6 +2543,13 @@ fn get_global_adjustments_from_json(
             .and_then(|s| s.as_bool())
             .unwrap_or(true)
     };
+    // B&W conversion must be opt-in: without a recorded visibility (unedited
+    // image, no sidecar) it stays OFF, otherwise every untouched photo would
+    // export as black & white.
+    let bw_section_on = visibility
+        .and_then(|v| v.get("blackAndWhite"))
+        .and_then(|s| s.as_bool())
+        .unwrap_or(false);
 
     let get_val = |section: &str, key: &str, scale: f32, default: Option<f64>| -> f32 {
         if is_visible(section) {
@@ -2920,7 +2927,7 @@ fn get_global_adjustments_from_json(
             get_val("blackAndWhite", "bwRed", 100.0, Some(21.0)),
             get_val("blackAndWhite", "bwGreen", 100.0, Some(72.0)),
             get_val("blackAndWhite", "bwBlue", 100.0, Some(7.0)),
-            if is_visible("blackAndWhite") { 1.0 } else { 0.0 },
+            if bw_section_on { 1.0 } else { 0.0 },
         ],
 
         // Crystal grain (Pierre) realtime preview: amount 0..100 -> 0..1

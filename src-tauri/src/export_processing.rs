@@ -603,14 +603,18 @@ fn process_image_for_export(
         export_settings.grain_mono,
     )?;
 
-    // Order: resize -> CPU grain -> watermark. The resize first authors the
-    // grain in output pixels (same absolute grain size at any export
-    // resolution); the watermark is a digital overlay and stays grain-free.
+    // Order: resize -> CPU grain -> watermark. The grain is authored in
+    // output pixels but its size parameters are scaled by the resize ratio,
+    // so it looks like grain rendered at full res and downscaled with the
+    // image (and the render is 1/scale² cheaper than a full-res pass); the
+    // watermark is a digital overlay and stays grain-free.
+    let mut grain_px_scale = 1.0f32;
     if let Some(resize_opts) = &export_settings.resize {
         let (current_w, current_h) = image.dimensions();
         let (target_w, target_h) = calculate_resize_target(current_w, current_h, resize_opts);
         if target_w != current_w || target_h != current_h {
             image = image.resize(target_w, target_h, imageops::FilterType::Lanczos3);
+            grain_px_scale = target_w as f32 / current_w as f32;
         }
     }
 
@@ -621,6 +625,7 @@ fn process_image_for_export(
             grain_mode,
             export_settings.grain_mono,
             state,
+            grain_px_scale,
         )?;
     }
 
@@ -633,18 +638,24 @@ fn process_image_for_export(
 /// Full-quality grain for export: the complete Pierre/IPOL model on the
 /// CPU, mixed by the editor's Amount slider so the file tracks the preview
 /// strength. Serialized across export jobs — the renderers already use all
-/// cores via rayon.
+/// cores via rayon. `grain_px_scale` shrinks the grain size parameters to
+/// match the export resize (grain scales with the image, like the fast
+/// path's full-res render + downscale).
 fn apply_export_grain_cpu(
     image: DynamicImage,
     js_adjustments: &Value,
     grain_mode: ExportGrainMode,
     grain_mono: bool,
     state: &tauri::State<AppState>,
+    grain_px_scale: f32,
 ) -> Result<DynamicImage, String> {
+    // Strength follows the editor's Amount slider; a missing key means the
+    // image never had grain configured — no grain, even with the export
+    // toggle on (WYSIWYG: the preview showed none either).
     let amount = js_adjustments
         .get("crystalGrainAmount")
         .and_then(|v| v.as_f64())
-        .unwrap_or(100.0) as f32
+        .unwrap_or(0.0) as f32
         / 100.0;
     if amount <= 0.0 {
         return Ok(image);
@@ -656,11 +667,14 @@ fn apply_export_grain_cpu(
         ExportGrainMode::Pierre => {
             let mut opts = crate::crystal_grain::options_from_adjustments(js_adjustments);
             opts.monochrome |= grain_mono;
+            opts.size = (opts.size * grain_px_scale).max(0.5);
             crate::crystal_grain::apply_crystal_grain_rgb(&rgb, &opts, None)
         }
         ExportGrainMode::Ipol => {
             let mut opts = crate::film_grain::options_from_adjustments(js_adjustments);
             opts.monochrome |= grain_mono;
+            opts.mu_r = (opts.mu_r * grain_px_scale).max(0.05);
+            opts.sigma_filter *= grain_px_scale;
             crate::film_grain::apply_film_grain_rgb(&rgb, &opts, None)
         }
         _ => return Ok(image),

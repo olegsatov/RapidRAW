@@ -1,22 +1,95 @@
-import { useCallback } from 'react';
+import { useCallback, useEffect, useState } from 'react';
+import { invoke } from '@tauri-apps/api/core';
 import { useTranslation } from 'react-i18next';
+import { ChevronDown, ChevronRight } from 'lucide-react';
 import Dropdown from '../../ui/Dropdown';
 import Slider from '../../ui/Slider';
 import Text from '../../ui/Text';
 import { TextVariants } from '../../../types/typography';
-import { Adjustments, CreativeAdjustment, FilmAdjustment } from '../../../utils/adjustments';
+import {
+  Adjustments,
+  CreativeAdjustment,
+  FilmAdjustment,
+  FLIM_ADV_KEYS,
+  FLIM_BUILTIN_PRESETS,
+  FlimPresetParams,
+  INITIAL_ADJUSTMENTS,
+} from '../../../utils/adjustments';
 import { useEditorStore } from '../../../store/useEditorStore';
 import { useEditorActions } from '../../../hooks/useEditorActions';
+import { Invokes } from '../../ui/AppProperties';
 
 // Film tab: drives the flim tonemapper mode (github.com/bean-mhm/flim,
 // AGPLv3 port). The tonemapper selector writes the existing toneMapper
 // adjustment ('basic' | 'agx' | 'flim'); preset/EV/strength map to the
 // ungated flim* keys parsed in image_processing.rs.
+//
+// Presets are defined by their absolute flimAdv* parameters: selecting a
+// preset writes its params into the adjustments, and the dropdown simply
+// reflects which preset (if any) the current params match. User presets are
+// stored by the backend in flim_presets.json.
+
+interface FlimUserPreset {
+  id: string;
+  name: string;
+  params: FlimPresetParams;
+}
+
+const paramsFromAdjustments = (a: Partial<Adjustments>): FlimPresetParams => {
+  const params = {} as FlimPresetParams;
+  for (const key of FLIM_ADV_KEYS) {
+    params[key] = (a[key] as number | undefined) ?? INITIAL_ADJUSTMENTS[key];
+  }
+  return params;
+};
+
+const paramsEqual = (a: FlimPresetParams, b: FlimPresetParams): boolean =>
+  FLIM_ADV_KEYS.every((key) => Math.abs(a[key] - b[key]) < 1e-6);
+
+// Advanced panel sliders; labels are i18n keys under editor.film.adv.*.
+const ADV_SLIDERS: Array<{
+  key: keyof FlimPresetParams;
+  label: string;
+  min: number;
+  max: number;
+  step: number;
+}> = [
+  { key: 'flimAdvPreExposure', label: 'preExposure', min: 0, max: 8, step: 0.1 },
+  { key: 'flimAdvNegExposure', label: 'negExposure', min: 0, max: 12, step: 0.1 },
+  { key: 'flimAdvNegDensity', label: 'negDensity', min: 0, max: 15, step: 0.1 },
+  { key: 'flimAdvPrintExposure', label: 'printExposure', min: 0, max: 12, step: 0.1 },
+  { key: 'flimAdvPrintDensity', label: 'printDensity', min: 0, max: 60, step: 0.5 },
+  { key: 'flimAdvLog2Max', label: 'shoulderBase', min: 14, max: 30, step: 0.5 },
+  { key: 'flimAdvBacklightR', label: 'backlightR', min: 0.5, max: 1.5, step: 0.01 },
+  { key: 'flimAdvBacklightG', label: 'backlightG', min: 0.5, max: 1.5, step: 0.01 },
+  { key: 'flimAdvBacklightB', label: 'backlightB', min: 0.5, max: 1.5, step: 0.01 },
+  { key: 'flimAdvSaturation', label: 'midtoneSat', min: 0, max: 2, step: 0.01 },
+  { key: 'flimAdvPreFilterHue', label: 'preFilterHue', min: 0, max: 360, step: 1 },
+  { key: 'flimAdvPreFilterStrength', label: 'preFilterStrength', min: 0, max: 0.3, step: 0.01 },
+  { key: 'flimAdvPostFilterHue', label: 'postFilterHue', min: 0, max: 360, step: 1 },
+  { key: 'flimAdvPostFilterStrength', label: 'postFilterStrength', min: 0, max: 0.3, step: 0.01 },
+  { key: 'flimAdvGamutExpand', label: 'gamutExpand', min: 50, max: 200, step: 1 },
+  { key: 'flimAdvPaletteRotate', label: 'paletteRotate', min: -10, max: 10, step: 0.1 },
+  { key: 'flimAdvPushR', label: 'pushR', min: 0.5, max: 1.5, step: 0.01 },
+  { key: 'flimAdvPushB', label: 'pushB', min: 0.5, max: 1.5, step: 0.01 },
+];
+
 export default function FilmPanel() {
   const { t } = useTranslation();
   const adjustments = useEditorStore((s) => s.adjustments);
   const setEditor = useEditorStore((s) => s.setEditor);
   const { setAdjustments } = useEditorActions();
+
+  const [advancedOpen, setAdvancedOpen] = useState(false);
+  const [userPresets, setUserPresets] = useState<Array<FlimUserPreset>>([]);
+  const [savingPreset, setSavingPreset] = useState(false);
+  const [presetName, setPresetName] = useState('');
+
+  useEffect(() => {
+    invoke(Invokes.LoadFlimPresets)
+      .then((presets) => setUserPresets(presets as Array<FlimUserPreset>))
+      .catch((err) => console.error('Failed to load flim presets:', err));
+  }, []);
 
   const onDragStateChange = useCallback(
     (isDragging: boolean) => setEditor({ isSliderDragging: isDragging }),
@@ -33,17 +106,92 @@ export default function FilmPanel() {
     }));
   };
 
+  const handleAdvChange = (key: keyof FlimPresetParams, value: string | number) => {
+    setAdjustments((prev: Partial<Adjustments>) => ({
+      ...prev,
+      [key]: parseFloat(String(value)),
+      toneMapper: 'flim',
+    }));
+  };
+
+  const handlePresetSelect = (value: number | string) => {
+    if (value === 'custom') {
+      return;
+    }
+    if (typeof value === 'number') {
+      setAdjustments((prev: Partial<Adjustments>) => ({
+        ...prev,
+        ...FLIM_BUILTIN_PRESETS[value],
+        flimPreset: value,
+        toneMapper: 'flim',
+      }));
+      return;
+    }
+    const user = userPresets.find((p) => `u:${p.id}` === value);
+    if (user) {
+      setAdjustments((prev: Partial<Adjustments>) => ({
+        ...prev,
+        ...user.params,
+        flimPreset: -1,
+        toneMapper: 'flim',
+      }));
+    }
+  };
+
+  // Reset every adjustment to factory defaults, keeping only the framing.
+  const handleResetImage = () => {
+    setAdjustments((prev: Partial<Adjustments>) => ({
+      ...INITIAL_ADJUSTMENTS,
+      crop: prev.crop ?? null,
+      aspectRatio: prev.aspectRatio,
+      rotation: prev.rotation ?? 0,
+      flipHorizontal: prev.flipHorizontal ?? false,
+      flipVertical: prev.flipVertical ?? false,
+    }));
+  };
+
+  const handleSavePreset = async () => {
+    const name = presetName.trim();
+    if (!name) {
+      return;
+    }
+    const next: Array<FlimUserPreset> = [
+      ...userPresets,
+      { id: crypto.randomUUID(), name, params: paramsFromAdjustments(adjustments) },
+    ];
+    setUserPresets(next);
+    setSavingPreset(false);
+    setPresetName('');
+    try {
+      await invoke(Invokes.SaveFlimPresets, { presets: next });
+    } catch (err) {
+      console.error('Failed to save flim presets:', err);
+    }
+  };
+
   const tonemapperOptions = [
     { label: t('editor.film.mappers.basic'), value: 'basic' },
     { label: t('editor.film.mappers.agx'), value: 'agx' },
     { label: t('editor.film.mappers.flim'), value: 'flim' },
   ];
 
-  const presetOptions = [
+  // The dropdown reflects which preset the current absolute params match;
+  // editing any advanced slider falls back to "Custom".
+  const currentParams = paramsFromAdjustments(adjustments);
+  const builtinIdx = FLIM_BUILTIN_PRESETS.findIndex((p) => paramsEqual(currentParams, p));
+  const userMatch = userPresets.find((p) => paramsEqual(currentParams, p.params));
+  const resolvedPreset: number | string =
+    builtinIdx >= 0 ? builtinIdx : userMatch ? `u:${userMatch.id}` : 'custom';
+
+  const presetOptions: Array<{ label: string; value: number | string }> = [
     { label: t('editor.film.presets.default'), value: 0 },
     { label: t('editor.film.presets.nostalgia'), value: 1 },
     { label: t('editor.film.presets.silver'), value: 2 },
+    ...userPresets.map((p) => ({ label: p.name, value: `u:${p.id}` })),
+    { label: t('editor.film.presets.custom'), value: 'custom' },
   ];
+
+  const blackAuto = (adjustments.flimAdvBlackAuto ?? 1) >= 0.5;
 
   return (
     <div className="flex flex-col h-full">
@@ -74,8 +222,8 @@ export default function FilmPanel() {
           </Text>
           <Dropdown
             options={presetOptions}
-            value={adjustments.flimPreset ?? 0}
-            onChange={(preset: number) => handleAdjustmentChange(FilmAdjustment.FlimPreset, preset)}
+            value={resolvedPreset}
+            onChange={(value: number | string) => handlePresetSelect(value)}
           />
           <div className="mt-2">
             <Slider
@@ -194,6 +342,112 @@ export default function FilmPanel() {
             value={adjustments.flimShTint ?? 0}
             onDragStateChange={onDragStateChange}
           />
+        </div>
+
+        <div className="p-2 bg-bg-tertiary rounded-md">
+          <button
+            className="flex items-center justify-between w-full text-text-secondary hover:text-text-primary"
+            onClick={() => setAdvancedOpen((v) => !v)}
+          >
+            <Text variant={TextVariants.heading}>{t('editor.film.advanced')}</Text>
+            {advancedOpen ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+          </button>
+
+          {advancedOpen && (
+            <div className="mt-2">
+              <button
+                className="w-full mb-3 py-1.5 text-sm rounded-md bg-card-active hover:bg-surface text-text-primary"
+                onClick={handleResetImage}
+              >
+                {t('editor.film.resetImage')}
+              </button>
+
+              {ADV_SLIDERS.slice(0, 10).map(({ key, label, min, max, step }) => (
+                <Slider
+                  key={key}
+                  defaultValue={INITIAL_ADJUSTMENTS[key]}
+                  label={t(`editor.film.adv.${label}`)}
+                  max={max}
+                  min={min}
+                  onChange={(e: any) => handleAdvChange(key, e.target.value)}
+                  step={step}
+                  value={adjustments[key] ?? INITIAL_ADJUSTMENTS[key]}
+                  onDragStateChange={onDragStateChange}
+                />
+              ))}
+
+              <label className="flex items-center gap-2 mb-2 text-sm text-text-secondary cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  className="accent-accent"
+                  checked={blackAuto}
+                  onChange={(e) => handleAdvChange('flimAdvBlackAuto', e.target.checked ? 1 : 0)}
+                />
+                {t('editor.film.adv.blackAuto')}
+              </label>
+              <div className={blackAuto ? 'opacity-40 pointer-events-none' : ''}>
+                <Slider
+                  defaultValue={INITIAL_ADJUSTMENTS.flimAdvBlackPoint}
+                  label={t('editor.film.adv.blackPoint')}
+                  max={10}
+                  min={-10}
+                  onChange={(e: any) => handleAdvChange('flimAdvBlackPoint', e.target.value)}
+                  step={0.1}
+                  value={adjustments.flimAdvBlackPoint ?? 0}
+                  onDragStateChange={onDragStateChange}
+                />
+              </div>
+
+              {ADV_SLIDERS.slice(10).map(({ key, label, min, max, step }) => (
+                <Slider
+                  key={key}
+                  defaultValue={INITIAL_ADJUSTMENTS[key]}
+                  label={t(`editor.film.adv.${label}`)}
+                  max={max}
+                  min={min}
+                  onChange={(e: any) => handleAdvChange(key, e.target.value)}
+                  step={step}
+                  value={adjustments[key] ?? INITIAL_ADJUSTMENTS[key]}
+                  onDragStateChange={onDragStateChange}
+                />
+              ))}
+
+              {savingPreset ? (
+                <div className="flex items-center gap-2 mt-3">
+                  <input
+                    type="text"
+                    autoFocus
+                    className="grow text-sm bg-card-active border border-gray-500 rounded-sm px-2 py-1 outline-none focus:ring-1 focus:ring-blue-500 text-text-primary"
+                    placeholder={t('editor.film.presetNamePlaceholder')}
+                    value={presetName}
+                    onChange={(e) => setPresetName(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        handleSavePreset();
+                      } else if (e.key === 'Escape') {
+                        setSavingPreset(false);
+                        setPresetName('');
+                      }
+                    }}
+                  />
+                  <button
+                    className="shrink-0 px-2 py-1 text-sm rounded-md bg-accent text-white disabled:opacity-40"
+                    disabled={!presetName.trim()}
+                    onClick={handleSavePreset}
+                  >
+                    {t('editor.film.savePresetConfirm')}
+                  </button>
+                </div>
+              ) : (
+                <button
+                  className="w-full mt-3 py-1.5 text-sm rounded-md bg-card-active hover:bg-surface text-text-primary"
+                  onClick={() => setSavingPreset(true)}
+                >
+                  {t('editor.film.savePreset')}
+                </button>
+              )}
+            </div>
+          )}
         </div>
       </div>
     </div>

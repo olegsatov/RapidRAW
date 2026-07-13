@@ -964,6 +964,38 @@ mod tests {
     }
 
     #[test]
+    fn monochrome_grain_preserves_hue() {
+        // The mono path renders one shared field from the luma and applies it
+        // as a per-pixel luminance gain — hue (channel ratios) must survive.
+        // Guards the "color image exported as B&W" failure mode.
+        let (w, h) = (64u32, 64u32);
+        let mut img = Rgb32FImage::new(w, h);
+        for y in 0..h {
+            for x in 0..w {
+                let p = if (x / 8) % 2 == 0 {
+                    [0.6, 0.2, 0.1]
+                } else {
+                    [0.1, 0.2, 0.6]
+                };
+                img.put_pixel(x, y, Rgb(p));
+            }
+        }
+        let opts = CrystalGrainOptions {
+            monochrome: true,
+            layers: 4,
+            ..Default::default()
+        };
+        let out = apply_crystal_grain_rgb(&img, &opts, None);
+        for (s, g) in img.pixels().zip(out.pixels()) {
+            if s[0] > 0.3 {
+                assert!(g[0] > g[2], "red stripe lost hue: {:?} -> {:?}", s.0, g.0);
+            } else {
+                assert!(g[2] > g[0], "blue stripe lost hue: {:?} -> {:?}", s.0, g.0);
+            }
+        }
+    }
+
+    #[test]
     fn options_from_adjustments_reads_flat_json() {
         let js = serde_json::json!({
             "crystalGrainFilling": 0.4,

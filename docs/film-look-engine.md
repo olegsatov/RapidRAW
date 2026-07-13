@@ -17,8 +17,9 @@
 - [ ] Шаг 2. Референсы вкуса предоставлены (пользователь)
 - [ ] Шаг 4. Итерации по корпусу, дефолты настроены
 - [~] Шаг 5. Бегунки реализованы (2026-07-13): Contrast, Saturation, Shoulder,
-  Toe, Warmth + существующие EV/Strength/Preset. Осталось: финализация
-  дефолтов по корпусу, «вкусовые» профили.
+  Toe, Warmth + существующие EV/Strength/Preset; расширенная панель
+  (2026-07-13): абсолютные параметры пресета, Reset image, пользовательские
+  пресеты. Осталось: финализация дефолтов по корпусу, «вкусовые» профили.
 
 ## Цель
 
@@ -349,3 +350,42 @@ layout-тест зелёный). Классика: света +60, тени −4
 авто-активируют flim) и CPU thumbnail знает только basic/agx; EV — ручной
 пивот (авто-пивот — шаг 4); look мягкий (palette/density — настройка шага 4).
 Дальше шаги 3–4 — на исполнителе.
+
+## Реализация (2026-07-13, расширенная панель пресетов)
+
+**Модель данных.** Пресет = набор абсолютных параметров (`flimAdv*`, 20
+ключей). Выбор пресета в dropdown записывает его параметры в adjustments;
+dropdown лишь отражает, какому пресету (builtin, пользовательскому или
+«Custom») соответствует текущий набор. Rust читает `flimAdv*`
+(`flim_preset_from_advanced_json`, image_processing.rs); при отсутствии
+ключей (старые sidecar) — fallback на таблицу `FLIM_PRESETS`, а миграция в
+`normalizeLoadedAdjustments` выводит ключи из сохранённого `flimPreset`, так
+что старые картинки рендерятся без изменений. TS-зеркало
+`FLIM_BUILTIN_PRESETS` (adjustments.ts) — единый источник для UI; parity с
+Rust-таблицей зафиксирован тестом
+`flim_advanced_keys_match_builtin_presets` (render-equivalence uniforms,
+включая фильтры hue/strength через `flim_hsv_to_rgb`).
+
+**Параметры панели** (19 бегунков + auto black point): pre-exposure,
+negative/print exposure+density, shoulder base (`sigmoid_log2_max` — он
+оказался незаменим: разница 22/23 у nostalgia даёт ~29% в white cap),
+backlight RGB, midtone saturation, black point (auto/значение), pre/post
+фильтры (hue+strength), gamut как абстрактные ручки — expand (% от
+канонических scales), palette rotate (° аддитивно), push R/B (gamut muls).
+Look-бегунки (Contrast/Warmth/Shoulder/Toe/Saturation) остаются относительной
+надстройкой поверх абсолютных — workflow: (1) обычное редактирование —
+preset + верхний блок; (2) авторинг — Advanced → Reset image (сброс всего,
+кроме геометрии: crop/aspectRatio/rotation/flips) → накрутить → «Save as new
+preset».
+
+**Пользовательские пресеты.** `load_flim_presets` / `save_flim_presets`
+(file_management.rs) — плоский список `{id, name, params}` в
+`app_data/presets/flim_presets.json`; params — opaque JSON (схема на стороне
+фронта). v1: только создание; rename/overwrite/delete — не делаем.
+`flim_check` принимает arg 15 = `adv <idx>` (эмитит зеркало builtin'а) и
+arg 16 = override print density — для parity- и override-рендеров.
+
+**Верификация:** `cargo test --lib film_layout_tests` — 5/5 (2 новых:
+parity с builtin, математика ручек); `npm run build`, `cargo build
+--example flim_check --release` — зелёные; headless-рендеры builtin-path ≡
+adv-path + override print density → `scratch/flim-lab/out-gpu/`.

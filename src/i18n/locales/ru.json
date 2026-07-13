@@ -556,7 +556,8 @@
       "presets": {
         "default": "По умолчанию",
         "nostalgia": "Nostalgia",
-        "silver": "Silver"
+        "silver": "Silver",
+        "custom": "Свой"
       },
       "ev": "Экспозиция (EV)",
       "strength": "Сила",
@@ -569,7 +570,34 @@
       "halation": "Галация",
       "adjacency": "Микроконтраст",
       "hiTint": "Оттенок светов",
-      "shTint": "Оттенок теней"
+      "shTint": "Оттенок теней",
+      "advanced": "Расширенные",
+      "resetImage": "Сбросить всё",
+      "savePreset": "Сохранить как новый пресет",
+      "savePresetConfirm": "Сохранить",
+      "presetNamePlaceholder": "Имя пресета",
+      "adv": {
+        "preExposure": "Пред-экспозиция",
+        "negExposure": "Экспозиция негатива",
+        "negDensity": "Плотность негатива",
+        "printExposure": "Экспозиция печати",
+        "printDensity": "Плотность печати",
+        "shoulderBase": "Shoulder базовый",
+        "backlightR": "Подсветка R",
+        "backlightG": "Подсветка G",
+        "backlightB": "Подсветка B",
+        "midtoneSat": "Насыщенность средних",
+        "blackAuto": "Авто чёрная точка",
+        "blackPoint": "Чёрная точка",
+        "preFilterHue": "Оттенок пре-фильтра",
+        "preFilterStrength": "Сила пре-фильтра",
+        "postFilterHue": "Оттенок пост-фильтра",
+        "postFilterStrength": "Сила пост-фильтра",
+        "gamutExpand": "Расширение гамута",
+        "paletteRotate": "Поворот палитры",
+        "pushR": "Усиление красного",
+        "pushB": "Усиление синего"
+      }
     },
     "masks": {
       "actions": {
