@@ -704,14 +704,14 @@ fn apply_export_grain_cpu(
             let mut opts = crate::crystal_grain::options_from_adjustments(js_adjustments);
             opts.monochrome |= grain_mono;
             opts.size = (opts.size * grain_px_scale).max(0.5);
-            crate::crystal_grain::apply_crystal_grain_rgb(&rgb, &opts, None)
+            crate::crystal_grain::apply_crystal_grain_rgb(&rgb, &opts, None, None)
         }
         ExportGrainMode::Ipol => {
             let mut opts = crate::film_grain::options_from_adjustments(js_adjustments);
             opts.monochrome |= grain_mono;
             opts.mu_r = (opts.mu_r * grain_px_scale).max(0.05);
             opts.sigma_filter *= grain_px_scale;
-            crate::film_grain::apply_film_grain_rgb(&rgb, &opts, None)
+            crate::film_grain::apply_film_grain_rgb(&rgb, &opts, None, None)
         }
         _ => return Ok(image),
     };

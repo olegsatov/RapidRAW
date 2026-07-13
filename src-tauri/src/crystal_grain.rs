@@ -35,7 +35,7 @@ use image::{DynamicImage, ImageFormat, Rgb, Rgb32FImage};
 use rayon::prelude::*;
 use serde::Deserialize;
 use std::io::Cursor;
-use std::sync::atomic::{AtomicUsize, Ordering as AtomicOrdering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering as AtomicOrdering};
 use tauri::{AppHandle, Emitter, Manager};
 
 // ---------------------------------------------------------------------------
@@ -276,13 +276,15 @@ fn convolve_same_symm(seeds: &[f32], w: usize, h: usize, kernel: &[f32], k: usiz
 
 /// Render one channel (values in [0,1], row-major) with crystal grain.
 /// Emits "crystal-grain-progress" per layer if `progress` is provided
-/// (counter/total count layers across all channels).
+/// (counter/total count layers across all channels). When `cancel` is set,
+/// remaining layers are skipped (callers must check the flag and discard).
 pub fn render_crystal_grain_channel(
     img: &[f32],
     width: usize,
     height: usize,
     opts: &CrystalGrainOptions,
     progress: Option<(&AppHandle, &AtomicUsize, usize)>,
+    cancel: Option<&AtomicBool>,
 ) -> Vec<f32> {
     let n_layers = opts.layers.max(1) as usize;
     let filling = opts.filling.clamp(0.0, 1.0);
@@ -294,6 +296,9 @@ pub fn render_crystal_grain_channel(
     let sigma = filling_to_rand_variable(filling);
 
     for layer_idx in 0..n_layers {
+        if cancel.map_or(false, |c| c.load(AtomicOrdering::Relaxed)) {
+            break;
+        }
         // One crystal shape/size/orientation per layer (intra-layer model).
         let mut crystal_rng = Prng::new(
             opts.seed
@@ -386,6 +391,7 @@ pub fn apply_crystal_grain_rgb(
     img: &Rgb32FImage,
     opts: &CrystalGrainOptions,
     app: Option<&AppHandle>,
+    cancel: Option<&AtomicBool>,
 ) -> Rgb32FImage {
     let (w, h) = img.dimensions();
     let (w, h) = (w as usize, h as usize);
@@ -401,8 +407,14 @@ pub fn apply_crystal_grain_rgb(
         }
         let counter = AtomicUsize::new(0);
         let total = opts.layers.max(1) as usize;
-        let grained =
-            render_crystal_grain_channel(&luma, w, h, opts, app.map(|a| (a, &counter, total)));
+        let grained = render_crystal_grain_channel(
+            &luma,
+            w,
+            h,
+            opts,
+            app.map(|a| (a, &counter, total)),
+            cancel,
+        );
         return crate::film_grain::apply_mono_grain(img, &luma, &grained);
     }
 
@@ -417,6 +429,9 @@ pub fn apply_crystal_grain_rgb(
     let total = opts.layers.max(1) as usize * 3;
     let mut rendered: Vec<Vec<f32>> = Vec::with_capacity(3);
     for (ch_idx, channel) in channels.iter().enumerate() {
+        if cancel.map_or(false, |c| c.load(AtomicOrdering::Relaxed)) {
+            break;
+        }
         if let Some(app) = app {
             let _ = app.emit(
                 "crystal-grain-progress",
@@ -432,7 +447,13 @@ pub fn apply_crystal_grain_rgb(
             h,
             &ch_opts,
             app.map(|a| (a, &counter, total)),
+            cancel,
         ));
+    }
+    // Cancelled mid-render: pad missing channels so the indexing below stays
+    // valid; the caller checks the flag and discards the result.
+    while rendered.len() < 3 {
+        rendered.push(vec![0.0; size]);
     }
 
     let mut out = Rgb32FImage::new(w as u32, h as u32);
@@ -472,6 +493,9 @@ pub async fn render_crystal_grain(
 ) -> Result<String, String> {
     tokio::task::spawn_blocking(move || {
         let opts = options.unwrap_or_default();
+        let state = app_handle.state::<AppState>();
+        let cancel = &state.grain_cancel;
+        cancel.store(false, AtomicOrdering::Relaxed);
         let (mut processed, source_path) =
             load_processed_for_grain(&path, adjustments, &app_handle, "crystal-grain-progress")?;
 
@@ -489,7 +513,11 @@ pub async fn render_crystal_grain(
                 "Rendering crystal grain: channel 1/3",
             );
             let rgb = processed.to_rgb32f();
-            let mut grained = apply_crystal_grain_rgb(&rgb, &opts, Some(&app_handle));
+            let mut grained = apply_crystal_grain_rgb(&rgb, &opts, Some(&app_handle), Some(cancel));
+            if cancel.load(AtomicOrdering::Relaxed) {
+                let _ = app_handle.emit("crystal-grain-complete", "");
+                return Err("grain_cancelled".to_string());
+            }
             mix_grain_amount(&rgb, &mut grained, opts.amount.clamp(0.0, 1.0));
 
             let mut buf = Cursor::new(Vec::new());
@@ -511,7 +539,11 @@ pub async fn render_crystal_grain(
             "Rendering crystal grain: channel 1/3",
         );
         let rgb = processed.to_rgb32f();
-        let mut grained = apply_crystal_grain_rgb(&rgb, &opts, Some(&app_handle));
+        let mut grained = apply_crystal_grain_rgb(&rgb, &opts, Some(&app_handle), Some(cancel));
+        if cancel.load(AtomicOrdering::Relaxed) {
+            let _ = app_handle.emit("crystal-grain-complete", "");
+            return Err("grain_cancelled".to_string());
+        }
         mix_grain_amount(&rgb, &mut grained, opts.amount.clamp(0.0, 1.0));
 
         let source_str = source_path.to_string_lossy().to_string();
@@ -571,7 +603,7 @@ pub fn bake_grain_field(opts: &CrystalGrainOptions, tile: usize) -> Vec<Vec<half
     let mut ch_opts = *opts;
     // Always bake three decorrelated fields; the shader picks R for mono.
     ch_opts.monochrome = false;
-    let out = apply_crystal_grain_rgb(&flat, &ch_opts, None);
+    let out = apply_crystal_grain_rgb(&flat, &ch_opts, None, None);
 
     let n = (tile * tile) as f32;
     let mut mean = [0.0f32; 3];
@@ -808,9 +840,25 @@ mod tests {
             layers: 5,
             ..Default::default()
         };
-        let a = render_crystal_grain_channel(&img, w, h, &opts, None);
-        let b = render_crystal_grain_channel(&img, w, h, &opts, None);
+        let a = render_crystal_grain_channel(&img, w, h, &opts, None, None);
+        let b = render_crystal_grain_channel(&img, w, h, &opts, None, None);
         assert_eq!(a, b);
+    }
+
+    #[test]
+    fn channel_render_aborts_on_cancel() {
+        let (w, h) = (16usize, 16usize);
+        let img = vec![0.5f32; w * h];
+        let opts = CrystalGrainOptions {
+            layers: 5,
+            ..Default::default()
+        };
+        let cancel = AtomicBool::new(true);
+        let out = render_crystal_grain_channel(&img, w, h, &opts, None, Some(&cancel));
+        // With the flag set, no layer is planted: the printing model yields
+        // (1 - mask)·I = I² = 0.25 everywhere — anything else means layers
+        // were rendered despite the cancel.
+        assert!(out.iter().all(|&v| (v - 0.25).abs() < 1e-6));
     }
 
     /// The exposure compensation must preserve the average brightness of a
@@ -828,7 +876,7 @@ mod tests {
         };
         for &u in &[0.3f32, 0.5] {
             let img = vec![u; w * h];
-            let out = render_crystal_grain_channel(&img, w, h, &opts, None);
+            let out = render_crystal_grain_channel(&img, w, h, &opts, None, None);
             let mean = out.iter().sum::<f32>() / out.len() as f32;
             assert!(
                 (mean - u).abs() < 0.06,
@@ -856,7 +904,7 @@ mod tests {
             seed: 7,
             ..Default::default()
         };
-        let out = apply_crystal_grain_rgb(&img, &opts, None);
+        let out = apply_crystal_grain_rgb(&img, &opts, None, None);
         let n = (w * h) as f32;
         let (mut mr, mut mg, mut mb) = (0.0f32, 0.0f32, 0.0f32);
         for p in out.pixels() {
@@ -926,11 +974,11 @@ mod tests {
             ..Default::default()
         };
         let black = vec![0.0f32; w * h];
-        let out = render_crystal_grain_channel(&black, w, h, &opts, None);
+        let out = render_crystal_grain_channel(&black, w, h, &opts, None, None);
         assert!(out.iter().all(|&v| v == 0.0));
 
         let white = vec![1.0f32; w * h];
-        let out = render_crystal_grain_channel(&white, w, h, &opts, None);
+        let out = render_crystal_grain_channel(&white, w, h, &opts, None, None);
         assert!(out.iter().all(|&v| (v - 1.0).abs() < 1e-6));
     }
 
@@ -985,7 +1033,7 @@ mod tests {
             layers: 4,
             ..Default::default()
         };
-        let out = apply_crystal_grain_rgb(&img, &opts, None);
+        let out = apply_crystal_grain_rgb(&img, &opts, None, None);
         for (s, g) in img.pixels().zip(out.pixels()) {
             if s[0] > 0.3 {
                 assert!(g[0] > g[2], "red stripe lost hue: {:?} -> {:?}", s.0, g.0);

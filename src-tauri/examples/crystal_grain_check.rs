@@ -30,7 +30,7 @@ fn main() {
 
     if mono {
         let img = image::open(&input).expect("failed to open input").to_rgb32f();
-        let grained = apply_crystal_grain_rgb(&img, &opts, None);
+        let grained = apply_crystal_grain_rgb(&img, &opts, None, None);
         println!(
             "mono render took {:?} ({}x{}, filling={filling}, size={size}, layers={layers}, std={std_dev})",
             t.elapsed(),
@@ -44,7 +44,7 @@ fn main() {
     } else {
         let img = image::open(&input).expect("failed to open input").to_luma32f();
         let (w, h) = (img.width() as usize, img.height() as usize);
-        let result = render_crystal_grain_channel(img.as_raw(), w, h, &opts, None);
+        let result = render_crystal_grain_channel(img.as_raw(), w, h, &opts, None, None);
         println!(
             "render took {:?} ({w}x{h}, filling={filling}, size={size}, layers={layers}, std={std_dev})",
             t.elapsed()

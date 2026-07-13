@@ -20,7 +20,7 @@ fn main() {
         ..Default::default()
     };
     let t = std::time::Instant::now();
-    let result = render_film_grain_channel(img.as_raw(), w, h, &opts, None);
+    let result = render_film_grain_channel(img.as_raw(), w, h, &opts, None, None);
     println!("render took {:?} ({w}x{h}, mu_r={mu_r}, n_mc={n_mc})", t.elapsed());
 
     let buf: Vec<u8> = result

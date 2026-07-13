@@ -178,6 +178,9 @@ pub struct AppState {
     /// they already saturate all cores via rayon, so concurrent renders
     /// would only thrash.
     pub grain_render_lock: Mutex<()>,
+    /// Set by the `cancel_grain_render` command; the CPU grain renderers
+    /// (Pierre/IPOL) poll it per row/layer and abort early.
+    pub grain_cancel: AtomicBool,
     pub decoded_image_cache: Mutex<DecodedImageCache>,
     pub thumbnail_manager: Arc<ThumbnailManager>,
     pub metadata_manager: Arc<MetadataManager>,

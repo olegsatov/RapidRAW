@@ -114,9 +114,14 @@ export default function GrainPanel({ adjustments, setAdjustments, onDragStateCha
         preview,
       });
     } catch (e) {
-      setGrainProgress(String(e));
+      const msg = String(e);
+      setGrainProgress(msg.includes('grain_cancelled') ? t('adjustments.effects.grainCancelled') : msg);
       setGrainRendering(false);
     }
+  };
+
+  const handleCancelGrain = () => {
+    invoke('cancel_grain_render').catch((e) => console.warn('Grain cancel failed:', e));
   };
 
   const handleGrainOptChange = (key: string, value: number | string) => {
@@ -149,7 +154,8 @@ export default function GrainPanel({ adjustments, setAdjustments, onDragStateCha
         preview,
       });
     } catch (e) {
-      setXtalProgress(String(e));
+      const msg = String(e);
+      setXtalProgress(msg.includes('grain_cancelled') ? t('adjustments.effects.grainCancelled') : msg);
       setXtalRendering(false);
     }
   };
@@ -246,22 +252,28 @@ export default function GrainPanel({ adjustments, setAdjustments, onDragStateCha
             checked={ipolMono}
             onChange={setIpolMono}
           />
-          <div className="flex gap-2">
-            <Button
-              onClick={() => handleRenderGrain(true)}
-              disabled={grainRendering || !selectedImage?.path}
-              className="flex-1 bg-surface"
-            >
-              {t('adjustments.effects.filmGrainPreview')}
+          {grainRendering ? (
+            <Button onClick={handleCancelGrain} className="w-full bg-surface">
+              {t('adjustments.effects.grainCancel')}
             </Button>
-            <Button
-              onClick={() => handleRenderGrain(false)}
-              disabled={grainRendering || !selectedImage?.path}
-              className="flex-1 bg-surface"
-            >
-              {t('adjustments.effects.filmRenderGrain')}
-            </Button>
-          </div>
+          ) : (
+            <div className="flex gap-2">
+              <Button
+                onClick={() => handleRenderGrain(true)}
+                disabled={grainRendering || !selectedImage?.path}
+                className="flex-1 bg-surface"
+              >
+                {t('adjustments.effects.filmGrainPreview')}
+              </Button>
+              <Button
+                onClick={() => handleRenderGrain(false)}
+                disabled={grainRendering || !selectedImage?.path}
+                className="flex-1 bg-surface"
+              >
+                {t('adjustments.effects.filmRenderGrain')}
+              </Button>
+            </div>
+          )}
           {grainProgress && <p className="text-xs text-text-secondary mt-2">{grainProgress}</p>}
           {grainPreview && (
             <img src={grainPreview} alt="Grain preview" className="mt-2 w-full rounded-sm border border-card-active" />
@@ -317,22 +329,28 @@ export default function GrainPanel({ adjustments, setAdjustments, onDragStateCha
               setAdjustments((prev: Partial<Adjustments>) => ({ ...prev, crystalGrainMono: v ? 1 : 0 }))
             }
           />
-          <div className="flex gap-2">
-            <Button
-              onClick={() => handleRenderXtal(true)}
-              disabled={xtalRendering || !selectedImage?.path}
-              className="flex-1 bg-surface"
-            >
-              {t('adjustments.effects.filmGrainPreview')}
+          {xtalRendering ? (
+            <Button onClick={handleCancelGrain} className="w-full bg-surface">
+              {t('adjustments.effects.grainCancel')}
             </Button>
-            <Button
-              onClick={() => handleRenderXtal(false)}
-              disabled={xtalRendering || !selectedImage?.path}
-              className="flex-1 bg-surface"
-            >
-              {t('adjustments.effects.filmRenderGrain')}
-            </Button>
-          </div>
+          ) : (
+            <div className="flex gap-2">
+              <Button
+                onClick={() => handleRenderXtal(true)}
+                disabled={xtalRendering || !selectedImage?.path}
+                className="flex-1 bg-surface"
+              >
+                {t('adjustments.effects.filmGrainPreview')}
+              </Button>
+              <Button
+                onClick={() => handleRenderXtal(false)}
+                disabled={xtalRendering || !selectedImage?.path}
+                className="flex-1 bg-surface"
+              >
+                {t('adjustments.effects.filmRenderGrain')}
+              </Button>
+            </div>
+          )}
           {xtalProgress && <p className="text-xs text-text-secondary mt-2">{xtalProgress}</p>}
           {xtalPreview && (
             <img

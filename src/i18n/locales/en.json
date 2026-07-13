@@ -147,6 +147,8 @@
       },
       "grainAmountPierreHint": "Realtime preview strength; also applied at export.",
       "grainAmountIpolHint": "Applied at export — this engine has no realtime preview.",
+      "grainCancel": "Cancel",
+      "grainCancelled": "Render cancelled.",
       "tone": "Tone",
       "filmContrast": "Contrast",
       "filmCross": "Cross-Process",

@@ -35,7 +35,7 @@ use rayon::prelude::*;
 use serde::Deserialize;
 use std::fs;
 use std::io::Cursor;
-use std::sync::atomic::{AtomicUsize, Ordering as AtomicOrdering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering as AtomicOrdering};
 use tauri::{AppHandle, Emitter, Manager};
 
 const MAX_GREY_LEVEL: usize = 255;
@@ -298,12 +298,15 @@ fn render_pixel(
 
 /// Render one channel (values in [0,1], row-major) with film grain.
 /// Emits "film-grain-progress" every ~5% if `progress` is provided.
+/// When `cancel` is set, remaining rows are skipped (output is partial;
+/// callers must check the flag and discard the result).
 pub fn render_film_grain_channel(
     img_in: &[f32],
     width: usize,
     height: usize,
     opts: &FilmGrainOptions,
     progress: Option<(&AppHandle, &AtomicUsize, usize)>,
+    cancel: Option<&AtomicBool>,
 ) -> Vec<f32> {
     let ag = 1.0 / (1.0 / opts.mu_r).ceil();
 
@@ -320,6 +323,9 @@ pub fn render_film_grain_channel(
 
     let mut out = vec![0.0f32; width * height];
     out.par_chunks_mut(width).enumerate().for_each(|(y, row)| {
+        if cancel.map_or(false, |c| c.load(AtomicOrdering::Relaxed)) {
+            return;
+        }
         for (x, px) in row.iter_mut().enumerate() {
             *px = render_pixel(
                 img_in,
@@ -389,6 +395,7 @@ pub fn apply_film_grain_rgb(
     img: &Rgb32FImage,
     opts: &FilmGrainOptions,
     app: Option<&AppHandle>,
+    cancel: Option<&AtomicBool>,
 ) -> Rgb32FImage {
     let (w, h) = img.dimensions();
     let (w, h) = (w as usize, h as usize);
@@ -406,6 +413,7 @@ pub fn apply_film_grain_rgb(
             h,
             opts,
             app.map(|a| (a, &counter, size)),
+            cancel,
         );
         return apply_mono_grain(img, &luma, &grained);
     }
@@ -421,6 +429,9 @@ pub fn apply_film_grain_rgb(
     let total = size * 3;
     let mut rendered: Vec<Vec<f32>> = Vec::with_capacity(3);
     for (ch_idx, channel) in channels.iter().enumerate() {
+        if cancel.map_or(false, |c| c.load(AtomicOrdering::Relaxed)) {
+            break;
+        }
         if let Some(app) = app {
             let _ = app.emit(
                 "film-grain-progress",
@@ -436,7 +447,13 @@ pub fn apply_film_grain_rgb(
             h,
             &ch_opts,
             app.map(|a| (a, &counter, total)),
+            cancel,
         ));
+    }
+    // Cancelled mid-render: pad missing channels so the indexing below stays
+    // valid; the caller checks the flag and discards the result.
+    while rendered.len() < 3 {
+        rendered.push(vec![0.0; size]);
     }
 
     let mut out = Rgb32FImage::new(w as u32, h as u32);
@@ -544,6 +561,9 @@ pub async fn render_film_grain(
 ) -> Result<String, String> {
     tokio::task::spawn_blocking(move || {
         let opts = options.unwrap_or_default();
+        let state = app_handle.state::<AppState>();
+        let cancel = &state.grain_cancel;
+        cancel.store(false, AtomicOrdering::Relaxed);
         let (mut processed, source_path) =
             load_processed_for_grain(&path, adjustments, &app_handle, "film-grain-progress")?;
 
@@ -558,7 +578,11 @@ pub async fn render_film_grain(
 
             let _ = app_handle.emit("film-grain-progress", "Rendering grain: channel 1/3");
             let rgb = processed.to_rgb32f();
-            let grained = apply_film_grain_rgb(&rgb, &opts, Some(&app_handle));
+            let grained = apply_film_grain_rgb(&rgb, &opts, Some(&app_handle), Some(cancel));
+            if cancel.load(AtomicOrdering::Relaxed) {
+                let _ = app_handle.emit("film-grain-complete", "");
+                return Err("grain_cancelled".to_string());
+            }
 
             let mut buf = Cursor::new(Vec::new());
             DynamicImage::ImageRgb32F(grained)
@@ -576,7 +600,11 @@ pub async fn render_film_grain(
 
         let _ = app_handle.emit("film-grain-progress", "Rendering grain: channel 1/3");
         let rgb = processed.to_rgb32f();
-        let grained = apply_film_grain_rgb(&rgb, &opts, Some(&app_handle));
+        let grained = apply_film_grain_rgb(&rgb, &opts, Some(&app_handle), Some(cancel));
+        if cancel.load(AtomicOrdering::Relaxed) {
+            let _ = app_handle.emit("film-grain-complete", "");
+            return Err("grain_cancelled".to_string());
+        }
 
         let source_str = source_path.to_string_lossy().to_string();
         let parent_dir = source_path.parent().unwrap_or_else(|| std::path::Path::new(""));
@@ -600,6 +628,16 @@ pub async fn render_film_grain(
     })
     .await
     .map_err(|e| format!("Film grain task failed: {e}"))?
+}
+
+/// Abort a running physical grain render (Pierre/IPOL). The renderers poll
+/// this flag per row/layer; the running command returns `grain_cancelled`.
+#[tauri::command]
+pub fn cancel_grain_render(app_handle: AppHandle) {
+    app_handle
+        .state::<AppState>()
+        .grain_cancel
+        .store(true, AtomicOrdering::Relaxed);
 }
 
 // ---------------------------------------------------------------------------
@@ -652,7 +690,7 @@ mod tests {
         };
         for &u in &[0.2f32, 0.5, 0.8] {
             let img = vec![u; w * h];
-            let out = render_film_grain_channel(&img, w, h, &opts, None);
+            let out = render_film_grain_channel(&img, w, h, &opts, None, None);
             let mean = out.iter().sum::<f32>() / out.len() as f32;
             assert!(
                 (mean - u).abs() < 0.02,
@@ -677,7 +715,7 @@ mod tests {
             monochrome: true,
             ..Default::default()
         };
-        let out = apply_film_grain_rgb(&img, &opts, None);
+        let out = apply_film_grain_rgb(&img, &opts, None, None);
         let n = (w * h) as f32;
         let (mut mr, mut mg, mut mb) = (0.0f32, 0.0f32, 0.0f32);
         for p in out.pixels() {
@@ -704,8 +742,8 @@ mod tests {
             sigma_r: 0.5,
             ..Default::default()
         };
-        let a = render_film_grain_channel(&img, w, h, &opts, None);
-        let b = render_film_grain_channel(&img, w, h, &opts, None);
+        let a = render_film_grain_channel(&img, w, h, &opts, None, None);
+        let b = render_film_grain_channel(&img, w, h, &opts, None, None);
         assert_eq!(a, b);
     }
 
@@ -717,7 +755,21 @@ mod tests {
             n_monte_carlo: 50,
             ..Default::default()
         };
-        let out = render_film_grain_channel(&img, w, h, &opts, None);
+        let out = render_film_grain_channel(&img, w, h, &opts, None, None);
+        assert!(out.iter().all(|&v| v == 0.0));
+    }
+
+    #[test]
+    fn channel_render_aborts_on_cancel() {
+        let (w, h) = (16usize, 16usize);
+        let img = vec![0.5f32; w * h];
+        let opts = FilmGrainOptions {
+            n_monte_carlo: 50,
+            ..Default::default()
+        };
+        let cancel = AtomicBool::new(true);
+        let out = render_film_grain_channel(&img, w, h, &opts, None, Some(&cancel));
+        // With the flag set, every row is skipped: output stays zero-filled.
         assert!(out.iter().all(|&v| v == 0.0));
     }
 
