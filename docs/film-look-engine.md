@@ -389,3 +389,24 @@ arg 16 = override print density — для parity- и override-рендеров.
 parity с builtin, математика ручек); `npm run build`, `cargo build
 --example flim_check --release` — зелёные; headless-рендеры builtin-path ≡
 adv-path + override print density → `scratch/flim-lab/out-gpu/`.
+
+## Реализация (2026-07-13, таб Film: модули и мастер-гейт)
+
+Таб Film (`FilmPanel.tsx`) — отдельный хост: шапка с тогглом ВКЛ/ВЫКЛ
+(пишет `toneMapper` flim/basic; дефолт `flim` для всех raw), блоки
+Preset/Look/Advanced, затем секции Film sim, B&W, Grain (IPOL+crystal).
+Adjust-таб их больше не рендерит (`ControlsPanel.tsx` фильтрует
+film/blackAndWhite; секции остаются в `ADJUSTMENT_SECTIONS` для
+reset/copy-paste). При ВЫКЛ контент таба greyed-out + pointer-events-none.
+
+**Мастер-гейт (Rust).** В `get_global_adjustments_from_json`
+`is_visible("film"|"blackAndWhite")` AND-ится с `toneMapper == "flim"`,
+`bw_section_on` — тоже. То есть выключение панели полностью гасит film sim,
+crystal grain и B&W и в превью, и в экспорте (общий кодовый путь);
+flim-look-бегунки и так мертвы при mode≠2. Native grain (Effects) не
+трогаем — он общий/native; halation (get_val_any) тоже — общий дайал
+Effects/Film.
+Побочное следствие by design: старый sidecar с film sim, но
+`toneMapper != "flim"`, покажется без film sim/B&W/зерна до включения панели.
+Тест `film_tab_modules_follow_panel_toggle`; `cargo test --lib
+film_layout_tests` — 6/6.

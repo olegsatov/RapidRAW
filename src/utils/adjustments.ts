@@ -103,12 +103,9 @@ export enum FilmAdjustment {
   FilmBaseColor = 'filmBaseColor',
   FilmShadowTint = 'filmShadowTint',
   FilmCurves = 'filmCurves',
-  FilmTemp = 'filmTemp',
-  FilmTint = 'filmTint',
   FilmShadows = 'filmShadows',
   FilmHighlights = 'filmHighlights',
   FilmBlur = 'filmBlur',
-  FilmChroma = 'filmChroma',
   CrystalGrainAmount = 'crystalGrainAmount',
   CrystalGrainMono = 'crystalGrainMono',
   CrystalGrainFilling = 'crystalGrainFilling',
@@ -240,7 +237,6 @@ export interface Adjustments {
   filmBaseColor: Array<number>;
   filmBleed: number;
   filmBlur: number;
-  filmChroma: number;
   filmContrast: number;
   filmCross: boolean;
   filmCurves: Array<number>;
@@ -261,8 +257,6 @@ export interface Adjustments {
   filmShadows: number;
   filmShadowTint: Array<number>;
   filmStrength: number;
-  filmTemp: number;
-  filmTint: number;
   flimPreset: number;
   flimEv: number;
   flimStrength: number;
@@ -772,7 +766,6 @@ export const INITIAL_ADJUSTMENTS: Adjustments = {
   filmBaseColor: [255, 255, 255],
   filmBleed: 0,
   filmBlur: 0,
-  filmChroma: 0,
   filmContrast: 100,
   filmCross: false,
   filmCurves: buildIdentityFilmCurves(),
@@ -793,8 +786,6 @@ export const INITIAL_ADJUSTMENTS: Adjustments = {
   filmShadows: 0,
   filmShadowTint: [0, 0, 0],
   filmStrength: 0,
-  filmTemp: 6500,
-  filmTint: 0,
   flimPreset: 0,
   flimEv: 0,
   flimStrength: 100,
@@ -863,7 +854,7 @@ export const INITIAL_ADJUSTMENTS: Adjustments = {
   structure: 0,
   temperature: 0,
   tint: 0,
-  toneMapper: 'basic',
+  toneMapper: 'flim',
   transformDistortion: 0,
   transformVertical: 0,
   transformHorizontal: 0,
@@ -993,12 +984,9 @@ export const normalizeLoadedAdjustments = (loadedAdjustments: Adjustments): any 
     filmRolloff: loadedAdjustments.filmRolloff ?? INITIAL_ADJUSTMENTS.filmRolloff,
     filmBleed: loadedAdjustments.filmBleed ?? INITIAL_ADJUSTMENTS.filmBleed,
     filmCross: loadedAdjustments.filmCross ?? INITIAL_ADJUSTMENTS.filmCross,
-    filmTemp: loadedAdjustments.filmTemp ?? INITIAL_ADJUSTMENTS.filmTemp,
-    filmTint: loadedAdjustments.filmTint ?? INITIAL_ADJUSTMENTS.filmTint,
     filmShadows: loadedAdjustments.filmShadows ?? INITIAL_ADJUSTMENTS.filmShadows,
     filmHighlights: loadedAdjustments.filmHighlights ?? INITIAL_ADJUSTMENTS.filmHighlights,
     filmBlur: loadedAdjustments.filmBlur ?? INITIAL_ADJUSTMENTS.filmBlur,
-    filmChroma: loadedAdjustments.filmChroma ?? INITIAL_ADJUSTMENTS.filmChroma,
     crystalGrainFilling: loadedAdjustments.crystalGrainFilling ?? INITIAL_ADJUSTMENTS.crystalGrainFilling,
     crystalGrainSize: loadedAdjustments.crystalGrainSize ?? INITIAL_ADJUSTMENTS.crystalGrainSize,
     crystalGrainLayers: loadedAdjustments.crystalGrainLayers ?? INITIAL_ADJUSTMENTS.crystalGrainLayers,
@@ -1033,6 +1021,7 @@ export const normalizeLoadedAdjustments = (loadedAdjustments: Adjustments): any 
       loadedAdjustments.filmCurves?.length === 768
         ? loadedAdjustments.filmCurves
         : INITIAL_ADJUSTMENTS.filmCurves,
+    toneMapper: loadedAdjustments.toneMapper ?? INITIAL_ADJUSTMENTS.toneMapper,
     lensCorrectionMode: loadedAdjustments.lensCorrectionMode || 'manual',
     lensMaker: loadedAdjustments.lensMaker ?? INITIAL_ADJUSTMENTS.lensMaker,
     lensModel: loadedAdjustments.lensModel ?? INITIAL_ADJUSTMENTS.lensModel,
@@ -1166,12 +1155,9 @@ export const ADJUSTMENT_GROUPS: Record<string, AdjustmentGroup[]> = {
         FilmAdjustment.FilmBaseColor,
         FilmAdjustment.FilmShadowTint,
         FilmAdjustment.FilmCurves,
-        FilmAdjustment.FilmTemp,
-        FilmAdjustment.FilmTint,
         FilmAdjustment.FilmShadows,
         FilmAdjustment.FilmHighlights,
         FilmAdjustment.FilmBlur,
-        FilmAdjustment.FilmChroma,
         FilmAdjustment.FlimPreset,
         FilmAdjustment.FlimEv,
         FilmAdjustment.FlimStrength,
@@ -1309,12 +1295,9 @@ export const ADJUSTMENT_SECTIONS: Sections = {
     FilmAdjustment.FilmBaseColor,
     FilmAdjustment.FilmShadowTint,
     FilmAdjustment.FilmCurves,
-    FilmAdjustment.FilmTemp,
-    FilmAdjustment.FilmTint,
     FilmAdjustment.FilmShadows,
     FilmAdjustment.FilmHighlights,
     FilmAdjustment.FilmBlur,
-    FilmAdjustment.FilmChroma,
     FilmAdjustment.FlimPreset,
     FilmAdjustment.FlimEv,
     FilmAdjustment.FlimStrength,

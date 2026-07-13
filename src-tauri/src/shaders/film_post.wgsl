@@ -1,17 +1,12 @@
-// Film post-pass (Krea PoC port): radial chromatic aberration on the graded
-// image + crystal grain (Pierre) realtime preview + conversion to rgba8.
-// Runs per-tile after the main pass when the film blur, chroma and/or
-// crystal grain dials are active. With all of them at 0 the pass is skipped.
+// Film post-pass: crystal grain (Pierre) realtime preview + conversion to
+// rgba8. Runs per-tile after the main pass when the film blur and/or crystal
+// grain dials are active. With both at 0 the pass is skipped.
 //
 // Textures are tile-local: content lives at 0..input dims, so sampling uses
-// local coords; only the radial center is given in tile-local coords too.
-// The grain field is sampled in full-image coords (tile origin + local id)
-// with mirrored wrap, so it stays seamless across tiles.
+// local coords. The grain field is sampled in full-image coords (tile origin
+// + local id) with mirrored wrap, so it stays seamless across tiles.
 
 struct FilmPostParams {
-    chroma: f32,   // pixel-space shift factor (PoC chroma * 0.02)
-    center_x: f32, // image center in tile-local coords
-    center_y: f32,
     clamp_w: f32,  // content width - 1 (source textures are tile-local)
     clamp_h: f32,  // content height - 1
     origin_x: f32, // tile origin in full-image coords (for grain sampling)
@@ -40,18 +35,14 @@ fn film_post(@builtin(global_invocation_id) id: vec3<u32>) {
     }
 
     let coord = vec2<f32>(id.xy);
-    let d = coord - vec2<f32>(params.center_x, params.center_y);
-    let off = d * params.chroma;
-
     let max_c = vec2<f32>(params.clamp_w, params.clamp_h);
-    let rp = vec2<u32>(clamp(coord + off, vec2<f32>(0.0), max_c));
-    let cp = vec2<u32>(clamp(coord, vec2<f32>(0.0), max_c));
-    let bp = vec2<u32>(clamp(coord - off, vec2<f32>(0.0), max_c));
+    let px = vec2<u32>(clamp(coord, vec2<f32>(0.0), max_c));
 
-    var r = textureLoad(input_texture, rp, 0).r;
-    var g = textureLoad(input_texture, cp, 0).g;
-    var b = textureLoad(input_texture, bp, 0).b;
-    let a = textureLoad(input_texture, cp, 0).a;
+    let src = textureLoad(input_texture, px, 0);
+    var r = src.r;
+    var g = src.g;
+    var b = src.b;
+    let a = src.a;
 
     // Crystal grain (Pierre): the baked field G is the mean-normalized
     // coverage fraction of the crystal-stack model rendered on a flat

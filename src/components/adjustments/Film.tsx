@@ -2,7 +2,7 @@ import { useTranslation } from 'react-i18next';
 import Slider from '../ui/Slider';
 import Text from '../ui/Text';
 import { TextVariants } from '../../types/typography';
-import { Adjustments, Effect, FilmAdjustment } from '../../utils/adjustments';
+import { Adjustments, FilmAdjustment } from '../../utils/adjustments';
 import { FILM_PROFILE_NAMES, filmProfilePatch } from '../../utils/filmProfiles';
 import Dropdown from '../ui/Dropdown';
 import Switch from '../ui/Switch';
@@ -14,11 +14,10 @@ interface FilmPanelProps {
 }
 
 // Film simulation section (port of the Krea WebGL2 film PoC "Film look"
-// group). Per-pixel dials (temp/tint/contrast/saturation/shadows/highlights/
-// rolloff/bleed/cross) live in the WGSL film block; blur and chroma drive a
-// dedicated post-pass. Grain lives in the sibling Grain section; halation is
-// the native dial in the Film tab's Look block; vignette is the native
-// RapidRAW dial, mirrored here because it is part of a stock's look.
+// group). Per-pixel dials (contrast/saturation/shadows/highlights/rolloff/
+// bleed/cross) live in the WGSL film block; blur drives a dedicated
+// post-pass. Grain lives in the sibling Grain section; halation is the
+// native dial in the Film tab's Look block.
 export default function FilmPanel({ adjustments, setAdjustments, onDragStateChange }: FilmPanelProps) {
   const { t } = useTranslation();
 
@@ -103,31 +102,6 @@ export default function FilmPanel({ adjustments, setAdjustments, onDragStateChan
 
       <div className="p-2 bg-bg-tertiary rounded-md">
         <Text variant={TextVariants.heading} className="mb-2">
-          {t('adjustments.effects.whiteBalance')}
-        </Text>
-        <Slider
-          defaultValue={6500}
-          label={t('adjustments.color.temperature')}
-          max={10000}
-          min={3000}
-          onChange={(e: any) => handleAdjustmentChange(FilmAdjustment.FilmTemp, e.target.value)}
-          step={50}
-          value={adjustments.filmTemp}
-          onDragStateChange={onDragStateChange}
-        />
-        <Slider
-          label={t('adjustments.color.tint')}
-          max={100}
-          min={-100}
-          onChange={(e: any) => handleAdjustmentChange(FilmAdjustment.FilmTint, e.target.value)}
-          step={1}
-          value={adjustments.filmTint}
-          onDragStateChange={onDragStateChange}
-        />
-      </div>
-
-      <div className="p-2 bg-bg-tertiary rounded-md">
-        <Text variant={TextVariants.heading} className="mb-2">
           {t('adjustments.effects.tone')}
         </Text>
         <Slider
@@ -152,21 +126,6 @@ export default function FilmPanel({ adjustments, setAdjustments, onDragStateChan
 
       <div className="p-2 bg-bg-tertiary rounded-md">
         <Text variant={TextVariants.heading} className="mb-2">
-          {t('adjustments.effects.vignette')}
-        </Text>
-        <Slider
-          label={t('adjustments.effects.amount')}
-          max={100}
-          min={-100}
-          onChange={(e: any) => handleAdjustmentChange(Effect.VignetteAmount, e.target.value)}
-          step={1}
-          value={adjustments.vignetteAmount}
-          onDragStateChange={onDragStateChange}
-        />
-      </div>
-
-      <div className="p-2 bg-bg-tertiary rounded-md">
-        <Text variant={TextVariants.heading} className="mb-2">
           {t('adjustments.effects.filmEmulsion')}
         </Text>
         <Slider
@@ -176,15 +135,6 @@ export default function FilmPanel({ adjustments, setAdjustments, onDragStateChan
           onChange={(e: any) => handleAdjustmentChange(FilmAdjustment.FilmBlur, e.target.value)}
           step={1}
           value={adjustments.filmBlur}
-          onDragStateChange={onDragStateChange}
-        />
-        <Slider
-          label={t('adjustments.details.chromaticAberration')}
-          max={100}
-          min={0}
-          onChange={(e: any) => handleAdjustmentChange(FilmAdjustment.FilmChroma, e.target.value)}
-          step={1}
-          value={adjustments.filmChroma}
           onDragStateChange={onDragStateChange}
         />
       </div>

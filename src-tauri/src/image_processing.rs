@@ -1520,17 +1520,16 @@ pub struct GlobalAdjustments {
     pub film_curves: [[[f32; 4]; 16]; 16],
 
     // Film simulation — extended dials. Layout MUST match shader.wgsl.
-    pub film_temp: f32,
-    pub film_tint: f32,
+    // shadows/highlights are applied per-pixel in the film block; blur drives
+    // the film post-pass.
     pub film_shadows: f32,
     pub film_highlights: f32,
     pub film_blur: f32,
-    pub film_chroma: f32,
 
     // Alignment padding: in WGSL the next member (bw_weights: vec3<f32>) must
-    // start at a 16-byte boundary, and naga inserts these 8 bytes implicitly.
+    // start at a 16-byte boundary, and naga inserts these 4 bytes implicitly.
     // Mirror them explicitly so the bytemuck upload matches.
-    pub _pad_bw_align: [f32; 2],
+    pub _pad_bw_align: [f32; 1],
 
     // Black & white conversion — layout MUST match shader.wgsl.
     // xyz = channel weights (0..1, normalized in the shader), w = enabled flag.
@@ -2537,7 +2536,14 @@ fn get_global_adjustments_from_json(
     tonemapper_override: Option<u32>,
 ) -> GlobalAdjustments {
     let visibility = js_adjustments.get("sectionVisibility");
+    let tone_mapper = js_adjustments["toneMapper"].as_str().unwrap_or("basic");
+    // Film-tab modules (film sim, crystal grain, B&W) follow the Film panel
+    // master toggle: they run only while the flim tonemapper is on.
+    let flim_panel_on = tone_mapper == "flim";
     let is_visible = |section: &str| -> bool {
+        if !flim_panel_on && matches!(section, "film" | "blackAndWhite") {
+            return false;
+        }
         visibility
             .and_then(|v| v.get(section))
             .and_then(|s| s.as_bool())
@@ -2546,10 +2552,11 @@ fn get_global_adjustments_from_json(
     // B&W conversion must be opt-in: without a recorded visibility (unedited
     // image, no sidecar) it stays OFF, otherwise every untouched photo would
     // export as black & white.
-    let bw_section_on = visibility
-        .and_then(|v| v.get("blackAndWhite"))
-        .and_then(|s| s.as_bool())
-        .unwrap_or(false);
+    let bw_section_on = flim_panel_on
+        && visibility
+            .and_then(|v| v.get("blackAndWhite"))
+            .and_then(|s| s.as_bool())
+            .unwrap_or(false);
 
     let get_val = |section: &str, key: &str, scale: f32, default: Option<f64>| -> f32 {
         if is_visible(section) {
@@ -2660,7 +2667,6 @@ fn get_global_adjustments_from_json(
         ColorCalibrationSettings::default()
     };
 
-    let tone_mapper = js_adjustments["toneMapper"].as_str().unwrap_or("basic");
     let (pipe_to_rendering, rendering_to_pipe) = calculate_agx_matrices();
 
     // flim (AGPLv3 port): the keys are read unconditionally — they belong to
@@ -2741,22 +2747,21 @@ fn get_global_adjustments_from_json(
         dehaze: get_val("details", "dehaze", SCALES.dehaze, None),
         structure: get_val("details", "structure", SCALES.structure, None),
         centré: get_val("details", "centré", SCALES.centré, None),
-        // Also editable from the Film section -> active if either is visible.
-        vignette_amount: get_val_any(&["effects", "film"], "vignetteAmount", SCALES.vignette_amount, None),
-        vignette_midpoint: get_val_any(
-            &["effects", "film"],
+        vignette_amount: get_val("effects", "vignetteAmount", SCALES.vignette_amount, None),
+        vignette_midpoint: get_val(
+            "effects",
             "vignetteMidpoint",
             SCALES.vignette_midpoint,
             Some(50.0),
         ),
-        vignette_roundness: get_val_any(
-            &["effects", "film"],
+        vignette_roundness: get_val(
+            "effects",
             "vignetteRoundness",
             SCALES.vignette_roundness,
             Some(0.0),
         ),
-        vignette_feather: get_val_any(
-            &["effects", "film"],
+        vignette_feather: get_val(
+            "effects",
             "vignetteFeather",
             SCALES.vignette_feather,
             Some(50.0),
@@ -2910,16 +2915,12 @@ fn get_global_adjustments_from_json(
             parse_film_curves(&serde_json::Value::Null)
         },
 
-        // Extended film dials. temp in Kelvin (6500 neutral); tint/shadows/
-        // highlights raw -100..100; blur 0..1 (sigma = *3 px in the post-pass);
-        // chroma 0..0.5 (radial shift in the post-pass).
-        film_temp: get_val("film", "filmTemp", 1.0, Some(6500.0)),
-        film_tint: get_val("film", "filmTint", 1.0, None),
+        // Extended film dials. shadows/highlights raw -100..100;
+        // blur 0..1 (sigma = *3 px in the post-pass).
         film_shadows: get_val("film", "filmShadows", 1.0, None),
         film_highlights: get_val("film", "filmHighlights", 1.0, None),
         film_blur: get_val("film", "filmBlur", 100.0, None),
-        film_chroma: get_val("film", "filmChroma", 200.0, None),
-        _pad_bw_align: [0.0; 2],
+        _pad_bw_align: [0.0; 1],
 
         // Black & white channel weights (frontend 0..100 -> 0..1, normalized
         // in the shader) with the section-enabled flag packed into w.
@@ -4290,5 +4291,30 @@ mod film_layout_tests {
 
         // No advanced keys -> no preset (caller falls back to builtin table).
         assert!(flim_preset_from_advanced_json(&serde_json::json!({})).is_none());
+    }
+
+    #[test]
+    fn film_tab_modules_follow_panel_toggle() {
+        let base = serde_json::json!({
+            "toneMapper": "basic",
+            "sectionVisibility": { "film": true, "blackAndWhite": true },
+            "filmContrast": 130,
+            "crystalGrainAmount": 50,
+            "bwRed": 33, "bwGreen": 33, "bwBlue": 33
+        });
+        // Panel OFF (non-flim tonemapper): film sim, crystal grain and B&W
+        // are gated out even though their sections are marked visible.
+        let off = get_global_adjustments_from_json(&base, true, None);
+        assert_eq!(off.film_contrast, 1.0, "film sim must be gated when panel is off");
+        assert_eq!(off.crystal_grain_amount, 0.0, "crystal grain must be gated when panel is off");
+        assert_eq!(off.bw_weights[3], 0.0, "B&W must be gated when panel is off");
+
+        // Panel ON (flim): section values pass through.
+        let mut on_json = base.clone();
+        on_json["toneMapper"] = serde_json::json!("flim");
+        let on = get_global_adjustments_from_json(&on_json, true, None);
+        assert!((on.film_contrast - 1.3).abs() < 1e-6);
+        assert!((on.crystal_grain_amount - 0.5).abs() < 1e-6);
+        assert_eq!(on.bw_weights[3], 1.0);
     }
 }

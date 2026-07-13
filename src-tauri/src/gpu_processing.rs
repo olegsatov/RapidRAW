@@ -565,9 +565,6 @@ struct BlurParams {
 #[repr(C)]
 #[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
 struct FilmPostParams {
-    chroma: f32,       // pixel-space radial shift factor (PoC chroma * 0.02)
-    center_x: f32,     // image center in tile-local coords
-    center_y: f32,
     clamp_w: f32,      // content width - 1 (source textures are tile-local)
     clamp_h: f32,      // content height - 1
     origin_x: f32,     // tile origin in full-image coords (for grain sampling)
@@ -1765,16 +1762,15 @@ impl GpuProcessor {
                     );
                 }
 
-                // Film post-pass (Krea port): emulsion blur + radial chromatic
-                // aberration on the graded tile. Runs only when the film dials
-                // are active; the result lands in film_post_texture (rgba8),
-                // which then replaces tile_output_texture as the copy/readback
-                // source. Blur/chroma offsets stay well inside the 128 px tile
-                // overlap, so the cropped center has no seams.
+                // Film post-pass: emulsion blur + crystal grain on the graded
+                // tile. Runs only when the film dials are active; the result
+                // lands in film_post_texture (rgba8), which then replaces
+                // tile_output_texture as the copy/readback source. Blur
+                // offsets stay well inside the 128 px tile overlap, so the
+                // cropped center has no seams.
                 let film_blur = adjustments.global.film_blur;
-                let film_chroma = adjustments.global.film_chroma;
                 let crystal_grain = adjustments.global.crystal_grain_amount;
-                let film_post_active = film_blur > 0.0 || film_chroma > 0.0 || crystal_grain > 0.0;
+                let film_post_active = film_blur > 0.0 || crystal_grain > 0.0;
                 if film_post_active {
                     if film_blur > 0.0 {
                         // Gaussian blur of the graded tile. The source is
@@ -1867,9 +1863,6 @@ impl GpuProcessor {
                     }
 
                     let post_params = FilmPostParams {
-                        chroma: film_chroma * 0.02,
-                        center_x: width as f32 / 2.0 - input_x_start as f32,
-                        center_y: height as f32 / 2.0 - input_y_start as f32,
                         clamp_w: (input_width - 1) as f32,
                         clamp_h: (input_height - 1) as f32,
                         origin_x: input_x_start as f32,

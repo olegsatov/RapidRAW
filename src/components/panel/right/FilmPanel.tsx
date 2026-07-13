@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { useTranslation } from 'react-i18next';
 import { ChevronDown, ChevronRight } from 'lucide-react';
+import clsx from 'clsx';
 import Dropdown from '../../ui/Dropdown';
 import Slider from '../../ui/Slider';
 import Text from '../../ui/Text';
@@ -26,9 +27,9 @@ import { useEditorActions } from '../../../hooks/useEditorActions';
 import { Invokes } from '../../ui/AppProperties';
 
 // Film tab: drives the flim tonemapper mode (github.com/bean-mhm/flim,
-// AGPLv3 port). The tonemapper selector writes the existing toneMapper
-// adjustment ('basic' | 'agx' | 'flim'); preset/EV/strength map to the
-// ungated flim* keys parsed in image_processing.rs.
+// AGPLv3 port). The header toggle is the single owner of toneMapper: ON
+// writes 'flim', OFF falls back to 'basic' (the Adjust tab default). While
+// OFF, every control in the tab is disabled.
 //
 // Presets are defined by their absolute flimAdv* parameters: selecting a
 // preset writes its params into the adjustments, and the dropdown simply
@@ -106,12 +107,9 @@ export default function FilmPanel() {
   );
 
   const handleAdjustmentChange = (key: FilmAdjustment | CreativeAdjustment, value: string | number) => {
-    // Moving any flim control activates the flim tonemapper so the effect is
-    // immediately visible.
     setAdjustments((prev: Partial<Adjustments>) => ({
       ...prev,
       [key]: parseFloat(String(value)),
-      toneMapper: 'flim',
     }));
   };
 
@@ -119,7 +117,6 @@ export default function FilmPanel() {
     setAdjustments((prev: Partial<Adjustments>) => ({
       ...prev,
       [key]: parseFloat(String(value)),
-      toneMapper: 'flim',
     }));
   };
 
@@ -132,7 +129,6 @@ export default function FilmPanel() {
         ...prev,
         ...FLIM_BUILTIN_PRESETS[value],
         flimPreset: value,
-        toneMapper: 'flim',
       }));
       return;
     }
@@ -142,15 +138,16 @@ export default function FilmPanel() {
         ...prev,
         ...user.params,
         flimPreset: -1,
-        toneMapper: 'flim',
       }));
     }
   };
 
-  // Reset every adjustment to factory defaults, keeping only the framing.
+  // Reset every adjustment to factory defaults, keeping the framing and the
+  // panel on/off state (the header toggle owns toneMapper).
   const handleResetImage = () => {
     setAdjustments((prev: Partial<Adjustments>) => ({
       ...INITIAL_ADJUSTMENTS,
+      toneMapper: prev.toneMapper ?? INITIAL_ADJUSTMENTS.toneMapper,
       crop: prev.crop ?? null,
       aspectRatio: prev.aspectRatio,
       rotation: prev.rotation ?? 0,
@@ -203,12 +200,6 @@ export default function FilmPanel() {
     });
   };
 
-  const tonemapperOptions = [
-    { label: t('editor.film.mappers.basic'), value: 'basic' },
-    { label: t('editor.film.mappers.agx'), value: 'agx' },
-    { label: t('editor.film.mappers.flim'), value: 'flim' },
-  ];
-
   // The dropdown reflects which preset the current absolute params match;
   // editing any advanced slider falls back to "Custom".
   const currentParams = paramsFromAdjustments(adjustments);
@@ -228,30 +219,37 @@ export default function FilmPanel() {
   const blackAuto = (adjustments.flimAdvBlackAuto ?? 1) >= 0.5;
   const sectionVisibility: SectionVisibility =
     adjustments.sectionVisibility || INITIAL_ADJUSTMENTS.sectionVisibility;
+  const flimEnabled = adjustments.toneMapper === 'flim';
 
   return (
     <div className="flex flex-col h-full">
       <div className="p-4 flex justify-between items-center shrink-0 border-b border-surface">
         <Text variant={TextVariants.title}>{t('editor.film.title')}</Text>
+        <button
+          className={clsx(
+            'px-3 py-1 text-sm font-medium rounded-md transition-colors',
+            flimEnabled
+              ? 'bg-accent text-button-text'
+              : 'bg-card-active text-text-secondary hover:bg-surface',
+          )}
+          onClick={() =>
+            setAdjustments((prev: Partial<Adjustments>) => ({
+              ...prev,
+              toneMapper: flimEnabled ? 'basic' : 'flim',
+            }))
+          }
+          data-tooltip={t('editor.film.toggleTooltip')}
+        >
+          {flimEnabled ? t('editor.film.toggleOn') : t('editor.film.toggleOff')}
+        </button>
       </div>
 
-      <div className="grow overflow-y-auto p-4 space-y-4">
-        <div className="p-2 bg-bg-tertiary rounded-md">
-          <Text variant={TextVariants.heading} className="mb-2">
-            {t('editor.film.tonemapper')}
-          </Text>
-          <Dropdown
-            options={tonemapperOptions}
-            value={adjustments.toneMapper || 'basic'}
-            onChange={(mapper: string) =>
-              setAdjustments((prev: Partial<Adjustments>) => ({
-                ...prev,
-                toneMapper: mapper as Adjustments['toneMapper'],
-              }))
-            }
-          />
-        </div>
-
+      <div
+        className={clsx(
+          'grow overflow-y-auto p-4 space-y-4',
+          !flimEnabled && 'opacity-40 pointer-events-none select-none',
+        )}
+      >
         <div className="p-2 bg-bg-tertiary rounded-md">
           <Text variant={TextVariants.heading} className="mb-2">
             {t('editor.film.preset')}

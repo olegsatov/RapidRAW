@@ -7,9 +7,8 @@
 // with a natural cubic spline.
 //
 // Selecting a profile writes BOTH the dedicated film-sim params (curves, base
-// fog, shadow tint, bleed, rolloff, contrast, saturation, emulsion blur,
-// chromatic aberration) and the native grain/halation/vignette dials, since
-// those are part of the stock's look.
+// fog, shadow tint, bleed, rolloff, contrast, saturation, emulsion blur) and
+// the native halation dial, since it is part of the stock's look.
 
 import { Adjustments } from './adjustments';
 
@@ -27,14 +26,16 @@ export interface FilmProfile {
   highlightRolloff: number; // 0..1
   colorBleed: number; // 0..1
   blur: number; // 0..3 (emulsion blur sigma, px)
-  chroma: number; // 0..0.5 (radial chromatic aberration)
+  // Legacy fields — dead data (the corresponding dials were removed from the
+  // film module; kept only because the upstream profile JSON carries them):
+  chroma: number; // PoC 0..0.5 (radial chromatic aberration)
+  vignette: number; // 0..1 (native vignette dial, darkening)
   // Legacy PoC film grain fields — dead data (PoC grain removed; kept only
   // because the upstream profile JSON carries them):
   grainAmount: number; // PoC 0..0.15
   grainSize: number; // PoC 0.5..3
-  // Native RapidRAW dials driven by the stock look:
+  // Native RapidRAW dial driven by the stock look:
   halationStrength: number; // 0..1
-  vignette: number; // 0..1 (darkening)
 }
 
 export const FILM_PROFILES: Record<string, FilmProfile> = {
@@ -362,11 +363,9 @@ export function filmProfilePatch(profileId: string | null): Partial<Adjustments>
     filmRolloff: Math.round(p.highlightRolloff * 100),
     filmBleed: Math.round(p.colorBleed * 100),
     filmBlur: Math.round((p.blur / 3) * 100),
-    filmChroma: Math.round((p.chroma / 0.5) * 100),
     filmBaseColor: [...p.baseColor],
     filmShadowTint: [...p.shadowTint],
     filmCurves: buildFilmCurveLut(p.curves),
     halationAmount: Math.round(p.halationStrength * 100),
-    vignetteAmount: -Math.round(p.vignette * 100),
   };
 }

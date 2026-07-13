@@ -132,15 +132,12 @@ struct GlobalAdjustments {
     _pad_film4: f32,
     film_curves: array<array<vec3<f32>, 16>, 16>,
 
-    // Film simulation — extended dials (Krea PoC "Film look" group). temp/tint
-    // and shadows/highlights are applied per-pixel in apply_film_look; blur and
-    // chroma are spatial and drive the film post-pass (film_post.wgsl).
-    film_temp: f32,       // Kelvin, 6500 = neutral
-    film_tint: f32,       // -100..100, 0 = neutral
+    // Film simulation — extended dials (Krea PoC "Film look" group).
+    // shadows/highlights are applied per-pixel in apply_film_look; blur is
+    // spatial and drives the film post-pass (film_post.wgsl).
     film_shadows: f32,    // -100..100
     film_highlights: f32, // -100..100
     film_blur: f32,       // 0..1 (emulsion blur, sigma = film_blur * 3 px)
-    film_chroma: f32,     // 0..0.5 (radial chromatic aberration)
 
     // Black & white conversion: weighted channel mix, weights normalized at
     // use. xyz = weights, w = enabled flag (vec3+pad idiom, see film_base_color).
@@ -1707,16 +1704,6 @@ fn apply_film_look(color_in: vec3<f32>) -> vec3<f32> {
 
     // Base fog blend.
     c = mix(c, adjustments.global.film_base_color, 0.03);
-
-    // Film white balance (sRGB, creative) — same numeric model as the RAW WB but
-    // applied post-grade, so it tints the developed image instead of changing
-    // the channel balance entering the tone window.
-    let temp_n = (adjustments.global.film_temp - 6500.0) / 100.0 * 0.01;
-    c = vec3<f32>(c.x * (1.0 + temp_n), c.y, c.z * (1.0 - temp_n));
-    if (adjustments.global.film_tint != 0.0) {
-        let tm = (adjustments.global.film_tint / 50.0) * 0.18;
-        c = vec3<f32>(c.x * (1.0 + tm), c.y * (1.0 - tm), c.z * (1.0 + tm));
-    }
 
     // Optional cross-process.
     if (adjustments.global.film_cross > 0.5) {

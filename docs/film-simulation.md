@@ -46,30 +46,19 @@ look, накладываемый поверх отработанного изо�
 8. Contrast (pivot 0.5).
 9. Saturation.
 10. Base fog blend (0.03).
-11. **Film WB** — температура/тинт (отдельный от RAW WB; см. ниже).
-12. Cross-process.
-13. **Film shadows/highlights** — PoC-математика (LUMA_COEFF 0.2126, квадратичные маски).
-14. Blend по силе: `mix(color_in, c, film_strength)`.
-
-### Два баланса белого
-
-Их два, и они не взаимозаменяемы:
-
-- **RAW WB** — нативный RapidRAW, работает в linear scene-referred пространстве
-  до тон-маппера, меняет баланс каналов на уровне первичной обработки.
-- **Film WB** (`filmTemp`, `filmTint`) — внутри `apply_film_look`, поверх готовой
-  картинки. Математика: `t = (K − 6500)/100 · 0.01; r *= 1+t; b *= 1−t` и
-  `m = (tint/50) · 0.18; r *= 1+m; g *= 1−m; b *= 1+m`.
+11. Cross-process.
+12. **Film shadows/highlights** — PoC-математика (LUMA_COEFF 0.2126, квадратичные маски).
+13. Blend по силе: `mix(color_in, c, film_strength)`.
 
 ### Пространственный пост-проход
 
-Blur эмульсии и хроматическая аберрация — отдельный шейдер
+Blur эмульсии — отдельный шейдер
 `src-tauri/src/shaders/film_post.wgsl`, выполняется после основного прохода:
 
 1. Горизонтальный blur (`tile_output → ping_pong`) существующим blur-пайплайном.
 2. Вертикальный blur (`ping_pong → film_blur`), `tile_offset = 0`.
-3. `film_post`: радиальная CA (`off_px = d_px · chroma · 0.02`, центр в tile-local
-   координатах) + конверсия rgba16f → rgba8unorm.
+3. `film_post`: crystal grain (bake-and-sample, см. ниже) + конверсия
+   rgba16f → rgba8unorm.
 
 `film_post` читает из `film_blur`, если blur > 0, иначе из `tile_output`.
 Результат (`graded_tile_texture` / `film_post_texture`) подменяет `tile_output`
@@ -84,8 +73,8 @@ Blur эмульсии и хроматическая аберрация — от�
 (`u32::MAX` для input-blur, `input_width − 1` для film-blur). Horizontal-проход
 blur.wgsl клампит по `min(full_dims.x − 1, clamp_x_max)` — без этого на краю кадра
 подмешивался мусор из stale-области max_tile_size-текстур. `film_post` клампит по
-`clamp_w`/`clamp_h` (struct `FilmPostParams {chroma, center_x, center_y, clamp_w,
-clamp_h, _pad×3}`, 32 байта).
+`clamp_w`/`clamp_h` (struct `FilmPostParams {clamp_w, clamp_h, origin_x, origin_y,
+grain_amount/tile/mono/level/coord_scale, _pad×3}`, 48 байт).
 
 ## Полный набор параметров
 
@@ -103,17 +92,13 @@ film-параметры гейтятся видимостью секции `"fil
 | filmRolloff | film_rolloff | — | 0–100 | 0 |
 | filmBleed | film_bleed | — | 0–100 | 0 |
 | filmCross | film_cross | — | 0–100 | 0 |
-| filmTemp | film_temp | 1 | 3000–10000 (step 50) | 6500 |
-| filmTint | film_tint | 1 | −100..100 | 0 |
 | filmShadows | film_shadows | 1 | −100..100 | 0 |
 | filmHighlights | film_highlights | 1 | −100..100 | 0 |
 | filmBlur | film_blur | /100 | 0–100 | 0 |
-| filmChroma | film_chroma | /200 | 0–100 | 0 |
 | crystalGrainAmount | crystal_grain_amount | /100 | 0–100 | 0 |
 | crystalGrainMono | crystal_grain_mono | — | 0/1 | 0 |
 
 Blur: `sigma = v · 3 · scale`, `radius = ceil(sigma·2).clamp(1, 96)`.
-Chroma: радиальное смещение `d_px · chroma · 0.02`.
 Film grain: процедурное зерно из PoC переносилось (per-pixel hash + value-noise
 clump, exposure-маска), но позже **полностью выкорчено** — оно накладывалось на
 нативное зерно и путало пользователя. Зерно теперь бывает только трёх видов:
@@ -131,14 +116,18 @@ crystal (Pierre, realtime + офлайн), IPOL (офлайн) и нативны
 
 ### Union-гейтинг нативных эффектов
 
-Vignette и halation — нативные инструменты RapidRAW (секция `"effects"`),
-но показываются и внутри секции «Film». Чтобы они работали из обоих мест, парсинг
-использует `get_val_any(&["effects", "film"], ...)`: параметр активен, если видима
-хотя бы одна из секций. Затронуты: `vignette_amount/midpoint/roundness/feather`,
-`halation_amount`. (Native grain в union-гейтинг не входит.)
+Halation — нативный инструмент RapidRAW (секция `"effects"`), показывается и
+внутри секции «Film». Чтобы он работал из обоих мест, парсинг использует
+`get_val_any(&["effects", "film"], ...)`: параметр активен, если видима хотя бы
+одна из секций. Затронут только `halation_amount`. (Native grain в
+union-гейтинг не входит.)
 
-Нативная chromatic aberration (lens-инструмент в details) **не тронута** — film CA
-живёт отдельно.
+**Удалено из модуля (2026-07-13, с корнем):** Film WB (`filmTemp`/`filmTint`),
+radial film CA (`filmChroma`) и зеркало виньетки — uniform-поля, код в
+`apply_film_look`/`film_post.wgsl`, UI-бегунки, ключи `Adjustments`, маппинг в
+`filmProfilePatch`. Нативные одноимённые инструменты **не тронуты**: WB живёт
+в Color, CA (lens) — в Details, vignette — только в Effects (парсинг
+`vignette_*` возвращён на `get_val("effects", ...)`).
 
 ## Профили
 
@@ -153,9 +142,9 @@ float (r,g,b interleaved, 256×3).
 `filmProfilePatch` маппит профиль на UI-ключи:
 
 - `blur / 3 · 100` → filmBlur
-- `chroma / 0.5 · 100` → filmChroma
 - `halation · 100` → halationAmount
-- `vignette · −100` → vignetteAmount
+
+(Поля `chroma`/`vignette` в данных профилей — dead data, больше не маппятся.)
 
 Выбор «off» сбрасывает в `{ filmProfile: null, filmStrength: 0 }`.
 
@@ -163,15 +152,15 @@ float (r,g,b interleaved, 256×3).
 
 `GlobalAdjustments` — bytemuck Pod, зеркалится вручную между Rust
 (`image_processing.rs`, `pub struct GlobalAdjustments`) и WGSL (shader.wgsl).
-Film-поля добавлены в конец: `film_temp`, `film_tint`, `film_shadows`,
-`film_highlights`, `film_blur`, `film_chroma`; затем `bw_weights: vec3<f32>`
+Film-поля добавлены в конец: `film_shadows`,
+`film_highlights`, `film_blur`; затем `bw_weights: vec3<f32>`
 (B&W-конверсия) и поля crystal-зерна `crystal_grain_amount/mono`.
 
 **Подводный камень layout'а:** naga считает `vec3/vec4` 16-выравниванием, а Rust
 bytemuck пакует плотно. Если перед `bw_weights` (vec3) изменилось число
-scalar-полей (так случилось при удалении `film_grain_amount/size`), в Rust нужен
-явный пад `_pad_bw_align: [f32; 2]` — иначе layout-тест падает (Rust 5816 vs
-WGSL 5824).
+scalar-полей (так случилось при удалении `film_grain_amount/size`, затем
+`film_temp/tint/chroma`), в Rust нужен явный пад `_pad_bw_align`
+(сейчас `[f32; 1]`) — иначе layout-тест падает.
 
 **При добавлении полей:** держать Rust-struct и WGSL-struct в синхроне, дополнять
 padding'ом до кратности 16. Layout проверяется тестом (см. ниже) — если struct'ы
@@ -180,38 +169,34 @@ padding'ом до кратности 16. Layout проверяется тест�
 ## UI
 
 `src/components/adjustments/Film.tsx` — секция «Film» (i18n: en "Film", ru «Плёнка»),
-рендерится через ControlsPanel после Effects, по умолчанию свёрнута. В MasksPanel
-отфильтрована (global-only). Группы контролов:
+рендерится блоком в табе Film (`FilmPanel.tsx`, см. `docs/film-look-engine.md`).
+Группы контролов:
 
 - **Stock + Look** — профиль, strength, contrast, saturation, rolloff, bleed, cross.
-- **White Balance** — filmTemp, filmTint.
 - **Tone** — filmShadows, filmHighlights.
 - **Physical Grain (IPOL)** — офлайн-рендер (крутилки + Preview/Render & Save).
 - **Crystal Grain (Pierre)** — параметры кристаллов, подблок Realtime Preview
   (Amount + Monochrome), Preview/Render & Save.
 - **Halation** — нативный amount.
-- **Vignette** — нативный amount.
-- **Emulsion** — filmBlur, filmChroma.
+- **Emulsion** — filmBlur.
 
-Регистрация в `adjustments.ts`: enum `FilmAdjustment` (18 ключей), поля в интерфейсе
+Регистрация в `adjustments.ts`: enum `FilmAdjustment`, поля в интерфейсе
 `Adjustments`, `INITIAL`, `ADJUSTMENT_SECTIONS.film`, `ADJUSTMENT_GROUPS.film`
 (label `modals.copyPaste.groups.film`), sanitize в `applyLoadedAdjustments`.
 
-i18n: `adjustments.effects.film*`, `filmBlur`, `filmEmulsion`, `tone`,
-`whiteBalance` (en/ru), `editor.adjustments.sections.film`.
+i18n: `adjustments.effects.film*`, `filmBlur`, `filmEmulsion`, `tone` (en/ru),
+`editor.adjustments.sections.film`.
 
 ## Отклонения от PoC
 
 - **Halation threshold** не выставляется — используется нативный адаптивный cutoff.
-- **Chroma** сэмплит уже размытую текстуру (в PoC chroma применялась до blur) —
-  разница negligible.
-- **Spatial-эффекты** (blur, chroma) не масштабируются `film_strength`.
+- **Spatial-эффекты** (blur) не масштабируются `film_strength`.
 - **RAW primary processing** исключён — плёнка поверх нативного пайплайна.
 
 ## Карта файлов
 
 - `src-tauri/src/shaders/shader.wgsl` — `apply_film_look`, uniform-struct.
-- `src-tauri/src/shaders/film_post.wgsl` — blur+CA пост-проход.
+- `src-tauri/src/shaders/film_post.wgsl` — blur+grain пост-проход.
 - `src-tauri/src/shaders/blur.wgsl` — краевой фикс (`clamp_x_max`).
 - `src-tauri/src/image_processing.rs` — Pod-struct, парсинг, `get_val_any`, тесты.
 - `src-tauri/src/gpu_processing.rs` — film_post пайплайн, текстуры, per-tile пост-проход.
@@ -450,12 +435,15 @@ Layout- и shader-тесты — `mod film_layout_tests` в `image_processing.rs
 - `aux_shaders_validate` — blur.wgsl + film_post.wgsl.
 - `global_adjustments_layout_matches_wgsl` — размер Rust-struct == WGSL-struct
   (через naga Layouter).
+- `flim_advanced_keys_match_builtin_presets`,
+  `flim_advanced_knob_math` — flim-пресеты/ручки (см. film-look-engine.md).
+- `film_tab_modules_follow_panel_toggle` — мастер-гейт таба Film.
 
 ```bash
 cd src-tauri && cargo test --lib film_layout_tests
 ```
 
-Ожидаемо: 3/3 зелёные. Полная проверка фронтенда:
+Ожидаемо: 6/6 зелёные. Полная проверка фронтенда:
 
 ```bash
 npm run build   # vite build — реальный gate; tsc сломан апстримом, игнорировать
