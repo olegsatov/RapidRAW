@@ -17,6 +17,13 @@
       "toneMapper": "Тональное отображение",
       "whites": "Светлые тона"
     },
+    "blackAndWhite": {
+      "auto": "Авто",
+      "blue": "Синий",
+      "green": "Зелёный",
+      "mixer": "Микшер",
+      "red": "Красный"
+    },
     "color": {
       "ariaSelectColor": "Выбрать цвет: {{name}}",
       "calibration": {
@@ -316,6 +323,7 @@
       },
       "sections": {
         "basic": "Основные",
+        "blackAndWhite": "Чёрно-белое",
         "color": "Цвет",
         "curves": "Кривые",
         "details": "Детали",
@@ -536,6 +544,29 @@
       "exporting": "Экспорт…",
       "savesTo": "Внешнее редактирование — сохраняется в"
     },
+    "film": {
+      "title": "Плёнка",
+      "tonemapper": "Тон-маппер",
+      "mappers": {
+        "basic": "Стандартный",
+        "agx": "AgX",
+        "flim": "Flim"
+      },
+      "preset": "Пресет",
+      "presets": {
+        "default": "По умолчанию",
+        "nostalgia": "Nostalgia",
+        "silver": "Silver"
+      },
+      "ev": "Экспозиция (EV)",
+      "strength": "Сила",
+      "look": "Вид",
+      "contrast": "Контраст",
+      "saturation": "Насыщенность",
+      "shoulder": "Shoulder (света)",
+      "toe": "Toe (тени)",
+      "warmth": "Теплота"
+    },
     "masks": {
       "actions": {
         "addNewComponent": "Добавить новый компонент",
@@ -727,6 +758,7 @@
         "adjust": "Коррекция",
         "crop": "Обрезка",
         "export": "Экспорт",
+        "film": "Плёнка",
         "info": "Инфо",
         "inpaint": "Восстановление",
         "masks": "Маски",
@@ -1104,6 +1136,7 @@
       "descMerge": "Добавляет скопированные изменения, оставляя другие параметры нетронутыми.",
       "descReplace": "Перезаписывает все выбранные параметры, сбрасывая остальные к значениям по умолчанию.",
       "groups": {
+        "blackAndWhite": "Чёрно-белое",
         "chromaticAberration": "Хроматическая аберрация",
         "clarityDehaze": "Четкость и удаление дымки",
         "colorCalibration": "Калибровка цвета",

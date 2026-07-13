@@ -2525,7 +2525,7 @@ function SettingsPanel({
         className="flex flex-col gap-2"
       >
         {Object.keys(ADJUSTMENT_SECTIONS)
-          .filter((sectionName) => sectionName !== 'film') // film sim is global-only
+          .filter((sectionName) => sectionName !== 'film' && sectionName !== 'blackAndWhite') // film sim and B&W are global-only
           .map((sectionName) => {
           const SectionComponent: any = {
             basic: BasicAdjustments,

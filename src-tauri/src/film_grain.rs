@@ -446,11 +446,10 @@ pub(crate) fn load_processed_for_grain(
     };
     crate::adjustment_utils::hydrate_adjustments(&state, &mut js_adjustments);
 
-    // The physical grain render replaces the procedural grains — disable
-    // both the native (Effects) and the PoC (Film) grain for this pass.
+    // The physical grain render replaces the procedural grain — disable the
+    // native (Effects) grain for this pass.
     if let Some(obj) = js_adjustments.as_object_mut() {
         obj.insert("grainAmount".to_string(), serde_json::json!(0));
-        obj.insert("filmGrainAmount".to_string(), serde_json::json!(0));
     }
 
     let settings = crate::app_settings::load_settings(app_handle.clone()).unwrap_or_default();

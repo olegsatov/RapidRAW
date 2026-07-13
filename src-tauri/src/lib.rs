@@ -12,6 +12,7 @@ mod ai_processing;
 mod android_integration;
 mod app_settings;
 mod app_state;
+mod bw_decolor;
 mod cache_utils;
 mod culling;
 mod denoising;
@@ -94,6 +95,8 @@ pub use adjustment_utils::*;
 pub use android_integration::*;
 pub use app_settings::*;
 pub use app_state::*;
+#[doc(hidden)]
+pub use export_processing::render_image_headless;
 use tagging_utils::{candidates, hierarchy};
 
 #[cfg(target_os = "macos")]
@@ -319,6 +322,7 @@ fn process_preview_job(
     mut adjustments_json: serde_json::Value,
     is_interactive: bool,
     target_resolution: Option<u32>,
+    grain_mip_level: Option<f32>,
     roi: Option<(f32, f32, f32, f32)>,
     compute_waveform: bool,
     active_waveform_channel: Option<&str>,
@@ -507,6 +511,14 @@ fn process_preview_job(
                 mask_bitmaps: &mask_bitmaps,
                 lut,
                 roi: pixel_roi,
+                grain_mip_level: grain_mip_level.unwrap_or_else(|| {
+                    crate::image_processing::grain_mip_level_from_scale(effective_scale)
+                }),
+                grain_coord_scale: if effective_scale > 0.0 {
+                    1.0 / effective_scale
+                } else {
+                    1.0
+                },
             },
             "apply_adjustments",
             use_wgpu_renderer,
@@ -653,6 +665,7 @@ fn start_preview_worker(app_handle: tauri::AppHandle) {
                 job.adjustments,
                 job.is_interactive,
                 job.target_resolution,
+                job.grain_mip_level,
                 job.roi,
                 job.compute_waveform,
                 job.active_waveform_channel.as_deref(),
@@ -673,6 +686,7 @@ async fn apply_adjustments(
     js_adjustments: serde_json::Value,
     is_interactive: bool,
     target_resolution: Option<u32>,
+    grain_mip_level: Option<f32>,
     roi: Option<(f32, f32, f32, f32)>,
     compute_waveform: bool,
     active_waveform_channel: Option<String>,
@@ -687,6 +701,7 @@ async fn apply_adjustments(
                 adjustments: js_adjustments,
                 is_interactive,
                 target_resolution,
+                grain_mip_level,
                 roi,
                 compute_waveform,
                 active_waveform_channel,
@@ -814,6 +829,12 @@ fn generate_uncropped_preview(
                 mask_bitmaps: &mask_bitmaps,
                 lut,
                 roi: None,
+                grain_mip_level: crate::image_processing::grain_mip_level_from_scale(scale_for_gpu),
+                grain_coord_scale: if scale_for_gpu > 0.0 {
+                    1.0 / scale_for_gpu
+                } else {
+                    1.0
+                },
             },
             "generate_uncropped_preview",
         ) {
@@ -979,6 +1000,8 @@ async fn preview_geometry_transform(
                     mask_bitmaps: &mask_bitmaps,
                     lut,
                     roi: None,
+                    grain_mip_level: 0.0,
+                    grain_coord_scale: 1.0,
                 },
                 "preview_geometry_transform_base_gen",
             )?;
@@ -1161,6 +1184,8 @@ fn generate_preset_preview(
             mask_bitmaps: &mask_bitmaps,
             lut,
             roi: None,
+            grain_mip_level: 0.0,
+            grain_coord_scale: 1.0,
         },
         "generate_preset_preview",
     )?;
@@ -1172,6 +1197,102 @@ fn generate_preset_preview(
         .map_err(|e| e.to_string())?;
 
     Ok(Response::new(buf.into_inner()))
+}
+
+/// Compute contrast-preserving black & white channel weights (RTCP, Lu et al.
+/// 2012) for the current image with the passed adjustments applied. Renders a
+/// small graded preview through the GPU with the B&W section itself disabled,
+/// so the optimizer sees the graded color image the conversion would start
+/// from. Returns frontend-scale weights (0..100, summing to ~100).
+#[tauri::command]
+fn compute_bw_weights(
+    js_adjustments: serde_json::Value,
+    state: tauri::State<AppState>,
+    app_handle: tauri::AppHandle,
+) -> Result<serde_json::Value, String> {
+    let context = get_or_init_gpu_context(&state, &app_handle)?;
+
+    let mut color_adjustments = js_adjustments;
+    hydrate_adjustments(&state, &mut color_adjustments);
+    if let Some(obj) = color_adjustments.as_object_mut() {
+        let mut vis = obj
+            .get("sectionVisibility")
+            .and_then(|v| v.as_object().cloned())
+            .unwrap_or_default();
+        vis.insert("blackAndWhite".to_string(), serde_json::Value::Bool(false));
+        obj.insert(
+            "sectionVisibility".to_string(),
+            serde_json::Value::Object(vis),
+        );
+    }
+
+    let loaded_image = state
+        .original_image
+        .lock()
+        .unwrap()
+        .clone()
+        .ok_or("No original image loaded for B&W weights")?;
+    let is_raw = loaded_image.is_raw;
+    let unique_hash = calculate_full_job_hash(&loaded_image.path, &color_adjustments);
+
+    const BW_PREVIEW_DIM: u32 = 512;
+    let (preview_image, scale_for_gpu, unscaled_crop_offset) =
+        generate_transformed_preview(&state, &loaded_image, &color_adjustments, BW_PREVIEW_DIM)?;
+
+    let (img_w, img_h) = preview_image.dimensions();
+
+    let mask_definitions: Vec<MaskDefinition> = color_adjustments
+        .get("masks")
+        .and_then(|m| serde_json::from_value(m.clone()).ok())
+        .unwrap_or_default();
+
+    let scaled_crop_offset = (
+        unscaled_crop_offset.0 * scale_for_gpu,
+        unscaled_crop_offset.1 * scale_for_gpu,
+    );
+
+    let mask_bitmaps: Vec<ImageBuffer<Luma<u8>, Vec<u8>>> = mask_definitions
+        .iter()
+        .filter_map(|def| {
+            get_cached_or_generate_mask(
+                &state,
+                def,
+                img_w,
+                img_h,
+                scale_for_gpu,
+                scaled_crop_offset,
+                &color_adjustments,
+            )
+        })
+        .collect();
+
+    let tm_override = resolve_tonemapper_override_from_handle(&app_handle, is_raw);
+    let all_adjustments = get_all_adjustments_from_json(&color_adjustments, is_raw, tm_override);
+    let lut_path = color_adjustments["lutPath"].as_str();
+    let lut = lut_path.and_then(|p| lut_processing::get_or_load_lut(&state, p).ok());
+
+    let processed_image = process_and_get_dynamic_image(
+        &context,
+        &state,
+        &preview_image,
+        unique_hash,
+        RenderRequest {
+            adjustments: all_adjustments,
+            mask_bitmaps: &mask_bitmaps,
+            lut,
+            roi: None,
+            grain_mip_level: 0.0,
+            grain_coord_scale: 1.0,
+        },
+        "compute_bw_weights",
+    )?;
+
+    let (r, g, b) = bw_decolor::compute_weights(&processed_image);
+    Ok(serde_json::json!({
+        "bwRed": r * 100.0,
+        "bwGreen": g * 100.0,
+        "bwBlue": b * 100.0,
+    }))
 }
 
 #[tauri::command]
@@ -1312,6 +1433,8 @@ async fn generate_all_community_previews(
                     mask_bitmaps: &mask_bitmaps,
                     lut,
                     roi: None,
+                    grain_mip_level: 0.0,
+                    grain_coord_scale: 1.0,
                 },
                 "generate_all_community_previews",
             )?;
@@ -1591,6 +1714,8 @@ fn generate_preview_for_path(
             mask_bitmaps: &mask_bitmaps,
             lut,
             roi: None,
+            grain_mip_level: 0.0,
+            grain_coord_scale: 1.0,
         },
         "generate_preview_for_path",
     )?;
@@ -2294,6 +2419,7 @@ pub fn run() {
             generate_preview_for_path,
             generate_original_transformed_preview,
             generate_preset_preview,
+            compute_bw_weights,
             generate_uncropped_preview,
             preview_geometry_transform,
             get_log_file_path,

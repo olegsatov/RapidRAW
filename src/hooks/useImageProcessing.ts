@@ -32,6 +32,7 @@ export function useImageProcessing(
   const showOriginal = useEditorStore((state) => state.showOriginal);
   const isSliderDragging = useEditorStore((state) => state.isSliderDragging);
   const transformedOriginalUrl = useEditorStore((state) => state.transformedOriginalUrl);
+  const renderGeneration = useEditorStore((state) => state.renderGeneration);
   const setEditor = useEditorStore((state) => state.setEditor);
 
   const activeRightPanel = useUIStore((state) => state.activeRightPanel);
@@ -171,11 +172,20 @@ export function useImageProcessing(
       const jobId = ++previewJobIdRef.current;
       const roi = calculateROI();
 
+      // Screen-space grain scale: the grain mip must match the DISPLAYED size
+      // (zoom included), not the render resolution — the wgpu display blit
+      // does not average grain reliably on its own.
+      const { originalSize: orig, displaySize: disp } = useEditorStore.getState();
+      const origMax = Math.max(orig.width, orig.height);
+      const dispMax = Math.max(disp.width, disp.height);
+      const grainMipLevel = origMax > 0 && dispMax > 0 ? Math.max(0, Math.log2(origMax / dispMax)) : null;
+
       try {
         const buffer: ArrayBuffer = await invoke(Invokes.ApplyAdjustments, {
           jsAdjustments: payload,
           isInteractive: dragging,
           targetResolution: targetRes || null,
+          grainMipLevel,
           roi: roi || null,
           computeWaveform: !!isWaveformVisible,
           activeWaveformChannel: activeWaveformChannelRef.current || null,
@@ -314,7 +324,18 @@ export function useImageProcessing(
 
   const calculateTargetRes = useCallback(() => {
     const baseTargetRes = appSettings?.editorPreviewResolution || 1920;
-    if (!(appSettings?.enableZoomHifi ?? true) || displaySize.width === 0) {
+    if (displaySize.width === 0) {
+      return baseTargetRes;
+    }
+
+    // Crystal grain needs an honest screen-space preview: while it is active
+    // the render must cover the display resolution even in static preview
+    // mode — an upscaled 1920px render aliases the grain (coarse blobs that
+    // don't track the zoom). Static mode stays the resolution floor.
+    const grainActive =
+      ((useEditorStore.getState().adjustments.crystalGrainAmount as number) ?? 0) > 0;
+    const staticMode = !(appSettings?.enableZoomHifi ?? true);
+    if (staticMode && !grainActive) {
       return baseTargetRes;
     }
 
@@ -324,6 +345,9 @@ export function useImageProcessing(
     const effectiveDpr = appSettings?.useFullDpiRendering ? dpr : 1;
 
     let targetRes = Math.max(displaySize.width, displaySize.height) * effectiveDpr * sharpnessFactor * zoomMultiplier;
+    if (staticMode) {
+      targetRes = Math.max(targetRes, baseTargetRes);
+    }
     targetRes = Math.max(targetRes, 512);
 
     if (originalSize && originalSize.width > 0 && originalSize.height > 0) {
@@ -465,6 +489,7 @@ export function useImageProcessing(
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     adjustments,
+    renderGeneration,
     previewOverride,
     selectedImage?.path,
     selectedImage?.isReady,
@@ -474,6 +499,20 @@ export function useImageProcessing(
     appSettings?.copyPasteSettings?.includedAdjustments,
     isWaveformVisible,
   ]);
+
+  // Zoom/display changes alter the screen-space grain scale: force a re-render
+  // so the grain mip tracks the current zoom without a manual zoom-in/out
+  // dance. Resolution increases are already handled by the hifi effect above;
+  // this covers zoom-out, initial layout and everything else (debounced).
+  useEffect(() => {
+    if (!selectedImage?.isReady || displaySize.width === 0) return;
+    const t = setTimeout(() => {
+      if (calculateTargetRes() > currentResRef.current) return; // hifi effect will render
+      useEditorStore.getState().setEditor((s) => ({ renderGeneration: s.renderGeneration + 1 }));
+    }, 200);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [displaySize.width, displaySize.height, selectedImage?.isReady]);
 
   useEffect(() => {
     setEditor({ transformedOriginalUrl: null });

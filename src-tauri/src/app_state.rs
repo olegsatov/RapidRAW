@@ -72,6 +72,9 @@ pub struct PreviewJob {
     pub adjustments: serde_json::Value,
     pub is_interactive: bool,
     pub target_resolution: Option<u32>,
+    /// Explicit grain mip level from the frontend (screen-space zoom aware).
+    /// None = derive from the render downscale (legacy behavior).
+    pub grain_mip_level: Option<f32>,
     pub roi: Option<(f32, f32, f32, f32)>,
     pub compute_waveform: bool,
     pub active_waveform_channel: Option<String>,

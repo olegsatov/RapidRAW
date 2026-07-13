@@ -19,28 +19,18 @@ struct FilmPostParams {
     grain_amount: f32, // crystal grain strength mix 0..1 (0 = off)
     grain_tile: f32,   // baked grain field tile size (px)
     grain_mono: f32,   // 1 = single shared field (B&W), 0 = per-channel
-    _pad1: f32,
-    _pad2: f32,
+    grain_level: f32,  // mip level matching the render downscale (log2(full/processed))
+    grain_coord_scale: f32, // full-res px per processed px (grain sampled in full-image coords)
+    _pad3: f32,
+    _pad4: f32,
+    _pad5: f32,
 }
 
 @group(0) @binding(0) var input_texture: texture_2d<f32>;
 @group(0) @binding(1) var output_texture: texture_storage_2d<rgba8unorm, write>;
 @group(0) @binding(2) var<uniform> params: FilmPostParams;
 @group(0) @binding(3) var grain_texture: texture_2d<f32>;
-
-// Mirrored wrap (numpy 'symm'): d c b a | a b c d | d c b a — the baked
-// grain field is a stationary random texture, so mirroring is seamless.
-fn mirror_idx(i: i32, n: i32) -> i32 {
-    let period = 2 * n;
-    var m = i % period;
-    if (m < 0) {
-        m = m + period;
-    }
-    if (m >= n) {
-        m = period - 1 - m;
-    }
-    return m;
-}
+@group(0) @binding(4) var grain_sampler: sampler;
 
 @compute @workgroup_size(8, 8, 1)
 fn film_post(@builtin(global_invocation_id) id: vec3<u32>) {
@@ -67,12 +57,18 @@ fn film_post(@builtin(global_invocation_id) id: vec3<u32>) {
     // coverage fraction of the crystal-stack model rendered on a flat
     // field. In the model's linear range the output for local intensity
     // u is out = u² + (u − u²)·G — multiplicative grain with the printing
-    // model built in (no grain in fully white areas).
+    // model built in (no grain in fully white areas). The mip level is
+    // chosen by the caller to match the render downscale: a box mip is
+    // exactly the averaging that downscaling applies to real grain, so a
+    // zoomed-out preview shows grain as the export looks at the same size.
     if (params.grain_amount > 0.0) {
-        let tile = i32(params.grain_tile);
-        let gx = mirror_idx(i32(params.origin_x) + i32(id.x), tile);
-        let gy = mirror_idx(i32(params.origin_y) + i32(id.y), tile);
-        let G = textureLoad(grain_texture, vec2<i32>(gx, gy), 0);
+        // Full-image coords in FULL-RES pixel units (the baked field is
+        // authored at full-res scale — the export samples it 1:1). Without
+        // grain_coord_scale the pattern would stretch with the preview
+        // downscale and mip averaging would smear it into blotches.
+        // The sampler's mirror-repeat wrap keeps the tile seamless.
+        let uv = (vec2<f32>(params.origin_x, params.origin_y) + coord + 0.5) * params.grain_coord_scale / params.grain_tile;
+        let G = textureSampleLevel(grain_texture, grain_sampler, uv, params.grain_level);
 
         var grained = vec3<f32>(r, g, b);
         if (params.grain_mono > 0.5) {

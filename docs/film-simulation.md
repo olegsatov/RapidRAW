@@ -10,8 +10,9 @@
 (`/Users/someone/Downloads/krea-web/client/src/film-poc`). PoC доказал, что весь грейд
 (LUT-кривые красителей, откат светов, цветовой bleed, cross-process, WB, зерно,
 виньетка, галация, размытие эмульсии, хроматическая аберрация) можно считать
-на GPU в реальном времени на больших разрешениях. В RapidRAW он перенесён на WGSL/wgpu
-и встроен в существующий compute-пайплайн.
+на GPU в реальном времени на больших разрешениях. В RapidRAW грейд перенесён на
+WGSL/wgpu и встроен в существующий compute-пайплайн (процедурное зерно PoC —
+нет: переносилось, но позже выкорчено, см. «Зерно: три независимых движка»).
 
 **Важно:** первичная обработка RAW (демозаик, базовая экспозиция, tone window) НЕ
 переносилась — по требованию используется нативный пайплайн RapidRAW. Плёнка — это
@@ -108,31 +109,25 @@ film-параметры гейтятся видимостью секции `"fil
 | filmHighlights | film_highlights | 1 | −100..100 | 0 |
 | filmBlur | film_blur | /100 | 0–100 | 0 |
 | filmChroma | film_chroma | /200 | 0–100 | 0 |
-| filmGrainAmount | film_grain_amount | /1000 | 0–100 | 0 |
-| filmGrainSize | film_grain_size | /50 | 0–100 | 50 |
+| crystalGrainAmount | crystal_grain_amount | /100 | 0–100 | 0 |
+| crystalGrainMono | crystal_grain_mono | — | 0/1 | 0 |
 
 Blur: `sigma = v · 3 · scale`, `radius = ceil(sigma·2).clamp(1, 96)`.
 Chroma: радиальное смещение `d_px · chroma · 0.02`.
-Film grain: порт PoC-зерна — per-pixel fine grain (hash) + низкочастотный clump
-(value-noise, частота `1/max(4, size·10)`), exposure-маска по яркости
-(`clamp((1−|L−0.5|·2)·1.5, 0.3, 1.0)`), per-channel вариация ±0.3·amount.
-Применяется в main-шейдере сразу после `apply_film_look`, **до** нативного зерна;
-координаты делятся на `scale`, чтобы размер зерна на экране не зависел от превью.
-Не масштабируется `film_strength`.
+Film grain: процедурное зерно из PoC переносилось (per-pixel hash + value-noise
+clump, exposure-маска), но позже **полностью выкорчено** — оно накладывалось на
+нативное зерно и путало пользователя. Зерно теперь бывает только трёх видов:
+crystal (Pierre, realtime + офлайн), IPOL (офлайн) и нативный Effects grain.
 
-### Film grain vs native grain
-
-Это **два независимых эффекта** с разными ключами и разной математикой:
+### Зерно: три независимых движка
 
 - **Native grain** (секция Effects): ключи `grainAmount/Size/Roughness`, гейтинг
   `"effects"`, gradient-noise + roughness-mix, uniform `grain_amount/size/roughness`,
-  применяется после кривых/LUT (`shader.wgsl`, блок `grain_amount > 0`).
-- **Film grain** (секция Film): ключи `filmGrainAmount/Size`, гейтинг `"film"`,
-  PoC-модель (см. выше), применяется сразу после `apply_film_look`.
-
-Оба могут работать одновременно — тогда зерна честно складываются. Изначально
-бегунки зерна в Film были зеркалом native-ключей (двигали один и тот же параметр) —
-это исправлено: у Film теперь своё зерно.
+  применяется после кривых/LUT (`shader.wgsl`, блок `grain_amount > 0`). Upstream,
+  не тронут.
+- **Crystal grain** (секция Film): realtime bake-and-sample + офлайн-рендер
+  (см. разделы ниже).
+- **IPOL grain** (секция Film): офлайн Boolean-модель (см. раздел ниже).
 
 ### Union-гейтинг нативных эффектов
 
@@ -140,23 +135,25 @@ Vignette и halation — нативные инструменты RapidRAW (се�
 но показываются и внутри секции «Film». Чтобы они работали из обоих мест, парсинг
 использует `get_val_any(&["effects", "film"], ...)`: параметр активен, если видима
 хотя бы одна из секций. Затронуты: `vignette_amount/midpoint/roundness/feather`,
-`halation_amount`. (Grain из этого списка убран — у Film своё зерно, см. выше.)
+`halation_amount`. (Native grain в union-гейтинг не входит.)
 
 Нативная chromatic aberration (lens-инструмент в details) **не тронута** — film CA
 живёт отдельно.
 
 ## Профили
 
-`src/utils/filmProfiles.ts` — 6 стоковых профилей: Portra 400, Velvia 50, HP5,
-Ektar 100, Tri-X, CineStill 800T. Значения взяты из PoC (включая blur/chroma).
-LUT — natural-spline, 768 float (r,g,b interleaved, 256×3).
+`src/utils/filmProfiles.ts` — 12 стоковых профилей: Portra 400, Superia 400,
+Ektar 100, Velvia 50, HP5 Plus, Tri-X 400, Pro 400H, Gold 200, Provia 100F,
+Ektachrome E100, Lomography CN 400, CineStill 800T. Значения перенесены 1:1 из
+апстримного проекта film-simulation (github.com/sinanonur/film-simulation,
+`12-film-profiles.json`, MIT © 2024 sinanonur); единственное отличие — film
+grain занулён (зерном занимается нативный движок). LUT — natural-spline, 768
+float (r,g,b interleaved, 256×3).
 
 `filmProfilePatch` маппит профиль на UI-ключи:
 
 - `blur / 3 · 100` → filmBlur
 - `chroma / 0.5 · 100` → filmChroma
-- `grainAmount · 1000` → filmGrainAmount (PoC 0.06 → UI 60)
-- `grainSize · 50` → filmGrainSize (UI 50 == shader 1.0)
 - `halation · 100` → halationAmount
 - `vignette · −100` → vignetteAmount
 
@@ -165,10 +162,16 @@ LUT — natural-spline, 768 float (r,g,b interleaved, 256×3).
 ## Uniform layout (правила)
 
 `GlobalAdjustments` — bytemuck Pod, зеркалится вручную между Rust
-(`image_processing.rs:1247`) и WGSL (shader.wgsl). Film-поля добавлены в конец:
-`film_temp`, `film_tint`, `film_shadows`, `film_highlights`, `film_blur`,
-`film_chroma`, `film_grain_amount`, `film_grain_size` (два f32-пада
-`_pad_film5/6` позже заменены на grain-поля — размер struct'а не изменился).
+(`image_processing.rs`, `pub struct GlobalAdjustments`) и WGSL (shader.wgsl).
+Film-поля добавлены в конец: `film_temp`, `film_tint`, `film_shadows`,
+`film_highlights`, `film_blur`, `film_chroma`; затем `bw_weights: vec3<f32>`
+(B&W-конверсия) и поля crystal-зерна `crystal_grain_amount/mono`.
+
+**Подводный камень layout'а:** naga считает `vec3/vec4` 16-выравниванием, а Rust
+bytemuck пакует плотно. Если перед `bw_weights` (vec3) изменилось число
+scalar-полей (так случилось при удалении `film_grain_amount/size`), в Rust нужен
+явный пад `_pad_bw_align: [f32; 2]` — иначе layout-тест падает (Rust 5816 vs
+WGSL 5824).
 
 **При добавлении полей:** держать Rust-struct и WGSL-struct в синхроне, дополнять
 padding'ом до кратности 16. Layout проверяется тестом (см. ниже) — если struct'ы
@@ -183,7 +186,9 @@ padding'ом до кратности 16. Layout проверяется тест�
 - **Stock + Look** — профиль, strength, contrast, saturation, rolloff, bleed, cross.
 - **White Balance** — filmTemp, filmTint.
 - **Tone** — filmShadows, filmHighlights.
-- **Grain** — filmGrainAmount/filmGrainSize (своё PoC-зерно, не native).
+- **Physical Grain (IPOL)** — офлайн-рендер (крутилки + Preview/Render & Save).
+- **Crystal Grain (Pierre)** — параметры кристаллов, подблок Realtime Preview
+  (Amount + Monochrome), Preview/Render & Save.
 - **Halation** — нативный amount.
 - **Vignette** — нативный amount.
 - **Emulsion** — filmBlur, filmChroma.
@@ -219,7 +224,7 @@ i18n: `adjustments.effects.film*`, `filmBlur`, `filmEmulsion`, `tone`,
 
 ## Физический рендер зерна (IPOL 2017)
 
-Отдельно от процедурного film grain есть офлайн-рендер по статье Newson et al.
+Первый из двух физических рендеров зерна — офлайн-рендер по статье Newson et al.
 «Realistic Film Grain Rendering» (IPOL 2017, GPL V3+ — совместимо с AGPLv3 проекта):
 Boolean-модель стохастической геометрии — центры зёрен бросаются Пуассоновским
 процессом с интенсивностью, зависящей от яркости (`lambda(u)`), радиусы const или
@@ -236,8 +241,8 @@ log-normal; каждый выходной пиксель — Monte-Carlo оце�
   off-by-one в lambdaList C++ исправлен.
 - Команда `render_film_grain(path, adjustments, options, preview)` — полный пайплайн
   (загрузка → GPU-обработка с текущими коррекциями → grain по каналам →
-  `<stem>_Grain.png` рядом с оригиналом + `.rrexif`). Procedural grain
-  (native + PoC) на этом проходе отключается. События `film-grain-progress` /
+  `<stem>_Grain.png` рядом с оригиналом + `.rrexif`). Native grain (Effects)
+  на этом проходе отключается. События `film-grain-progress` /
   `film-grain-complete` / `film-grain-preview`.
 - **Preview-режим** (`preview: true`): центральный 1:1 кроп (max 1200×800) в
   нативном разрешении — единственно честное превью для пиксельной текстуры
@@ -284,8 +289,8 @@ log-normal размер, случайный поворот), яркость I/N 
   воспроизводимы; посев зёрен распараллелен по строкам; `value` клиппится в
   (0.001, 0.999) перед erfinv (scipy возвращал ±inf вне домена).
 - Команда `render_crystal_grain(path, adjustments, options, preview)` — тот же
-  каркас, что у IPOL (общий `load_processed_for_grain`, процедурные зёрна
-  отключаются на проходе), события `crystal-grain-progress/preview/complete`,
+  каркас, что у IPOL (общий `load_processed_for_grain`, native grain
+  отключается на проходе), события `crystal-grain-progress/preview/complete`,
   результат — `<stem>_XtalGrain.png` + `.rrexif`. Preview — центральный 1:1
   кроп 1200×800, data URL.
 - UI: группа «Crystal Grain (Pierre)» в секции Film — Filling Ratio
@@ -317,30 +322,77 @@ realtime-режим, основанный на линеаризации моде
   `u=0.5` через `apply_crystal_grain_rgb` (3 декоррелированных поля),
   извлекает `G = (out − u²)/((1−u)·u) = 4·out − 1`, нормирует каждый канал
   на mean=1 (сохранение средней яркости становится численно точным) и пакует
-  в RGBA16F (G ∈ [0, 32]). Тайл 1024² (`GRAIN_FIELD_TILE`), ~0.5–1 с на CPU.
+  в RGBA16F (G ∈ [0, 32]) — **один буфер на mip-уровень** (1024→1, box 2×2).
+  Box-mip — это в точности фильтр усреднения при даунскейле, поэтому mip
+  эмулирует поведение зерна при уменьшении картинки. Тайл 1024²
+  (`GRAIN_FIELD_TILE`), ~0.5–1 с на CPU.
 - **Команда** `bake_crystal_grain_field(options)` — bake на CPU → upload
   RGBA16F текстуры в `GpuContext.crystal_grain_view` → событие
   `crystal-grain-baked`. До первого bake'а используется dummy 1×1 (G=1,
-  no-op) из `GpuProcessor`.
-- **GPU**: film post-pass (`film_post.wgsl`) получил binding(3) с полем G;
-  `FilmPostParams` — `origin_x/y` (тайл в координатах изображения),
-  `grain_amount`, `grain_tile`, `grain_mono`. Сэмплинг по глобальным
-  пиксельным координатам с mirrored wrap (numpy `symm`) — швы между тайлами
-  и повтор тайла незаметны (стационарное случайное поле). Формула на пиксель:
-  `out = u² + (u−u²)·G` — мультипликативное зерно + printing model, ~10 ALU
-  + 1 fetch. Mono — одно поле на luma с hue-preserving gain; color — три
-  поля поканально. `film_post_active` теперь включается и по
-  `crystal_grain_amount > 0`.
+  no-op) из `GpuProcessor`. Поле — `Arc<Mutex<Option<TextureView>>>`:
+  GpuProcessor клонирует GpuContext при создании, поэтому plain-поле
+  замирало бы в None (баг: rebake не доходил до уже созданного
+  процессора, слайдеры filling/size/layers/std выглядели сломанными).
+- **GPU**: film post-pass (`film_post.wgsl`) получил binding(3) с полем G
+  (mipmapped, filterable) и binding(4) — sampler (linear + mirror-repeat,
+  заменил ручной `mirror_idx`); `FilmPostParams` — `origin_x/y` (тайл в
+  координатах изображения), `grain_amount`, `grain_tile`, `grain_mono`,
+  `grain_level`, `grain_coord_scale` (full-res px на px рендера).
+  Сэмплинг `textureSampleLevel` по глобальным пиксельным координатам в
+  full-res единицах. Формула на пиксель: `out = u² + (u−u²)·G` —
+  мультипликативное зерно + printing model. Mono — одно поле на luma с
+  hue-preserving gain; color — три поля поканально. `film_post_active`
+  теперь включается и по `crystal_grain_amount > 0`.
+- **Zoom-aware зерно (mip-level + full-res координаты)**: baked-поле запечено
+  в единицах **full-res пикселей** (экспорт сэмплит его 1:1), поэтому превью
+  обязано сэмплить его в координатах изображения, а не рендера:
+  `RenderRequest.grain_coord_scale` = full-res px на px рендера
+  (`1/effective_scale`; 1.0 для full-res путей), в шейдере
+  `uv = (origin + coord) · coord_scale / tile`. Без этого паттерн зерна
+  растягивался вместе с даунскейлом рендера и mip-усреднение давало кляксы.
+  `RenderRequest.grain_mip_level` — уровень mip, соответствующий **экранному**
+  масштабу: фронтенд вычисляет
+  `max(0, log2(max(originalSize) / max(displaySize)))` (`displaySize` включает
+  текущий зум) и передаёт его параметром `grainMipLevel` в `apply_adjustments`
+  (`PreviewJob.grain_mip_level: Option<f32>`; `None` → legacy-расчёт
+  `log2(full/render)` из даунскейла рендера). mip считается именно по экрану,
+  потому что wgpu-блит превью на канвас не усредняет зерно достаточно.
+  **Static preview + зерно**: пока `crystalGrainAmount > 0`,
+  `calculateTargetRes` работает как в dynamic-режиме (рендер ≥ экран×1.25,
+  но не ниже выбранного static-разрешения) — иначе апскейл 1920px-рендера
+  алиасит зерно. Re-render при изменении зума автоматический: эффект в
+  `useImageProcessing` на изменение `displaySize` (debounce 200 мс) бампит
+  `renderGeneration` в сторе (рост разрешения по-прежнему покрывает
+  hifi-эффект). Экспортные/служебные пути передают mip 0 + coord_scale 1.0
+  (full-res). **Галерея** (`generate_thumbnail_data`): mip и coord_scale из
+  `total_scale` — зерно как экспорт при том же размере (на ~720px мелкое
+  зерно честно усредняется почти в ноль).
 - **Adjustments**: `crystalGrainAmount` (0..100 → 0..1, strength-mix) и
   `crystalGrainMono` (0/1) — поля `crystal_grain_amount/mono` в
   `GlobalAdjustments` (layout-тест на sync Rust↔WGSL).
 - **UI**: подблок «Realtime Preview» в группе Crystal Grain — Amount +
   Monochrome. Параметры кристаллов (filling/size/layers/std) общие для
   realtime и офлайна; их изменение триггерит debounce-bake (400 мс),
-  событие `crystal-grain-baked` пинает ре-рендер.
+  событие `crystal-grain-baked` пинает ре-рендер (listener в
+  `useTauriListeners` → `renderGeneration++`).
+- **Экспорт учитывает Amount**: `CrystalGrainOptions.amount` (0..1, serde
+  default 1.0) — после `apply_crystal_grain_rgb` команда
+  `render_crystal_grain` делает `mix(clean, clamp(grained, 0..1), amount)`
+  (`mix_grain_amount`), тот же blend, что в шейдере, поэтому сохранённый
+  файл совпадает с превью по силе зерна. Amount не участвует в bake —
+  поле G всегда full-strength, mix выполняется на стороне шейдера/экспорта.
+  UI: при `crystalGrainAmount = 0` (realtime выключен) экспорт идёт с
+  полной силой (старое поведение), иначе — со значением слайдера.
 - **Ограничения**: превью ≠ пиксель-в-пиксель офлайн-рендеру (линеаризация,
   фиксированный тайл); для финального файла — Render & Save. IPOL-зерно
-  realtime не получило (его Boolean-модель так не линеаризуется).
+  realtime не получило (его Boolean-модель так не линеаризуется). Monochrome —
+  единый тоггл для realtime и экспорта (`crystalGrainMono`; экспорт передаёт
+  его как `options.monochrome`). Нативное зерно секции Effects (`grainAmount`)
+  — отдельный upstream-движок, тоггл на него не распространяется. **Масштаб/зум**: зерно
+  сэмплится с mip-уровнем под текущий **экранный** зум (см. выше), поэтому
+  уменьшенное превью показывает усреднённое зерно как экспорт при том же
+  просмотре; форму кристаллов разглядеть можно только на 100%, но общее
+  впечатление от зерна корректно при любом зуме.
 
 ## Тестирование
 
@@ -363,3 +415,23 @@ npm run build   # vite build — реальный gate; tsc сломан апс�
 
 Ручной прогон: `npm start` (`tauri dev`), открыть RAW, раскрыть секцию Film,
 выбрать профиль. Первая cargo-сборка 2–4 минуты — не убивать rustc.
+
+## flim — второй режим плёнки (tonemapper_mode 2, 2026-07-13)
+
+Параллельно Krea-модулю (`apply_film_look`, описанному выше — он не тронут)
+добавлен flim (`github.com/bean-mhm/flim`, AGPLv3): two-stage
+negative→print develop в log2-домене на **scene-referred** данных — это
+режим тон-маппера, а не look поверх него. Дизайн и история решения —
+`docs/film-look-engine.md`.
+
+- **UI:** отдельный таб Film в правом switcher'е (`Panel.Film`,
+  `FilmPanel.tsx`): селектор тон-маппера (Standard/AgX/Flim → adjustment
+  `toneMapper: basic|agx|flim`), preset (default/nostalgia/silver — параметры
+  1:1 из `scratch/flim/main.py`), EV ±3, Strength.
+- **Backend:** `tonemapper_mode == 2` в `shader.wgsl` main (ветка рядом с
+  AgX); производные константы пресетов считаются в Rust
+  (`compute_flim_uniforms`, image_processing.rs), 19 полей в хвосте
+  `GlobalAdjustments` — layout-тест покрывает.
+- **Headless-проверка:** `cargo run --example flim_check --release --
+  <in> <out.png> <0|1|2|agx> [ev] [strength]` — рендер через реальный
+  wgpu-пайплайн без GUI (Metal), cap 2400px.

@@ -46,6 +46,11 @@ interface EditorState {
   baseRenderSize: ImageDimensions;
   originalSize: ImageDimensions;
 
+  // Render nudge: bumped by out-of-band GPU state changes (e.g. a freshly
+  // baked crystal grain texture) to force a re-render without touching
+  // `adjustments` (which would pollute undo history and trigger a save).
+  renderGeneration: number;
+
   // Tools State
   isRotationActive: boolean;
   overlayMode: OverlayMode;
@@ -103,6 +108,8 @@ export const useEditorStore = create<EditorState>((set) => ({
   activeMaskId: null,
   activeAiPatchContainerId: null,
   activeAiSubMaskId: null,
+
+  renderGeneration: 0,
 
   zoom: 1,
   displaySize: { width: 0, height: 0 },

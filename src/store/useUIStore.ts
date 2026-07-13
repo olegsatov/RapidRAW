@@ -5,6 +5,7 @@ const RIGHT_PANEL_ORDER = [
   Panel.Metadata,
   Panel.Adjustments,
   Panel.Crop,
+  Panel.Film,
   Panel.Masks,
   Panel.Ai,
   Panel.Presets,
@@ -13,6 +14,7 @@ const RIGHT_PANEL_ORDER = [
 
 export interface CollapsibleSectionsState {
   basic: boolean;
+  blackAndWhite: boolean;
   color: boolean;
   curves: boolean;
   details: boolean;
@@ -148,7 +150,15 @@ export const useUIStore = create<UIState>((set, get) => ({
   activeRightPanel: Panel.Adjustments,
   renderedRightPanel: Panel.Adjustments,
   slideDirection: 1,
-  collapsibleSectionsState: { basic: true, color: false, curves: true, details: false, effects: false, film: false },
+  collapsibleSectionsState: {
+    basic: true,
+    blackAndWhite: false,
+    color: false,
+    curves: true,
+    details: false,
+    effects: false,
+    film: false,
+  },
 
   isCreateFolderModalOpen: false,
   isRenameFolderModalOpen: false,

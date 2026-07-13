@@ -3,6 +3,7 @@ import {
   SlidersHorizontal,
   Info,
   Crop,
+  Film,
   Layers,
   Paintbrush,
   SwatchBook,
@@ -30,6 +31,7 @@ const panelGroups: Array<Array<PanelOptions>> = [
   [
     { id: Panel.Adjustments, icon: SlidersHorizontal, title: 'editor.switcher.tooltips.adjust' },
     { id: Panel.Crop, icon: Crop, title: 'editor.switcher.tooltips.crop' },
+    { id: Panel.Film, icon: Film, title: 'editor.switcher.tooltips.film' },
     { id: Panel.Masks, icon: Layers, title: 'editor.switcher.tooltips.masks' },
     { id: Panel.Ai, icon: Paintbrush, title: 'editor.switcher.tooltips.inpaint' },
   ],

@@ -141,12 +141,40 @@ struct GlobalAdjustments {
     film_highlights: f32, // -100..100
     film_blur: f32,       // 0..1 (emulsion blur, sigma = film_blur * 3 px)
     film_chroma: f32,     // 0..0.5 (radial chromatic aberration)
-    film_grain_amount: f32, // 0..0.1 (Krea PoC grain, per-pixel + clump)
-    film_grain_size: f32,   // 0..2 (clump coarseness; fine grain stays 1px)
+
+    // Black & white conversion: weighted channel mix, weights normalized at
+    // use. xyz = weights, w = enabled flag (vec3+pad idiom, see film_base_color).
+    bw_weights: vec3<f32>,
+    bw_enabled: f32,
 
     // Crystal grain (Pierre) realtime preview: baked coverage field sampled
     // in the film post-pass. x = amount 0..1, y = mono flag, zw = pad.
     crystal_grain: vec4<f32>,
+
+    // flim (Filmic Color Transform) port — github.com/bean-mhm/flim (AGPLv3).
+    // All preset-derived constants are baked on the CPU at adjustment-parse
+    // time; this struct only carries the results. Layout MUST match the Rust
+    // mirror in image_processing.rs.
+    flim_extend_mat: mat3x3<f32>,
+    flim_extend_mat_inv: mat3x3<f32>,
+    flim_backlight: vec3<f32>,      // print backlight in the extended gamut
+    flim_black_cap_luma: f32,       // auto: luma of developed black / white cap; else preset black point / 1000
+    flim_white_cap: vec3<f32>,      // negative_and_print([1e7, 1e7, 1e7])
+    flim_sigmoid_log2_max: f32,     // log2_min is hardcoded to -10
+    flim_pre_filter: vec3<f32>,
+    flim_pre_filter_strength: f32,
+    flim_post_filter: vec3<f32>,
+    flim_post_filter_strength: f32,
+    flim_neg_exposure: f32,
+    flim_neg_density: f32,
+    flim_print_exposure: f32,
+    flim_print_density: f32,
+    flim_midtone_saturation: f32,
+    flim_ev: f32,                   // preset pre-exposure + user EV offset
+    flim_strength: f32,             // 0..1 mix against the non-AgX base look
+    _pad_flim_end: f32,
+    flim_warmth: vec3<f32>,         // per-channel gain along the daylight locus (pre-sigmoid)
+    _pad_flim_end2: f32,
 }
 
 struct MaskAdjustments {
@@ -349,19 +377,6 @@ fn gradient_noise(p: vec2<f32>) -> f32 {
     let top_interp = mix(dot_01, dot_11, u.x);
 
     return mix(bottom_interp, top_interp, u.y);
-}
-
-// Smooth value noise (bilinear-interpolated lattice hash) for the low-frequency
-// clump component of the film grain (Krea PoC port).
-fn film_value_noise(p: vec2<f32>) -> f32 {
-    let i = floor(p);
-    let f = fract(p);
-    let u = f * f * (3.0 - 2.0 * f);
-    let a = hash(i);
-    let b = hash(i + vec2<f32>(1.0, 0.0));
-    let c = hash(i + vec2<f32>(0.0, 1.0));
-    let d = hash(i + vec2<f32>(1.0, 1.0));
-    return mix(mix(a, b, u.x), mix(c, d, u.x), u.y);
 }
 
 fn dither(coords: vec2<u32>) -> f32 {
@@ -1220,6 +1235,139 @@ fn agx_full_transform(color_in: vec3<f32>) -> vec3<f32> {
     return final_color;
 }
 
+// flim — Filmic Color Transform, ported from github.com/bean-mhm/flim
+// (AGPLv3). Input is scene-referred linear BT.709, output is display-referred
+// linear (the caller applies linear_to_srgb). It replaces the tonemapper.
+// All preset-derived constants arrive as uniforms (flim_* fields); the sigmoid
+// shape and log2_min are shared by all presets and hardcoded here.
+const FLIM_TOE: vec2<f32> = vec2<f32>(0.44, 0.28);
+const FLIM_SHOULDER: vec2<f32> = vec2<f32>(0.591, 0.779);
+const FLIM_LOG2_MIN: f32 = -10.0;
+const FLIM_LUMA: vec3<f32> = vec3<f32>(0.3, 0.5, 0.2);
+
+fn flim_super_sigmoid(x_in: f32) -> f32 {
+    let x = clamp(x_in, 0.0, 1.0);
+    let slope = (FLIM_SHOULDER.y - FLIM_TOE.y) / (FLIM_SHOULDER.x - FLIM_TOE.x);
+    if (x < FLIM_TOE.x) {
+        let toe_pow = slope * FLIM_TOE.x / FLIM_TOE.y;
+        return FLIM_TOE.y * pow(x / FLIM_TOE.x, toe_pow);
+    }
+    if (x < FLIM_SHOULDER.x) {
+        return slope * x + (FLIM_TOE.y - slope * FLIM_TOE.x);
+    }
+    let shoulder_pow = -slope / (((FLIM_SHOULDER.x - 1.0) / ((1.0 - FLIM_SHOULDER.x) * (1.0 - FLIM_SHOULDER.x))) * (1.0 - FLIM_SHOULDER.y));
+    return (1.0 - pow(1.0 - (x - FLIM_SHOULDER.x) / (1.0 - FLIM_SHOULDER.x), shoulder_pow)) * (1.0 - FLIM_SHOULDER.y) + FLIM_SHOULDER.y;
+}
+
+fn flim_dye_mix(mono: f32, log2_max: f32, max_density: f32) -> f32 {
+    // max() keeps log2 off non-positive extended-gamut values; the reference
+    // gets -inf there, which the clamp maps to 0 either way.
+    let fac = clamp((log2(max(mono + exp2(FLIM_LOG2_MIN), 1e-9)) - FLIM_LOG2_MIN) / (log2_max - FLIM_LOG2_MIN), 0.0, 1.0);
+    return clamp(exp2(-flim_super_sigmoid(fac) * max_density), 0.0, 1.0);
+}
+
+fn flim_develop(inp_in: vec3<f32>, exposure: f32, log2_max: f32, density: f32) -> vec3<f32> {
+    let inp = inp_in * exp2(exposure);
+    let white = vec3<f32>(1.0);
+    // blue-sensitive layer forms the yellow dye, green -> magenta, red -> cyan.
+    var out = mix(vec3<f32>(1.0, 1.0, 0.0), white, flim_dye_mix(inp.b, log2_max, density));
+    out *= mix(vec3<f32>(1.0, 0.0, 1.0), white, flim_dye_mix(inp.g, log2_max, density));
+    out *= mix(vec3<f32>(0.0, 1.0, 1.0), white, flim_dye_mix(inp.r, log2_max, density));
+    return out;
+}
+
+fn flim_negative_and_print(inp: vec3<f32>) -> vec3<f32> {
+    let g = adjustments.global;
+    let negative = flim_develop(inp, g.flim_neg_exposure, g.flim_sigmoid_log2_max, g.flim_neg_density);
+    return flim_develop(negative * g.flim_backlight, g.flim_print_exposure, g.flim_sigmoid_log2_max, g.flim_print_density);
+}
+
+fn flim_rgb_to_hsv(inp: vec3<f32>) -> vec3<f32> {
+    let cmax = max(inp.r, max(inp.g, inp.b));
+    let cmin = min(inp.r, min(inp.g, inp.b));
+    let cdelta = cmax - cmin;
+    var h = 0.0;
+    var s = 0.0;
+    if (cmax != 0.0) {
+        s = cdelta / cmax;
+    }
+    if (s != 0.0) {
+        let c = (vec3<f32>(cmax) - inp) / cdelta;
+        if (inp.r == cmax) {
+            h = c.b - c.g;
+        } else if (inp.g == cmax) {
+            h = 2.0 + c.r - c.b;
+        } else {
+            h = 4.0 + c.g - c.r;
+        }
+        h = h / 6.0;
+        if (h < 0.0) {
+            h += 1.0;
+        }
+    }
+    return vec3<f32>(h, s, cmax);
+}
+
+fn flim_hsv_to_rgb(inp: vec3<f32>) -> vec3<f32> {
+    var h = inp.x;
+    let s = inp.y;
+    let v = inp.z;
+    if (s == 0.0) {
+        return vec3<f32>(v);
+    }
+    if (h == 1.0) {
+        h = 0.0;
+    }
+    let h6 = h * 6.0;
+    let i = floor(h6);
+    let f = h6 - i;
+    let p = v * (1.0 - s);
+    let q = v * (1.0 - s * f);
+    let t = v * (1.0 - s * (1.0 - f));
+    if (i == 0.0) { return vec3<f32>(v, t, p); }
+    if (i == 1.0) { return vec3<f32>(q, v, p); }
+    if (i == 2.0) { return vec3<f32>(p, v, t); }
+    if (i == 3.0) { return vec3<f32>(p, q, v); }
+    if (i == 4.0) { return vec3<f32>(t, p, v); }
+    return vec3<f32>(v, p, q);
+}
+
+fn flim_transform(color_in: vec3<f32>) -> vec3<f32> {
+    let g = adjustments.global;
+    let white = vec3<f32>(1.0);
+    // exposure pivot (preset pre-exposure folded with the user EV at parse time)
+    var inp = color_in * exp2(g.flim_ev);
+    // pre-formation filter
+    inp = inp * mix(white, g.flim_pre_filter, g.flim_pre_filter_strength);
+    // warmth — per-channel gain along the daylight locus (pre-sigmoid, can't clip)
+    inp = inp * g.flim_warmth;
+    // extended gamut
+    inp = g.flim_extend_mat * inp;
+    // develop negative and print
+    inp = flim_negative_and_print(inp);
+    // white cap
+    inp = inp / g.flim_white_cap;
+    // black-cap offset (rgb_uniform_offset with white_point = 0)
+    let mono_bc = dot(inp, FLIM_LUMA);
+    if (abs(mono_bc) >= 0.0001) {
+        let bp = min(g.flim_black_cap_luma, 0.999);
+        inp = inp * (clamp((mono_bc - bp) / (1.0 - bp), 0.0, 1.0) / mono_bc);
+    }
+    // back from the extended gamut
+    inp = g.flim_extend_mat_inv * inp;
+    inp = max(inp, vec3<f32>(0.0));
+    // post-formation filter
+    inp = inp * mix(white, g.flim_post_filter, g.flim_post_filter_strength);
+    inp = clamp(inp, vec3<f32>(0.0), vec3<f32>(1.0));
+    // midtone-keyed saturation (flim's hue offset +0.5 + 0.5 is a no-op)
+    let mono = dot(inp, FLIM_LUMA);
+    let midtone_fac = max(1.0 - abs(mono - 0.5) / 0.45, 0.0);
+    var hsv = flim_rgb_to_hsv(inp);
+    hsv.y = clamp(hsv.y * g.flim_midtone_saturation, 0.0, 1.0);
+    inp = mix(inp, flim_hsv_to_rgb(hsv), midtone_fac);
+    return clamp(inp, vec3<f32>(0.0), vec3<f32>(1.0));
+}
+
 fn legacy_tonemap(c: vec3<f32>) -> vec3<f32> {
     const a: f32 = 2.51;
     const b: f32 = 0.03;
@@ -1829,6 +1977,23 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
     var base_srgb: vec3<f32>;
     if (adjustments.global.tonemapper_mode == 1u) {
         base_srgb = agx_full_transform(composite_rgb_linear);
+    } else if (adjustments.global.tonemapper_mode == 2u) {
+        // flim replaces the tonemapper: scene-referred linear in, sRGB out.
+        // flim_strength mixes against the look the non-AgX branch would have
+        // produced (replicated here as the 0% fallback).
+        var flim_base: vec3<f32>;
+        if (is_raw == 1u) {
+            var srgb_emulated = linear_to_srgb(composite_rgb_linear);
+            const FLIM_BRIGHTNESS_GAMMA: f32 = 1.1;
+            srgb_emulated = pow(srgb_emulated, vec3<f32>(1.0 / FLIM_BRIGHTNESS_GAMMA));
+            const FLIM_CONTRAST_MIX: f32 = 0.75;
+            let contrast_curve = srgb_emulated * srgb_emulated * (3.0 - 2.0 * srgb_emulated);
+            flim_base = mix(srgb_emulated, contrast_curve, FLIM_CONTRAST_MIX);
+        } else {
+            flim_base = linear_to_srgb(composite_rgb_linear);
+        }
+        let flim_srgb = linear_to_srgb(flim_transform(composite_rgb_linear));
+        base_srgb = mix(flim_base, flim_srgb, adjustments.global.flim_strength);
     } else if (is_raw == 1u) {
         var srgb_emulated = linear_to_srgb(composite_rgb_linear);
         const BRIGHTNESS_GAMMA: f32 = 1.1;
@@ -1840,29 +2005,19 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
         base_srgb = linear_to_srgb(composite_rgb_linear);
     }
 
+    // Black & white conversion: applied to the tonemapped sRGB image, before
+    // the film look so film grading still shapes the gray result. Falls back
+    // to Rec.709 luma when the weights sum to ~0.
+    if (adjustments.global.bw_enabled > 0.5) {
+        let bw_w = adjustments.global.bw_weights;
+        let bw_s = bw_w.r + bw_w.g + bw_w.b;
+        let bw_wn = select(LUMA_COEFF, bw_w / bw_s, bw_s > 0.0001);
+        base_srgb = vec3<f32>(dot(base_srgb, bw_wn));
+    }
+
     // Film simulation (Krea): applied to the tonemapped sRGB image, before the
     // user's curves/LUT/grain so they stack on top of the film look.
     base_srgb = apply_film_look(base_srgb);
-
-    // Film grain (Krea PoC port). Deliberately separate from the native grain
-    // below (Effects section): different noise model (per-pixel fine grain +
-    // low-frequency clump, exposure mask, per-channel variation), not scaled by
-    // film_strength — it is part of the stock's look. Coords are divided by
-    // `scale` so the grain keeps a constant on-screen size in previews.
-    if (adjustments.global.film_grain_amount > 0.0) {
-        let g_amount = adjustments.global.film_grain_amount;
-        let g_size = adjustments.global.film_grain_size;
-        let px = vec2<f32>(absolute_coord_i) / scale;
-        let l = dot(base_srgb, vec3<f32>(0.299, 0.587, 0.114));
-        let grain_mask = clamp((1.0 - abs(l - 0.5) * 2.0) * 1.5, 0.3, 1.0);
-        let fine = hash(floor(px)) - 0.5;
-        let clump = film_value_noise(px * (1.0 / max(4.0, g_size * 10.0))) - 0.5;
-        let g = (fine * 0.75 + clump * 0.25) * g_amount;
-        let vr = (hash(px + vec2<f32>(173.0, 11.0)) - 0.5) * 2.0 * g_amount * 0.3;
-        let vg = (hash(px + vec2<f32>(311.0, 47.0)) - 0.5) * 2.0 * g_amount * 0.3;
-        let vb = (hash(px + vec2<f32>(97.0, 223.0)) - 0.5) * 2.0 * g_amount * 0.3;
-        base_srgb = clamp(base_srgb + vec3<f32>(g + vr, g + vg, g + vb) * grain_mask, vec3<f32>(0.0), vec3<f32>(1.0));
-    }
 
     var final_rgb = apply_all_curves(base_srgb,
         adjustments.global.luma_curve, adjustments.global.luma_curve_count,

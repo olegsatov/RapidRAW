@@ -17,6 +17,13 @@
       "toneMapper": "Tone Mapper",
       "whites": "Whites"
     },
+    "blackAndWhite": {
+      "auto": "Auto",
+      "blue": "Blue",
+      "green": "Green",
+      "mixer": "Mixer",
+      "red": "Red"
+    },
     "color": {
       "ariaSelectColor": "Select {{name}} color",
       "calibration": {
@@ -316,6 +323,7 @@
       },
       "sections": {
         "basic": "Basic",
+        "blackAndWhite": "Black & White",
         "color": "Color",
         "curves": "Curves",
         "details": "Details",
@@ -536,6 +544,29 @@
       "exporting": "Exporting…",
       "savesTo": "External edit — saves to"
     },
+    "film": {
+      "title": "Film",
+      "tonemapper": "Tonemapper",
+      "mappers": {
+        "basic": "Standard",
+        "agx": "AgX",
+        "flim": "Flim"
+      },
+      "preset": "Preset",
+      "presets": {
+        "default": "Default",
+        "nostalgia": "Nostalgia",
+        "silver": "Silver"
+      },
+      "ev": "Exposure (EV)",
+      "strength": "Strength",
+      "look": "Look",
+      "contrast": "Contrast",
+      "saturation": "Saturation",
+      "shoulder": "Shoulder",
+      "toe": "Toe",
+      "warmth": "Warmth"
+    },
     "masks": {
       "actions": {
         "addNewComponent": "Add New Component",
@@ -727,6 +758,7 @@
         "adjust": "Adjust",
         "crop": "Crop",
         "export": "Export",
+        "film": "Film",
         "info": "Info",
         "inpaint": "Inpaint",
         "masks": "Masks",
@@ -1105,6 +1137,7 @@
       "descMerge": "Adds your copied changes, leaving other settings untouched.",
       "descReplace": "Overwrites all selected settings, resetting the rest to their defaults.",
       "groups": {
+        "blackAndWhite": "Black & White",
         "chromaticAberration": "Chromatic Aberration",
         "clarityDehaze": "Clarity & Dehaze",
         "colorCalibration": "Color Calibration",

@@ -14,6 +14,7 @@ import MasksPanel from '../panel/right/MasksPanel';
 import AIPanel from '../panel/right/AIPanel';
 import PresetsPanel from '../panel/right/PresetsPanel';
 import ExportPanel from '../panel/right/ExportPanel';
+import FilmPanel from '../panel/right/FilmPanel';
 
 import { useEditorStore } from '../../store/useEditorStore';
 import { useUIStore } from '../../store/useUIStore';
@@ -216,6 +217,7 @@ export default function EditorView({
           {renderedRightPanel === Panel.Adjustments && <Controls />}
           {renderedRightPanel === Panel.Metadata && <MetadataPanel />}
           {renderedRightPanel === Panel.Crop && <CropPanel />}
+          {renderedRightPanel === Panel.Film && <FilmPanel />}
           {renderedRightPanel === Panel.Masks && <MasksPanel />}
           {renderedRightPanel === Panel.Presets && (
             <PresetsPanel

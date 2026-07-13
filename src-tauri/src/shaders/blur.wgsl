@@ -35,7 +35,10 @@ fn horizontal_blur(@builtin(global_invocation_id) id: vec3<u32>) {
 
     let absolute_coord = vec2<u32>(id.x + params.tile_offset_x, id.y + params.tile_offset_y);
     let full_dims = vec2<i32>(textureDimensions(input_texture));
-    let max_x = min(full_dims.x - 1, i32(params.clamp_x_max));
+    // NOTE: compare in u32 space. clamp_x_max may be u32::MAX ("use texture
+    // width"), and i32(u32::MAX) == -1 would make clamp(x, 0, -1) indeterminate
+    // (on Metal it pins every sample to column 0 — full-width streaks).
+    let max_x = min(u32(full_dims.x - 1), params.clamp_x_max);
 
     let center_color = clamp(textureLoad(input_texture, absolute_coord, 0).rgb, vec3(0.0), vec3(F16_MAX));
 
@@ -43,7 +46,7 @@ fn horizontal_blur(@builtin(global_invocation_id) id: vec3<u32>) {
     var total_weight = 0.0;
 
     for (var offset = -radius; offset <= radius; offset = offset + 1) {
-        let sample_x = clamp(i32(absolute_coord.x) + offset, 0, max_x);
+        let sample_x = clamp(i32(absolute_coord.x) + offset, 0, i32(max_x));
         let sample_coord = vec2<i32>(sample_x, i32(absolute_coord.y));
 
         let sample_color = clamp(textureLoad(input_texture, vec2<u32>(sample_coord), 0).rgb, vec3(0.0), vec3(F16_MAX));

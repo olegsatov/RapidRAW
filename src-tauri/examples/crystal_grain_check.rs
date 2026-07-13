@@ -24,6 +24,7 @@ fn main() {
         std: std_dev,
         seed: 1,
         monochrome: mono,
+        ..Default::default()
     };
     let t = std::time::Instant::now();
 

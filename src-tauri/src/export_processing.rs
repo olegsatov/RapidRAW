@@ -7,12 +7,13 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use image::codecs::jpeg::JpegEncoder;
-use image::{DynamicImage, GenericImageView, GrayImage, ImageBuffer, ImageFormat, Luma, imageops};
+use image::{DynamicImage, GenericImageView, GrayImage, ImageBuffer, ImageFormat, Luma, Rgba, imageops};
 use jxl_encoder::{LosslessConfig, LossyConfig, PixelLayout};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use tauri::Emitter;
 use tauri::Manager;
+use wgpu::util::{DeviceExt, TextureDataOrder};
 
 use crate::AppState;
 use crate::exif_processing;
@@ -327,9 +328,97 @@ pub(crate) fn process_image_for_export_pipeline(
             mask_bitmaps: &mask_bitmaps,
             lut,
             roi: None,
+            grain_mip_level: 0.0,
+            grain_coord_scale: 1.0,
         },
         debug_tag,
     )
+}
+
+/// Headless full-pipeline render for examples (no Tauri state/handle):
+/// load (RAW supported) -> optional long-side cap -> full GPU processing.
+/// Mirrors `process_image_for_export_pipeline` minus masks/LUT, the settings
+/// tonemapper override and the GPU caches — a fresh context and processor are
+/// created per call, so this is a verification harness, not a hot path.
+pub fn render_image_headless(
+    path: &str,
+    js_adjustments: &Value,
+    max_long_side: Option<u32>,
+) -> Result<DynamicImage, String> {
+    let settings = crate::AppSettings::default();
+    let bytes = fs::read(path).map_err(|e| e.to_string())?;
+    let base_image = load_and_composite(&bytes, path, js_adjustments, false, &settings, None)
+        .map_err(|e| format!("Failed to load image: {e}"))?;
+
+    // The loader has no preview size option; cap on the CPU after develop.
+    let base_image = match max_long_side {
+        Some(cap) if base_image.width().max(base_image.height()) > cap => {
+            let (w, h) = base_image.dimensions();
+            let scale = cap as f32 / w.max(h) as f32;
+            base_image.resize(
+                ((w as f32 * scale).round() as u32).max(1),
+                ((h as f32 * scale).round() as u32).max(1),
+                imageops::FilterType::Lanczos3,
+            )
+        }
+        _ => base_image,
+    };
+
+    let (transformed_image, _) =
+        apply_all_transformations(Cow::Borrowed(&base_image), js_adjustments);
+    let (width, height) = transformed_image.dimensions();
+    let is_raw = is_raw_file(path);
+    let mut all_adjustments = get_all_adjustments_from_json(js_adjustments, is_raw, None);
+    all_adjustments.global.show_clipping = 0;
+
+    let context = crate::gpu_processing::init_headless_gpu_context()?;
+    let processor = crate::gpu_processing::GpuProcessor::new(
+        context.clone(),
+        (width + 255) & !255,
+        (height + 255) & !255,
+    )?;
+
+    let img_rgba_f16 = crate::gpu_processing::to_rgba_f16(transformed_image.as_ref());
+    let input_texture = context.device.create_texture_with_data(
+        &context.queue,
+        &wgpu::TextureDescriptor {
+            label: Some("Headless Input Texture"),
+            size: wgpu::Extent3d {
+                width,
+                height,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: wgpu::TextureFormat::Rgba16Float,
+            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+            view_formats: &[],
+        },
+        TextureDataOrder::MipMajor,
+        bytemuck::cast_slice(&img_rgba_f16),
+    );
+    let input_view = input_texture.create_view(&wgpu::TextureViewDescriptor::default());
+
+    let (pixels, out_w, out_h, _, _) = processor.run(
+        &input_view,
+        width,
+        height,
+        RenderRequest {
+            adjustments: all_adjustments,
+            mask_bitmaps: &[],
+            lut: None,
+            roi: None,
+            grain_mip_level: 0.0,
+            grain_coord_scale: 1.0,
+        },
+        false,
+        false,
+    )?;
+
+    let img_buf = ImageBuffer::<Rgba<u8>, Vec<u8>>::from_raw(out_w, out_h, pixels)
+        .ok_or("Failed to create image buffer from GPU data")?;
+    Ok(DynamicImage::ImageRgba8(img_buf))
 }
 
 fn set_timestamps_from_exif(src: &Path, dst: &Path) {
@@ -597,6 +686,8 @@ fn export_masks_for_image(
                     mask_bitmaps: &single_bitmaps,
                     lut: lut.clone(),
                     roi: None,
+                    grain_mip_level: 0.0,
+                    grain_coord_scale: 1.0,
                 },
                 "export_mask_image",
             )?;
@@ -690,6 +781,8 @@ fn export_adjustments_as_lut(
             mask_bitmaps: &[],
             lut,
             roi: None,
+            grain_mip_level: 0.0,
+            grain_coord_scale: 1.0,
         },
         "export_lut",
     )?;
@@ -1176,6 +1269,8 @@ pub async fn estimate_export_sizes(
                 mask_bitmaps: &mask_bitmaps,
                 lut,
                 roi: None,
+                grain_mip_level: 0.0,
+                grain_coord_scale: 1.0,
             },
             "estimate_export_size",
         )?;
@@ -1314,6 +1409,8 @@ pub async fn estimate_export_sizes(
                 mask_bitmaps: &mask_bitmaps,
                 lut,
                 roi: None,
+                grain_mip_level: 0.0,
+                grain_coord_scale: 1.0,
             },
             "estimate_batch_export_size",
         )?;

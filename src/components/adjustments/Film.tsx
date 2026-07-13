@@ -21,7 +21,8 @@ interface FilmPanelProps {
 // Film simulation section (port of the Krea WebGL2 film PoC "Film look"
 // group). Per-pixel dials (temp/tint/contrast/saturation/shadows/highlights/
 // rolloff/bleed/cross) live in the WGSL film block; blur and chroma drive a
-// dedicated post-pass; grain is the PoC film grain (separate from the native
+// dedicated post-pass; grain comes from the crystal/IPOL engines below (the
+// PoC's procedural grain was removed to avoid double grain with the native
 // Effects grain); halation/vignette are the native RapidRAW dials, mirrored
 // here because they are part of a stock's look.
 export default function FilmPanel({ adjustments, setAdjustments, onDragStateChange }: FilmPanelProps) {
@@ -45,7 +46,6 @@ export default function FilmPanel({ adjustments, setAdjustments, onDragStateChan
     size: 5,
     layers: 30,
     std: 0.5,
-    monochrome: false,
   });
 
   useEffect(() => {
@@ -78,7 +78,9 @@ export default function FilmPanel({ adjustments, setAdjustments, onDragStateChan
 
   // Realtime preview: rebake the grain field (debounced) whenever the crystal
   // parameters change. The field is a flat-field render of the model, so the
-  // mono flag and strength don't affect it (they are shader-side).
+  // mono flag and strength don't affect it (they are shader-side). The
+  // `crystal-grain-baked` listener in useTauriListeners bumps the store's
+  // renderGeneration, which re-renders the image with the fresh texture.
   useEffect(() => {
     const timer = setTimeout(() => {
       invoke('bake_crystal_grain_field', {
@@ -87,16 +89,6 @@ export default function FilmPanel({ adjustments, setAdjustments, onDragStateChan
     }, 400);
     return () => clearTimeout(timer);
   }, [xtalOpts.filling, xtalOpts.size, xtalOpts.layers, xtalOpts.std]);
-
-  // A fresh baked texture needs a re-render to become visible.
-  useEffect(() => {
-    const unBaked = listen('crystal-grain-baked', () => {
-      setAdjustments((prev: Partial<Adjustments>) => ({ ...prev }));
-    });
-    return () => {
-      unBaked.then((f) => f());
-    };
-  }, [setAdjustments]);
 
   const handleAdjustmentChange = (key: string, value: string) => {
     const numericValue = parseInt(value, 10);
@@ -134,10 +126,19 @@ export default function FilmPanel({ adjustments, setAdjustments, onDragStateChan
     if (!selectedImage?.path || xtalRendering) return;
     setXtalRendering(true);
     try {
+      // Export honors the realtime amount slider, so the saved file matches
+      // the preview. Slider at 0 means "realtime preview off" — fall back to
+      // the full-strength export (Rust default) instead of a clean image.
+      const amount = ((adjustments.crystalGrainAmount as number) ?? 0) / 100;
       await invoke('render_crystal_grain', {
         path: selectedImage.path,
         adjustments,
-        options: { ...xtalOpts, seed: 1 },
+        options: {
+          ...xtalOpts,
+          seed: 1,
+          monochrome: !!adjustments.crystalGrainMono,
+          ...(amount > 0 ? { amount } : {}),
+        },
         preview,
       });
     } catch (e) {
@@ -263,32 +264,6 @@ export default function FilmPanel({ adjustments, setAdjustments, onDragStateChan
           step={1}
           value={adjustments.filmHighlights}
           onDragStateChange={onDragStateChange}
-        />
-      </div>
-
-      <div className="p-2 bg-bg-tertiary rounded-md">
-        <Text variant={TextVariants.heading} className="mb-2">
-          {t('adjustments.effects.grain')}
-        </Text>
-        <Slider
-          label={t('adjustments.effects.amount')}
-          max={100}
-          min={0}
-          onChange={(e: any) => handleAdjustmentChange(FilmAdjustment.FilmGrainAmount, e.target.value)}
-          step={1}
-          value={adjustments.filmGrainAmount}
-          onDragStateChange={onDragStateChange}
-        />
-        <Slider
-          defaultValue={50}
-          label={t('adjustments.effects.size')}
-          max={100}
-          min={0}
-          onChange={(e: any) => handleAdjustmentChange(FilmAdjustment.FilmGrainSize, e.target.value)}
-          step={1}
-          value={adjustments.filmGrainSize}
-          onDragStateChange={onDragStateChange}
-          fillOrigin="min"
         />
       </div>
 
@@ -472,20 +447,14 @@ export default function FilmPanel({ adjustments, setAdjustments, onDragStateChan
             value={adjustments.crystalGrainAmount}
             onDragStateChange={onDragStateChange}
           />
-          <Switch
-            id="switch-grain-mono-rt"
-            label={t('adjustments.effects.grainMonochrome')}
-            checked={!!adjustments.crystalGrainMono}
-            onChange={(v: boolean) =>
-              setAdjustments((prev: Partial<Adjustments>) => ({ ...prev, crystalGrainMono: v ? 1 : 0 }))
-            }
-          />
         </div>
         <Switch
           id="switch-grain-mono-xtal"
           label={t('adjustments.effects.grainMonochrome')}
-          checked={xtalOpts.monochrome}
-          onChange={(v: boolean) => setXtalOpts((prev) => ({ ...prev, monochrome: v }))}
+          checked={!!adjustments.crystalGrainMono}
+          onChange={(v: boolean) =>
+            setAdjustments((prev: Partial<Adjustments>) => ({ ...prev, crystalGrainMono: v ? 1 : 0 }))
+          }
         />
         <div className="flex gap-2">
           <Button

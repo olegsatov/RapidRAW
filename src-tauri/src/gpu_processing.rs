@@ -26,6 +26,18 @@ pub struct RenderRequest<'a> {
     pub mask_bitmaps: &'a [ImageBuffer<Luma<u8>, Vec<u8>>],
     pub lut: Option<Arc<Lut>>,
     pub roi: Option<Roi>,
+    /// Mip level of the baked crystal grain field matching this render's
+    /// downscale: log2(full_res_px / processed_px), 0 for full-res renders.
+    /// Makes the realtime grain preview show the grain as it would look on
+    /// the exported file viewed at the same on-screen size (downscaling
+    /// averages grain out — a box mip is exactly that averaging filter).
+    pub grain_mip_level: f32,
+    /// Full-res px per processed px (1/effective_scale; 1.0 for full-res
+    /// renders). The baked grain field is authored in full-res pixel units
+    /// (the export samples it 1:1), so preview renders must sample it in
+    /// full-image coordinates — otherwise the grain pattern stretches with
+    /// the downscale and mip averaging produces blotches instead of grain.
+    pub grain_coord_scale: f32,
 }
 
 #[repr(C)]
@@ -407,10 +419,51 @@ pub fn get_or_init_gpu_context(
         queue: Arc::new(queue),
         limits,
         display: Arc::new(std::sync::Mutex::new(display_opt)),
-        crystal_grain_view: None,
+        crystal_grain_view: Arc::new(std::sync::Mutex::new(None)),
     };
     *context_lock = Some(new_context.clone());
     Ok(new_context)
+}
+
+/// Compute-only GPU context for headless use (examples): instance, adapter
+/// and device exactly as in `get_or_init_gpu_context`, but without the Tauri
+/// state, window surface and GPU-crash-flag handling.
+pub(crate) fn init_headless_gpu_context() -> Result<GpuContext, String> {
+    let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle_from_env());
+
+    let adapter = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
+        power_preference: wgpu::PowerPreference::HighPerformance,
+        ..Default::default()
+    }))
+    .map_err(|e| format!("Failed to find a wgpu adapter: {}", e))?;
+
+    let mut required_features = wgpu::Features::empty();
+    if adapter
+        .features()
+        .contains(wgpu::Features::TEXTURE_ADAPTER_SPECIFIC_FORMAT_FEATURES)
+    {
+        required_features |= wgpu::Features::TEXTURE_ADAPTER_SPECIFIC_FORMAT_FEATURES;
+    }
+
+    let limits = adapter.limits();
+
+    let (device, queue) = pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
+        label: Some("Headless Processing Device"),
+        required_features,
+        required_limits: limits.clone(),
+        experimental_features: wgpu::ExperimentalFeatures::default(),
+        memory_hints: wgpu::MemoryHints::Performance,
+        trace: wgpu::Trace::Off,
+    }))
+    .map_err(|e| e.to_string())?;
+
+    Ok(GpuContext {
+        device: Arc::new(device),
+        queue: Arc::new(queue),
+        limits,
+        display: Arc::new(std::sync::Mutex::new(None)),
+        crystal_grain_view: Arc::new(std::sync::Mutex::new(None)),
+    })
 }
 
 fn read_texture_data_roi(
@@ -486,7 +539,7 @@ fn read_texture_data_roi(
     }
 }
 
-fn to_rgba_f16(img: &DynamicImage) -> Vec<f16> {
+pub(crate) fn to_rgba_f16(img: &DynamicImage) -> Vec<f16> {
     let rgba_f32 = img.to_rgba32f();
     rgba_f32.into_raw().into_iter().map(f16::from_f32).collect()
 }
@@ -517,8 +570,11 @@ struct FilmPostParams {
     grain_amount: f32, // crystal grain strength mix 0..1 (0 = off)
     grain_tile: f32,   // baked grain field tile size (px)
     grain_mono: f32,   // 1 = single shared field (B&W), 0 = per-channel
-    _pad1: f32,
-    _pad2: f32,
+    grain_level: f32,  // mip level matching the render downscale (log2(full/processed))
+    grain_coord_scale: f32, // full-res px per processed px (grain sampled in full-image coords)
+    _pad3: f32,
+    _pad4: f32,
+    _pad5: f32,
 }
 
 #[repr(C)]
@@ -572,6 +628,8 @@ pub struct GpuProcessor {
     /// 1×1 fallback grain field (G = 1 = no-op), used until the first
     /// crystal grain bake lands in `context.crystal_grain_view`.
     dummy_grain_view: wgpu::TextureView,
+    /// Linear + mirror-repeat sampler for the mipmapped grain field.
+    grain_sampler: wgpu::Sampler,
 
     pub tile_output_texture: wgpu::Texture,
     pub tile_output_texture_view: wgpu::TextureView,
@@ -698,15 +756,22 @@ impl GpuProcessor {
                     },
                     count: None,
                 },
-                // Baked crystal grain coverage field (Pierre), rgba16float.
+                // Baked crystal grain coverage field (Pierre), rgba16float,
+                // mipmapped: the mip level emulates downscale averaging.
                 wgpu::BindGroupLayoutEntry {
                     binding: 3,
                     visibility: wgpu::ShaderStages::COMPUTE,
                     ty: wgpu::BindingType::Texture {
-                        sample_type: wgpu::TextureSampleType::Float { filterable: false },
+                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
                         view_dimension: wgpu::TextureViewDimension::D2,
                         multisampled: false,
                     },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 4,
+                    visibility: wgpu::ShaderStages::COMPUTE,
+                    ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
                     count: None,
                 },
             ],
@@ -1158,6 +1223,20 @@ impl GpuProcessor {
         );
         let dummy_grain_view = dummy_grain_texture.create_view(&Default::default());
 
+        // Grain field sampler: linear + mirror repeat + full mip range.
+        // Mirror wrap matches the old manual mirror_idx (numpy 'symm');
+        // trilinear across mips keeps zoom changes smooth.
+        let grain_sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+            label: Some("Crystal Grain Sampler"),
+            address_mode_u: wgpu::AddressMode::MirrorRepeat,
+            address_mode_v: wgpu::AddressMode::MirrorRepeat,
+            address_mode_w: wgpu::AddressMode::MirrorRepeat,
+            mag_filter: wgpu::FilterMode::Linear,
+            min_filter: wgpu::FilterMode::Linear,
+            mipmap_filter: wgpu::MipmapFilterMode::Linear,
+            ..Default::default()
+        });
+
         let tile_output_texture = device.create_texture(&wgpu::TextureDescriptor {
             label: Some("Tile Output Texture"),
             size: max_tile_size,
@@ -1235,6 +1314,7 @@ impl GpuProcessor {
             film_post_texture,
             film_post_view,
             dummy_grain_view,
+            grain_sampler,
             tile_output_texture,
             tile_output_texture_view,
             working_texture,
@@ -1575,6 +1655,7 @@ impl GpuProcessor {
                 let did_create_clarity_blur = run_blur(8.0, &self.clarity_blur_view);
                 let did_create_structure_blur = run_blur(40.0, &self.structure_blur_view);
 
+
                 let mut main_encoder = device.create_command_encoder(&Default::default());
 
                 let mut tile_adjustments = adjustments;
@@ -1791,8 +1872,11 @@ impl GpuProcessor {
                         grain_amount: crystal_grain,
                         grain_tile: crate::crystal_grain::GRAIN_FIELD_TILE as f32,
                         grain_mono: adjustments.global.crystal_grain_mono,
-                        _pad1: 0.0,
-                        _pad2: 0.0,
+                        grain_level: request.grain_mip_level,
+                        grain_coord_scale: request.grain_coord_scale,
+                        _pad3: 0.0,
+                        _pad4: 0.0,
+                        _pad5: 0.0,
                     };
                     queue.write_buffer(
                         &self.film_post_params_buffer,
@@ -1800,6 +1884,10 @@ impl GpuProcessor {
                         bytemuck::bytes_of(&post_params),
                     );
 
+                    // Read the CURRENT baked grain field: the bake command
+                    // swaps it behind the shared mutex, and this processor's
+                    // context is only a clone (see GpuContext docs).
+                    let grain_view_lock = self.context.crystal_grain_view.lock().unwrap();
                     let post_bg = device.create_bind_group(&wgpu::BindGroupDescriptor {
                         label: Some("Film Post BG"),
                         layout: &self.film_post_bgl,
@@ -1823,14 +1911,16 @@ impl GpuProcessor {
                             wgpu::BindGroupEntry {
                                 binding: 3,
                                 resource: wgpu::BindingResource::TextureView(
-                                    self.context
-                                        .crystal_grain_view
-                                        .as_ref()
-                                        .unwrap_or(&self.dummy_grain_view),
+                                    grain_view_lock.as_ref().unwrap_or(&self.dummy_grain_view),
                                 ),
+                            },
+                            wgpu::BindGroupEntry {
+                                binding: 4,
+                                resource: wgpu::BindingResource::Sampler(&self.grain_sampler),
                             },
                         ],
                     });
+                    drop(grain_view_lock);
 
                     {
                         let mut cpass = main_encoder.begin_compute_pass(&Default::default());

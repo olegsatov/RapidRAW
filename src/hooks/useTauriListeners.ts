@@ -240,6 +240,14 @@ export function useTauriListeners({
           useEditorStore.getState().setEditor({ hasRenderedFirstFrame: true });
         }
       }),
+      // A freshly baked crystal grain texture lives outside `adjustments`, so
+      // bump the render generation to make the new grain visible immediately
+      // (no fake adjustments update → no undo-history pollution).
+      listen('crystal-grain-baked', () => {
+        if (isEffectActive) {
+          useEditorStore.getState().setEditor((state) => ({ renderGeneration: state.renderGeneration + 1 }));
+        }
+      }),
       listen('panorama-progress', (event: any) => {
         if (isEffectActive) {
           useUIStore.getState().setUI((state) => {

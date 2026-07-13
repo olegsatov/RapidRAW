@@ -1449,6 +1449,11 @@ pub fn generate_thumbnail_data(
                 mask_bitmaps: &mask_bitmaps,
                 lut,
                 roi: None,
+                // Gallery thumbnail: show grain as the export looks at this
+                // size — anchored full-res coords + downscale-matched mip
+                // (at ~720px this averages fine grain out, as it should).
+                grain_mip_level: crate::image_processing::grain_mip_level_from_scale(total_scale),
+                grain_coord_scale: if total_scale > 0.0 { 1.0 / total_scale } else { 1.0 },
             },
             "generate_thumbnail_data",
         ) {

@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import clsx from 'clsx';
 import { useTranslation } from 'react-i18next';
 import BasicAdjustments from '../../adjustments/Basic';
+import BlackAndWhitePanel from '../../adjustments/BlackAndWhite';
 import CurveGraph from '../../adjustments/Curves';
 import ColorPanel from '../../adjustments/Color';
 import DetailsPanel from '../../adjustments/Details';
@@ -280,6 +281,7 @@ export default function Controls() {
             color: ColorPanel,
             details: DetailsPanel,
             effects: EffectsPanel,
+            blackAndWhite: BlackAndWhitePanel,
             film: FilmPanel,
           }[sectionName];
 

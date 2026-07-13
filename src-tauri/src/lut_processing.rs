@@ -582,6 +582,8 @@ fn render_lut_swatch(
             mask_bitmaps: &[],
             lut: Some(lut),
             roi: None,
+            grain_mip_level: 0.0,
+            grain_coord_scale: 1.0,
         },
         "generate_lut_previews",
     )

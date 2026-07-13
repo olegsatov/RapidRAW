@@ -61,6 +61,17 @@ pub struct CrystalGrainOptions {
     /// Render one shared emulsion stack from the luma (B&W film behaviour,
     /// 3× faster) instead of three decorrelated channel stacks.
     pub monochrome: bool,
+    /// Grain strength mix 0..1 applied at export time — the exact same
+    /// `mix(clean, grained, amount)` the realtime shader performs, so the
+    /// exported file matches the realtime preview. NOT used by the bake
+    /// (the baked field must stay full-strength; amount is shader-side).
+    /// Defaults to 1.0 when omitted (old behaviour: full-strength export).
+    #[serde(default = "default_amount")]
+    pub amount: f32,
+}
+
+fn default_amount() -> f32 {
+    1.0
 }
 
 impl Default for CrystalGrainOptions {
@@ -72,6 +83,7 @@ impl Default for CrystalGrainOptions {
             std: 0.5,
             seed: 1,
             monochrome: false,
+            amount: 1.0,
         }
     }
 }
@@ -390,6 +402,21 @@ pub fn apply_crystal_grain_rgb(
 // crystal grain model and save it as a new file next to the original.
 // ---------------------------------------------------------------------------
 
+/// Blend the rendered grain with the clean image by `amount` — the exact
+/// same `mix(clean, clamp(grained, 0..1), amount)` the realtime shader
+/// performs in film_post.wgsl, so the exported file matches the preview.
+fn mix_grain_amount(clean: &Rgb32FImage, grained: &mut Rgb32FImage, amount: f32) {
+    if amount >= 1.0 {
+        return;
+    }
+    for (g, c) in grained.pixels_mut().zip(clean.pixels()) {
+        for ch in 0..3 {
+            let v = g[ch].clamp(0.0, 1.0);
+            g[ch] = c[ch] + (v - c[ch]) * amount;
+        }
+    }
+}
+
 #[tauri::command]
 pub async fn render_crystal_grain(
     path: String,
@@ -417,7 +444,8 @@ pub async fn render_crystal_grain(
                 "Rendering crystal grain: channel 1/3",
             );
             let rgb = processed.to_rgb32f();
-            let grained = apply_crystal_grain_rgb(&rgb, &opts, Some(&app_handle));
+            let mut grained = apply_crystal_grain_rgb(&rgb, &opts, Some(&app_handle));
+            mix_grain_amount(&rgb, &mut grained, opts.amount.clamp(0.0, 1.0));
 
             let mut buf = Cursor::new(Vec::new());
             DynamicImage::ImageRgb32F(grained)
@@ -438,7 +466,8 @@ pub async fn render_crystal_grain(
             "Rendering crystal grain: channel 1/3",
         );
         let rgb = processed.to_rgb32f();
-        let grained = apply_crystal_grain_rgb(&rgb, &opts, Some(&app_handle));
+        let mut grained = apply_crystal_grain_rgb(&rgb, &opts, Some(&app_handle));
+        mix_grain_amount(&rgb, &mut grained, opts.amount.clamp(0.0, 1.0));
 
         let source_str = source_path.to_string_lossy().to_string();
         let parent_dir = source_path.parent().unwrap_or_else(|| std::path::Path::new(""));
@@ -481,11 +510,15 @@ pub async fn render_crystal_grain(
 /// seamlessly; must match `grain_tile` in the film post-pass params.
 pub const GRAIN_FIELD_TILE: usize = 1024;
 
-/// Bake the mean-normalized coverage field G into an RGBA16F buffer
-/// (three decorrelated fields in RGB, alpha = 1). G is clamped to [0, 32]
+/// Bake the mean-normalized coverage field G into one RGBA16F buffer per
+/// mip level (level 0 = full tile, then box-downsampled 2×2 down to 1×1;
+/// three decorrelated fields in RGB, alpha = 1). G is clamped to [0, 32]
 /// (f16-friendly); each channel is normalized to mean exactly 1 before
-/// clamping, so the preview preserves the average brightness.
-pub fn bake_grain_field(opts: &CrystalGrainOptions, tile: usize) -> Vec<half::f16> {
+/// clamping, so the preview preserves the average brightness. The mip chain
+/// emulates downscaling: a box 2×2 average is exactly the filter that
+/// shrinking a grained image applies to the grain, so sampling mip
+/// log2(full/processed) shows grain as the export looks at that size.
+pub fn bake_grain_field(opts: &CrystalGrainOptions, tile: usize) -> Vec<Vec<half::f16>> {
     let mut flat = Rgb32FImage::new(tile as u32, tile as u32);
     for p in flat.pixels_mut() {
         *p = Rgb([0.5, 0.5, 0.5]);
@@ -506,15 +539,39 @@ pub fn bake_grain_field(opts: &CrystalGrainOptions, tile: usize) -> Vec<half::f1
         *m = (*m / n).max(1e-6);
     }
 
-    let mut buf = Vec::with_capacity(tile * tile * 4);
+    // Level 0 in f32 (clamped, alpha = 1); mips are box averages of it.
+    let mut level: Vec<f32> = Vec::with_capacity(tile * tile * 4);
     for p in out.pixels() {
         for c in 0..3 {
-            let g = ((4.0 * p[c] - 1.0) / mean[c]).clamp(0.0, 32.0);
-            buf.push(half::f16::from_f32(g));
+            level.push(((4.0 * p[c] - 1.0) / mean[c]).clamp(0.0, 32.0));
         }
-        buf.push(half::f16::from_f32(1.0));
+        level.push(1.0);
     }
-    buf
+
+    let mut mips = Vec::new();
+    let mut w = tile;
+    loop {
+        mips.push(level.iter().map(|&v| half::f16::from_f32(v)).collect());
+        if w == 1 {
+            break;
+        }
+        let hw = w / 2;
+        let mut next = vec![0.0f32; hw * hw * 4];
+        for y in 0..hw {
+            for x in 0..hw {
+                for c in 0..4 {
+                    let a = level[(y * 2 * w + x * 2) * 4 + c];
+                    let b = level[(y * 2 * w + x * 2 + 1) * 4 + c];
+                    let d = level[((y * 2 + 1) * w + x * 2) * 4 + c];
+                    let e = level[((y * 2 + 1) * w + x * 2 + 1) * 4 + c];
+                    next[(y * hw + x) * 4 + c] = (a + b + d + e) * 0.25;
+                }
+            }
+        }
+        level = next;
+        w = hw;
+    }
+    mips
 }
 
 /// Tauri command: bake the crystal grain field on the CPU and upload it as
@@ -528,7 +585,7 @@ pub async fn bake_crystal_grain_field(
     tokio::task::spawn_blocking(move || {
         let opts = options.unwrap_or_default();
         let tile = GRAIN_FIELD_TILE;
-        let data = bake_grain_field(&opts, tile);
+        let mips = bake_grain_field(&opts, tile);
 
         let state = app_handle.state::<AppState>();
         // Make sure the GPU context exists before we lock it for the swap.
@@ -536,37 +593,44 @@ pub async fn bake_crystal_grain_field(
         let mut lock = state.gpu_context.lock().map_err(|e| e.to_string())?;
         let ctx = lock.as_mut().ok_or("GPU context not initialized")?;
 
-        let size = wgpu::Extent3d {
-            width: tile as u32,
-            height: tile as u32,
-            depth_or_array_layers: 1,
-        };
         let texture = ctx.device.create_texture(&wgpu::TextureDescriptor {
             label: Some("Crystal Grain Field"),
-            size,
-            mip_level_count: 1,
+            size: wgpu::Extent3d {
+                width: tile as u32,
+                height: tile as u32,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: mips.len() as u32,
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
             format: wgpu::TextureFormat::Rgba16Float,
             usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
             view_formats: &[],
         });
-        ctx.queue.write_texture(
-            wgpu::TexelCopyTextureInfo {
-                texture: &texture,
-                mip_level: 0,
-                origin: wgpu::Origin3d::ZERO,
-                aspect: wgpu::TextureAspect::All,
-            },
-            bytemuck::cast_slice(&data),
-            wgpu::TexelCopyBufferLayout {
-                offset: 0,
-                bytes_per_row: Some((tile * 4 * 2) as u32),
-                rows_per_image: Some(tile as u32),
-            },
-            size,
-        );
-        ctx.crystal_grain_view = Some(texture.create_view(&Default::default()));
+        for (level, data) in mips.iter().enumerate() {
+            let dim = (tile >> level) as u32;
+            ctx.queue.write_texture(
+                wgpu::TexelCopyTextureInfo {
+                    texture: &texture,
+                    mip_level: level as u32,
+                    origin: wgpu::Origin3d::ZERO,
+                    aspect: wgpu::TextureAspect::All,
+                },
+                bytemuck::cast_slice(data),
+                wgpu::TexelCopyBufferLayout {
+                    offset: 0,
+                    bytes_per_row: Some(dim * 4 * 2),
+                    rows_per_image: Some(dim),
+                },
+                wgpu::Extent3d {
+                    width: dim,
+                    height: dim,
+                    depth_or_array_layers: 1,
+                },
+            );
+        }
+        *ctx.crystal_grain_view.lock().map_err(|e| e.to_string())? =
+            Some(texture.create_view(&Default::default()));
         drop(lock);
 
         let _ = app_handle.emit("crystal-grain-baked", "");
@@ -749,7 +813,9 @@ mod tests {
     }
 
     /// The baked field must be mean-normalized per channel (brightness
-    /// preserving), in range, and deterministic.
+    /// preserving), in range, and deterministic. The mip chain must preserve
+    /// the mean (box averaging of a power-of-two tile is lossless) and lose
+    /// variance monotonically — it is the downscale-averaging model.
     #[test]
     fn bake_is_normalized_and_deterministic() {
         let opts = CrystalGrainOptions {
@@ -762,23 +828,36 @@ mod tests {
         let tile = 64usize;
         let a = bake_grain_field(&opts, tile);
         let b = bake_grain_field(&opts, tile);
-        assert_eq!(a.len(), tile * tile * 4);
+        assert_eq!(a.len(), tile.ilog2() as usize + 1);
+        assert_eq!(a[0].len(), tile * tile * 4);
         assert_eq!(a, b);
-
-        let n = (tile * tile) as f32;
-        for c in 0..3 {
-            let mean: f32 = (0..tile * tile)
-                .map(|i| a[i * 4 + c].to_f32())
-                .sum::<f32>()
-                / n;
-            assert!(
-                (mean - 1.0).abs() < 0.05,
-                "channel {c}: mean {mean} (expected ~1)"
-            );
+        for (level, buf) in a.iter().enumerate() {
+            let dim = tile >> level;
+            assert_eq!(buf.len(), dim * dim * 4, "level {level} size");
         }
-        for &v in &a {
-            let f = v.to_f32();
-            assert!((0.0..=32.0).contains(&f), "out of range: {f}");
+
+        let level_mean_var = |buf: &[half::f16], c: usize| {
+            let n = (buf.len() / 4) as f32;
+            let mean = (0..buf.len() / 4).map(|i| buf[i * 4 + c].to_f32()).sum::<f32>() / n;
+            let var =
+                (0..buf.len() / 4).map(|i| (buf[i * 4 + c].to_f32() - mean).powi(2)).sum::<f32>()
+                    / n;
+            (mean, var)
+        };
+
+        for c in 0..3 {
+            let (mean0, var0) = level_mean_var(&a[0], c);
+            assert!((mean0 - 1.0).abs() < 0.05, "channel {c}: mean {mean0} (expected ~1)");
+            // The 1x1 last mip is the global mean: box averaging preserves it.
+            let (mean_last, var_last) = level_mean_var(a.last().unwrap(), c);
+            assert!((mean_last - 1.0).abs() < 0.02, "channel {c}: last mip {mean_last}");
+            assert!(var_last < var0, "channel {c}: variance must shrink with mips");
+        }
+        for buf in &a {
+            for &v in buf {
+                let f = v.to_f32();
+                assert!((0.0..=32.0).contains(&f), "out of range: {f}");
+            }
         }
     }
 
@@ -796,5 +875,34 @@ mod tests {
         let white = vec![1.0f32; w * h];
         let out = render_crystal_grain_channel(&white, w, h, &opts, None);
         assert!(out.iter().all(|&v| (v - 1.0).abs() < 1e-6));
+    }
+
+    #[test]
+    fn export_mix_respects_amount() {
+        let mut clean = Rgb32FImage::new(2, 1);
+        clean.put_pixel(0, 0, Rgb([0.2, 0.4, 0.6]));
+        clean.put_pixel(1, 0, Rgb([0.5, 0.5, 0.5]));
+
+        // amount = 1: passthrough (clamp only).
+        let mut g = clean.clone();
+        g.put_pixel(0, 0, Rgb([0.0, 1.0, 0.9]));
+        mix_grain_amount(&clean, &mut g, 1.0);
+        assert_eq!(g.get_pixel(0, 0).0, [0.0, 1.0, 0.9]);
+
+        // amount = 0: fully clean image.
+        let mut g = clean.clone();
+        g.put_pixel(0, 0, Rgb([0.0, 1.0, 0.9]));
+        mix_grain_amount(&clean, &mut g, 0.0);
+        assert_eq!(g.get_pixel(0, 0).0, [0.2, 0.4, 0.6]);
+        assert_eq!(g.get_pixel(1, 0).0, [0.5, 0.5, 0.5]);
+
+        // amount = 0.5: exact midpoint (same mix as the shader).
+        let mut g = clean.clone();
+        g.put_pixel(0, 0, Rgb([0.0, 1.0, 0.9]));
+        mix_grain_amount(&clean, &mut g, 0.5);
+        let p = g.get_pixel(0, 0).0;
+        assert!((p[0] - 0.1).abs() < 1e-6);
+        assert!((p[1] - 0.7).abs() < 1e-6);
+        assert!((p[2] - 0.75).abs() < 1e-6);
     }
 }

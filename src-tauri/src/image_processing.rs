@@ -1526,8 +1526,15 @@ pub struct GlobalAdjustments {
     pub film_highlights: f32,
     pub film_blur: f32,
     pub film_chroma: f32,
-    pub film_grain_amount: f32,
-    pub film_grain_size: f32,
+
+    // Alignment padding: in WGSL the next member (bw_weights: vec3<f32>) must
+    // start at a 16-byte boundary, and naga inserts these 8 bytes implicitly.
+    // Mirror them explicitly so the bytemuck upload matches.
+    pub _pad_bw_align: [f32; 2],
+
+    // Black & white conversion — layout MUST match shader.wgsl.
+    // xyz = channel weights (0..1, normalized in the shader), w = enabled flag.
+    pub bw_weights: [f32; 4],
 
     // Crystal grain (Pierre) realtime preview — baked coverage field sampled
     // in the film post-pass. amount 0..1 (strength mix), mono 0/1, 2 pads.
@@ -1536,6 +1543,30 @@ pub struct GlobalAdjustments {
     pub crystal_grain_mono: f32,
     _pad_crystal1: f32,
     _pad_crystal2: f32,
+
+    // flim (Filmic Color Transform) port — github.com/bean-mhm/flim (AGPLv3).
+    // All preset-derived constants are baked at adjustment-parse time; the
+    // shader only applies them. Layout MUST match shader.wgsl GlobalAdjustments.
+    pub flim_extend_mat: GpuMat3,
+    pub flim_extend_mat_inv: GpuMat3,
+    pub flim_backlight: [f32; 3],    // print backlight in the extended gamut
+    pub flim_black_cap_luma: f32,    // auto: luma of developed black / white cap; else preset black point / 1000
+    pub flim_white_cap: [f32; 3],    // negative_and_print([1e7; 3])
+    pub flim_sigmoid_log2_max: f32,  // log2_min is hardcoded to -10
+    pub flim_pre_filter: [f32; 3],
+    pub flim_pre_filter_strength: f32,
+    pub flim_post_filter: [f32; 3],
+    pub flim_post_filter_strength: f32,
+    pub flim_neg_exposure: f32,
+    pub flim_neg_density: f32,
+    pub flim_print_exposure: f32,
+    pub flim_print_density: f32,
+    pub flim_midtone_saturation: f32,
+    pub flim_ev: f32,                // preset pre-exposure + user EV offset
+    pub flim_strength: f32,          // 0..1 mix against the non-AgX base look
+    _pad_flim_end: f32,
+    pub flim_warmth: [f32; 3],       // per-channel gain along the daylight locus (pre-sigmoid)
+    _pad_flim_end2: f32,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, Pod, Zeroable, Default)]
@@ -2105,6 +2136,339 @@ fn parse_film_curves(value: &serde_json::Value) -> [[[f32; 4]; 16]; 16] {
     out
 }
 
+// ---------------------------------------------------------------------------
+// flim — Filmic Color Transform, ported from github.com/bean-mhm/flim
+// (AGPLv3, same license as this project). The preset table below mirrors
+// preset_default / preset_nostalgia / preset_silver from flim's main.py
+// verbatim. Everything preset-dependent (extended-gamut matrices, backlight
+// in the extended gamut, white/black caps) is baked here at parse time so
+// the WGSL port only applies uniforms. The sigmoid shape (toe .44/.28,
+// shoulder .591/.779) and log2_min = -10 are shared by all presets and are
+// hardcoded in both ports.
+// ---------------------------------------------------------------------------
+
+// flim's luminance weights [.3, .5, .2] already sum to 1.
+const FLIM_LUMA_WEIGHTS: [f32; 3] = [0.3, 0.5, 0.2];
+const FLIM_LOG2_MIN: f32 = -10.0;
+const FLIM_TOE: [f32; 2] = [0.44, 0.28];
+const FLIM_SHOULDER: [f32; 2] = [0.591, 0.779];
+
+struct FlimPreset {
+    pre_exposure: f32,
+    pre_filter: [f32; 3],
+    pre_filter_strength: f32,
+    gamut_scales: [f32; 3],
+    gamut_rotations: [f32; 3],
+    gamut_muls: [f32; 3],
+    sigmoid_log2_max: f32,
+    negative_exposure: f32,
+    negative_density: f32,
+    print_backlight: [f32; 3],
+    print_exposure: f32,
+    print_density: f32,
+    // None = "auto": derive from the developed black; else black_point / 1000.
+    black_point: Option<f32>,
+    post_filter: [f32; 3],
+    post_filter_strength: f32,
+    midtone_saturation: f32,
+}
+
+const FLIM_PRESETS: [FlimPreset; 3] = [
+    // default
+    FlimPreset {
+        pre_exposure: 4.3,
+        pre_filter: [1.0, 1.0, 1.0],
+        pre_filter_strength: 1.0,
+        gamut_scales: [1.05, 1.12, 1.045],
+        gamut_rotations: [0.5, 2.0, 0.1],
+        gamut_muls: [1.0, 1.0, 1.0],
+        sigmoid_log2_max: 22.0,
+        negative_exposure: 6.0,
+        negative_density: 5.0,
+        print_backlight: [1.0, 1.0, 1.0],
+        print_exposure: 6.0,
+        print_density: 27.5,
+        black_point: None,
+        post_filter: [1.0, 1.0, 1.0],
+        post_filter_strength: 1.0,
+        midtone_saturation: 1.02,
+    },
+    // nostalgia
+    FlimPreset {
+        pre_exposure: 5.563035,
+        pre_filter: [1.0, 1.0, 1.0],
+        pre_filter_strength: 1.0,
+        gamut_scales: [1.05, 1.12, 1.045],
+        gamut_rotations: [0.5, 2.0, 0.1],
+        gamut_muls: [1.1, 1.0, 1.2],
+        sigmoid_log2_max: 23.0,
+        negative_exposure: 5.8,
+        negative_density: 5.0,
+        print_backlight: [0.99, 1.1, 1.035989],
+        print_exposure: 6.0,
+        print_density: 40.0,
+        black_point: Some(-5.0),
+        post_filter: [1.0, 1.0, 1.0],
+        post_filter_strength: 1.0,
+        midtone_saturation: 1.1,
+    },
+    // silver
+    FlimPreset {
+        pre_exposure: 3.9,
+        pre_filter: [0.0, 0.5, 1.0],
+        pre_filter_strength: 0.05,
+        gamut_scales: [1.05, 1.12, 1.045],
+        gamut_rotations: [0.5, 2.0, 0.1],
+        gamut_muls: [1.0, 1.0, 1.06],
+        sigmoid_log2_max: 22.0,
+        negative_exposure: 4.7,
+        negative_density: 7.0,
+        print_backlight: [0.9992, 0.99, 1.0],
+        print_exposure: 4.7,
+        print_density: 30.0,
+        black_point: Some(0.5),
+        post_filter: [1.0, 1.0, 0.0],
+        post_filter_strength: 0.04,
+        midtone_saturation: 1.0,
+    },
+];
+
+struct FlimUniforms {
+    extend_mat: GpuMat3,
+    extend_mat_inv: GpuMat3,
+    backlight_ext: [f32; 3],
+    white_cap: [f32; 3],
+    black_cap_luma: f32,
+    sigmoid_log2_max: f32,
+    pre_filter: [f32; 3],
+    pre_filter_strength: f32,
+    post_filter: [f32; 3],
+    post_filter_strength: f32,
+    negative_exposure: f32,
+    negative_density: f32,
+    print_exposure: f32,
+    print_density: f32,
+    midtone_saturation: f32,
+    pre_exposure: f32,
+    warmth: [f32; 3],
+}
+
+fn flim_super_sigmoid(x_in: f32) -> f32 {
+    let x = x_in.clamp(0.0, 1.0);
+    let slope = (FLIM_SHOULDER[1] - FLIM_TOE[1]) / (FLIM_SHOULDER[0] - FLIM_TOE[0]);
+    if x < FLIM_TOE[0] {
+        let toe_pow = slope * FLIM_TOE[0] / FLIM_TOE[1];
+        FLIM_TOE[1] * (x / FLIM_TOE[0]).powf(toe_pow)
+    } else if x < FLIM_SHOULDER[0] {
+        slope * x + (FLIM_TOE[1] - slope * FLIM_TOE[0])
+    } else {
+        let shoulder_pow = -slope
+            / (((FLIM_SHOULDER[0] - 1.0) / (1.0 - FLIM_SHOULDER[0]).powi(2))
+                * (1.0 - FLIM_SHOULDER[1]));
+        (1.0 - (1.0 - (x - FLIM_SHOULDER[0]) / (1.0 - FLIM_SHOULDER[0])).powf(shoulder_pow))
+            * (1.0 - FLIM_SHOULDER[1])
+            + FLIM_SHOULDER[1]
+    }
+}
+
+fn flim_dye_mix(mono: f32, log2_max: f32, max_density: f32) -> f32 {
+    // The max() guard keeps log2 off non-positive values (the reference gets
+    // -inf there, which the following clamp maps to 0 either way).
+    let fac = ((mono + 2f32.powf(FLIM_LOG2_MIN)).max(1e-9).log2() - FLIM_LOG2_MIN)
+        / (log2_max - FLIM_LOG2_MIN);
+    (2f32.powf(-flim_super_sigmoid(fac.clamp(0.0, 1.0)) * max_density)).clamp(0.0, 1.0)
+}
+
+fn flim_develop(inp: [f32; 3], exposure: f32, log2_max: f32, density: f32) -> [f32; 3] {
+    let e = 2f32.powf(exposure);
+    let x = [inp[0] * e, inp[1] * e, inp[2] * e];
+    // blue-sensitive layer forms the yellow dye, green -> magenta, red -> cyan.
+    let lerp = |dye: [f32; 3], t: f32| -> [f32; 3] {
+        [
+            dye[0] + t * (1.0 - dye[0]),
+            dye[1] + t * (1.0 - dye[1]),
+            dye[2] + t * (1.0 - dye[2]),
+        ]
+    };
+    let blue = lerp([1.0, 1.0, 0.0], flim_dye_mix(x[2], log2_max, density));
+    let green = lerp([1.0, 0.0, 1.0], flim_dye_mix(x[1], log2_max, density));
+    let red = lerp([0.0, 1.0, 1.0], flim_dye_mix(x[0], log2_max, density));
+    [
+        blue[0] * green[0] * red[0],
+        blue[1] * green[1] * red[1],
+        blue[2] * green[2] * red[2],
+    ]
+}
+
+#[allow(clippy::too_many_arguments)]
+fn flim_negative_and_print(
+    inp: [f32; 3],
+    neg_exposure: f32,
+    log2_max: f32,
+    neg_density: f32,
+    print_exposure: f32,
+    print_density: f32,
+    backlight_ext: [f32; 3],
+) -> [f32; 3] {
+    let neg = flim_develop(inp, neg_exposure, log2_max, neg_density);
+    let lit = [
+        neg[0] * backlight_ext[0],
+        neg[1] * backlight_ext[1],
+        neg[2] * backlight_ext[2],
+    ];
+    flim_develop(lit, print_exposure, log2_max, print_density)
+}
+
+fn flim_hsv_to_rgb(h_in: f32, s: f32, v: f32) -> [f32; 3] {
+    if s == 0.0 {
+        return [v, v, v];
+    }
+    let h = if h_in == 1.0 { 0.0 } else { h_in };
+    let h6 = h * 6.0;
+    let i = h6.floor();
+    let f = h6 - i;
+    let p = v * (1.0 - s);
+    let q = v * (1.0 - s * f);
+    let t = v * (1.0 - s * (1.0 - f));
+    match i as i32 {
+        0 => [v, t, p],
+        1 => [q, v, p],
+        2 => [p, v, t],
+        3 => [p, q, v],
+        4 => [t, p, v],
+        _ => [v, p, q],
+    }
+}
+
+fn flim_gamut_extension_row(primary_hue: f32, scale: f32, rotate: f32, mul: f32) -> [f32; 3] {
+    // wrap(hue, 0, 1): Python's np.mod keeps the sign of the divisor.
+    let hue = (primary_hue + rotate / 360.0).rem_euclid(1.0);
+    let rgb = flim_hsv_to_rgb(hue, 1.0 / scale, 1.0);
+    let sum = rgb[0] + rgb[1] + rgb[2];
+    [rgb[0] / sum * mul, rgb[1] / sum * mul, rgb[2] / sum * mul]
+}
+
+fn flim_mat3_mul_vec(m: [[f32; 3]; 3], v: [f32; 3]) -> [f32; 3] {
+    [
+        m[0][0] * v[0] + m[0][1] * v[1] + m[0][2] * v[2],
+        m[1][0] * v[0] + m[1][1] * v[1] + m[1][2] * v[2],
+        m[2][0] * v[0] + m[2][1] * v[1] + m[2][2] * v[2],
+    ]
+}
+
+fn flim_mat3_inv(m: [[f32; 3]; 3]) -> [[f32; 3]; 3] {
+    let det = m[0][0] * (m[1][1] * m[2][2] - m[1][2] * m[2][1])
+        - m[0][1] * (m[1][0] * m[2][2] - m[1][2] * m[2][0])
+        + m[0][2] * (m[1][0] * m[2][1] - m[1][1] * m[2][0]);
+    let inv = 1.0 / det;
+    [
+        [
+            (m[1][1] * m[2][2] - m[1][2] * m[2][1]) * inv,
+            (m[0][2] * m[2][1] - m[0][1] * m[2][2]) * inv,
+            (m[0][1] * m[1][2] - m[0][2] * m[1][1]) * inv,
+        ],
+        [
+            (m[1][2] * m[2][0] - m[1][0] * m[2][2]) * inv,
+            (m[0][0] * m[2][2] - m[0][2] * m[2][0]) * inv,
+            (m[0][2] * m[1][0] - m[0][0] * m[1][2]) * inv,
+        ],
+        [
+            (m[1][0] * m[2][1] - m[1][1] * m[2][0]) * inv,
+            (m[0][1] * m[2][0] - m[0][0] * m[2][1]) * inv,
+            (m[0][0] * m[1][1] - m[0][1] * m[1][0]) * inv,
+        ],
+    ]
+}
+
+// WGSL mat3x3<f32> * vec3 expects column-major storage; the flim matrices are
+// built row-major (numpy convention), so transpose into GpuMat3 columns.
+fn gpu_mat3_from_rows(r: [[f32; 3]; 3]) -> GpuMat3 {
+    GpuMat3 {
+        col0: [r[0][0], r[1][0], r[2][0], 0.0],
+        col1: [r[0][1], r[1][1], r[2][1], 0.0],
+        col2: [r[0][2], r[1][2], r[2][2], 0.0],
+    }
+}
+
+/// Bake preset constants + user look controls into GPU uniforms.
+/// contrast: multiplier on both dye densities (1.0 = preset).
+/// shoulder: -1..1, shifts the sigmoid window top (softer/harder highlight rolloff).
+/// toe: -1..1, shifts the black cap (positive = deeper blacks, negative = fade).
+/// saturation: multiplier on midtone-keyed saturation (1.0 = preset).
+/// warmth_t: -1..1 scaled channel split along the daylight locus.
+#[allow(clippy::too_many_arguments)]
+fn compute_flim_uniforms(
+    preset_idx: usize,
+    contrast: f32,
+    shoulder: f32,
+    toe: f32,
+    saturation: f32,
+    warmth_t: f32,
+) -> FlimUniforms {
+    let p = &FLIM_PRESETS[preset_idx.min(FLIM_PRESETS.len() - 1)];
+    let log2_max = (p.sigmoid_log2_max + shoulder * 4.0).max(12.0);
+    let neg_density = p.negative_density * contrast;
+    let print_density = p.print_density * contrast;
+    let hues = [0.0f32, 1.0 / 3.0, 2.0 / 3.0];
+    let rows = [
+        flim_gamut_extension_row(hues[0], p.gamut_scales[0], p.gamut_rotations[0], p.gamut_muls[0]),
+        flim_gamut_extension_row(hues[1], p.gamut_scales[1], p.gamut_rotations[1], p.gamut_muls[1]),
+        flim_gamut_extension_row(hues[2], p.gamut_scales[2], p.gamut_rotations[2], p.gamut_muls[2]),
+    ];
+    let backlight_ext = flim_mat3_mul_vec(rows, p.print_backlight);
+    let white_cap = flim_negative_and_print(
+        [1e7; 3],
+        p.negative_exposure,
+        log2_max,
+        neg_density,
+        p.print_exposure,
+        print_density,
+        backlight_ext,
+    );
+    let black_raw = flim_negative_and_print(
+        [0.0; 3],
+        p.negative_exposure,
+        log2_max,
+        neg_density,
+        p.print_exposure,
+        print_density,
+        backlight_ext,
+    );
+    let black_cap = [
+        black_raw[0] / white_cap[0],
+        black_raw[1] / white_cap[1],
+        black_raw[2] / white_cap[2],
+    ];
+    let black_cap_luma = (match p.black_point {
+        None => {
+            black_cap[0] * FLIM_LUMA_WEIGHTS[0]
+                + black_cap[1] * FLIM_LUMA_WEIGHTS[1]
+                + black_cap[2] * FLIM_LUMA_WEIGHTS[2]
+        }
+        Some(bp) => bp / 1000.0,
+    } + toe * 0.1)
+        .clamp(0.0, 0.95);
+    FlimUniforms {
+        extend_mat: gpu_mat3_from_rows(rows),
+        extend_mat_inv: gpu_mat3_from_rows(flim_mat3_inv(rows)),
+        backlight_ext,
+        white_cap,
+        black_cap_luma,
+        sigmoid_log2_max: log2_max,
+        pre_filter: p.pre_filter,
+        pre_filter_strength: p.pre_filter_strength,
+        post_filter: p.post_filter,
+        post_filter_strength: p.post_filter_strength,
+        negative_exposure: p.negative_exposure,
+        negative_density: neg_density,
+        print_exposure: p.print_exposure,
+        print_density: print_density,
+        midtone_saturation: p.midtone_saturation * saturation,
+        pre_exposure: p.pre_exposure,
+        warmth: [1.0 + warmth_t, 1.0, 1.0 - warmth_t],
+    }
+}
+
 fn get_global_adjustments_from_json(
     js_adjustments: &serde_json::Value,
     is_raw: bool,
@@ -2230,6 +2594,28 @@ fn get_global_adjustments_from_json(
     let tone_mapper = js_adjustments["toneMapper"].as_str().unwrap_or("basic");
     let (pipe_to_rendering, rendering_to_pipe) = calculate_agx_matrices();
 
+    // flim (AGPLv3 port): the keys are read unconditionally — they belong to
+    // the dedicated Film tab, not to a collapsible section.
+    let flim_preset_idx = js_adjustments["flimPreset"]
+        .as_i64()
+        .unwrap_or(0)
+        .clamp(0, (FLIM_PRESETS.len() - 1) as i64) as usize;
+    let flim_user_ev = js_adjustments["flimEv"].as_f64().unwrap_or(0.0) as f32;
+    let flim_strength = js_adjustments["flimStrength"].as_f64().unwrap_or(100.0) as f32 / 100.0;
+    let flim_contrast = js_adjustments["flimContrast"].as_f64().unwrap_or(100.0) as f32 / 100.0;
+    let flim_shoulder = js_adjustments["flimShoulder"].as_f64().unwrap_or(0.0) as f32 / 100.0;
+    let flim_toe = js_adjustments["flimToe"].as_f64().unwrap_or(0.0) as f32 / 100.0;
+    let flim_saturation = js_adjustments["flimSaturation"].as_f64().unwrap_or(100.0) as f32 / 100.0;
+    let flim_warmth_t = js_adjustments["flimWarmth"].as_f64().unwrap_or(0.0) as f32 / 100.0 * 0.15;
+    let flim = compute_flim_uniforms(
+        flim_preset_idx,
+        flim_contrast,
+        flim_shoulder,
+        flim_toe,
+        flim_saturation,
+        flim_warmth_t,
+    );
+
     let (has_lut, lut_intensity) = if is_visible("effects") {
         (
             if js_adjustments["lutPath"].is_string() {
@@ -2331,8 +2717,16 @@ fn get_global_adjustments_from_json(
         has_lut,
         lut_intensity,
 
-        tonemapper_mode: tonemapper_override
-            .unwrap_or_else(|| if tone_mapper == "agx" { 1 } else { 0 }),
+        // An explicitly chosen flim tonemapper (Film tab) always wins over the
+        // global "force default tonemapper" app setting.
+        tonemapper_mode: if tone_mapper == "flim" {
+            2
+        } else {
+            tonemapper_override.unwrap_or_else(|| match tone_mapper {
+                "agx" => 1,
+                _ => 0,
+            })
+        },
         _pad_lut2: 0.0,
         _pad_lut3: 0.0,
         _pad_lut4: 0.0,
@@ -2442,16 +2836,23 @@ fn get_global_adjustments_from_json(
 
         // Extended film dials. temp in Kelvin (6500 neutral); tint/shadows/
         // highlights raw -100..100; blur 0..1 (sigma = *3 px in the post-pass);
-        // chroma 0..0.5 (radial shift in the post-pass); grain amount 0..0.1,
-        // size 0..2 (Krea PoC grain — separate from the native Effects grain).
+        // chroma 0..0.5 (radial shift in the post-pass).
         film_temp: get_val("film", "filmTemp", 1.0, Some(6500.0)),
         film_tint: get_val("film", "filmTint", 1.0, None),
         film_shadows: get_val("film", "filmShadows", 1.0, None),
         film_highlights: get_val("film", "filmHighlights", 1.0, None),
         film_blur: get_val("film", "filmBlur", 100.0, None),
         film_chroma: get_val("film", "filmChroma", 200.0, None),
-        film_grain_amount: get_val("film", "filmGrainAmount", 1000.0, None),
-        film_grain_size: get_val("film", "filmGrainSize", 50.0, Some(50.0)),
+        _pad_bw_align: [0.0; 2],
+
+        // Black & white channel weights (frontend 0..100 -> 0..1, normalized
+        // in the shader) with the section-enabled flag packed into w.
+        bw_weights: [
+            get_val("blackAndWhite", "bwRed", 100.0, Some(21.0)),
+            get_val("blackAndWhite", "bwGreen", 100.0, Some(72.0)),
+            get_val("blackAndWhite", "bwBlue", 100.0, Some(7.0)),
+            if is_visible("blackAndWhite") { 1.0 } else { 0.0 },
+        ],
 
         // Crystal grain (Pierre) realtime preview: amount 0..100 -> 0..1
         // (strength mix in the film post-pass), mono as a 0/1 flag.
@@ -2459,6 +2860,31 @@ fn get_global_adjustments_from_json(
         crystal_grain_mono: get_val("film", "crystalGrainMono", 1.0, Some(0.0)),
         _pad_crystal1: 0.0,
         _pad_crystal2: 0.0,
+
+        // flim tonemapper mode (baked constants, see compute_flim_uniforms).
+        // flim_ev folds the preset's pre-exposure (part of the preset data in
+        // flim, applied first in its pipeline) with the user's EV offset — the
+        // shader applies a single exp2(flim_ev) pre-multiply.
+        flim_extend_mat: flim.extend_mat,
+        flim_extend_mat_inv: flim.extend_mat_inv,
+        flim_backlight: flim.backlight_ext,
+        flim_black_cap_luma: flim.black_cap_luma,
+        flim_white_cap: flim.white_cap,
+        flim_sigmoid_log2_max: flim.sigmoid_log2_max,
+        flim_pre_filter: flim.pre_filter,
+        flim_pre_filter_strength: flim.pre_filter_strength,
+        flim_post_filter: flim.post_filter,
+        flim_post_filter_strength: flim.post_filter_strength,
+        flim_neg_exposure: flim.negative_exposure,
+        flim_neg_density: flim.negative_density,
+        flim_print_exposure: flim.print_exposure,
+        flim_print_density: flim.print_density,
+        flim_midtone_saturation: flim.midtone_saturation,
+        flim_ev: flim.pre_exposure + flim_user_ev,
+        flim_strength,
+        _pad_flim_end: 0.0,
+        flim_warmth: flim.warmth,
+        _pad_flim_end2: 0.0,
     }
 }
 
@@ -2634,9 +3060,23 @@ pub struct GpuContext {
     pub limits: wgpu::Limits,
     pub display: Arc<std::sync::Mutex<Option<WgpuDisplay>>>,
     /// Baked crystal grain coverage field (Pierre, mean-normalized),
-    /// uploaded by `bake_crystal_grain_field`. The view keeps the texture
-    /// alive; sampled by the film post-pass when crystal grain is active.
-    pub crystal_grain_view: Option<wgpu::TextureView>,
+    /// uploaded by `bake_crystal_grain_field`. Shared via Arc<Mutex>: the
+    /// GpuProcessor holds a CLONE of this context taken at creation time,
+    /// so a plain field would freeze at its initial None — the bake must
+    /// be visible to already-created processors.
+    pub crystal_grain_view: Arc<std::sync::Mutex<Option<wgpu::TextureView>>>,
+}
+
+/// Mip level of the baked crystal grain field matching a render downscale:
+/// `scale` = processed/full (≤ 1), so one processed pixel covers 1/scale
+/// field pixels; a box mip at log2(1/scale) is exactly the averaging that
+/// downscaling applies to real grain. 0 for full-res (or upscaled) renders.
+pub(crate) fn grain_mip_level_from_scale(scale: f32) -> f32 {
+    if scale >= 1.0 {
+        0.0
+    } else {
+        (1.0 / scale).log2()
+    }
 }
 
 #[inline(always)]

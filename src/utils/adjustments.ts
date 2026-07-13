@@ -109,10 +109,22 @@ export enum FilmAdjustment {
   FilmHighlights = 'filmHighlights',
   FilmBlur = 'filmBlur',
   FilmChroma = 'filmChroma',
-  FilmGrainAmount = 'filmGrainAmount',
-  FilmGrainSize = 'filmGrainSize',
   CrystalGrainAmount = 'crystalGrainAmount',
   CrystalGrainMono = 'crystalGrainMono',
+  FlimPreset = 'flimPreset',
+  FlimEv = 'flimEv',
+  FlimStrength = 'flimStrength',
+  FlimContrast = 'flimContrast',
+  FlimShoulder = 'flimShoulder',
+  FlimToe = 'flimToe',
+  FlimSaturation = 'flimSaturation',
+  FlimWarmth = 'flimWarmth',
+}
+
+export enum BwAdjustment {
+  BwRed = 'bwRed',
+  BwGreen = 'bwGreen',
+  BwBlue = 'bwBlue',
 }
 
 export enum TransformAdjustment {
@@ -175,6 +187,9 @@ export interface Adjustments {
   aspectRatio: number | null;
   blacks: number;
   brightness: number;
+  bwBlue: number;
+  bwGreen: number;
+  bwRed: number;
   centré: number;
   clarity: number;
   chromaticAberrationBlueYellow: number;
@@ -197,8 +212,6 @@ export interface Adjustments {
   filmContrast: number;
   filmCross: boolean;
   filmCurves: Array<number>;
-  filmGrainAmount: number;
-  filmGrainSize: number;
   crystalGrainAmount: number;
   crystalGrainMono: number;
   filmHighlights: number;
@@ -210,6 +223,14 @@ export interface Adjustments {
   filmStrength: number;
   filmTemp: number;
   filmTint: number;
+  flimPreset: number;
+  flimEv: number;
+  flimStrength: number;
+  flimContrast: number;
+  flimShoulder: number;
+  flimToe: number;
+  flimSaturation: number;
+  flimWarmth: number;
   flipHorizontal: boolean;
   flipVertical: boolean;
   flareAmount: number;
@@ -259,7 +280,7 @@ export interface Adjustments {
   structure: number;
   temperature: number;
   tint: number;
-  toneMapper: 'agx' | 'basic';
+  toneMapper: 'agx' | 'basic' | 'flim';
   transformDistortion: number;
   transformVertical: number;
   transformHorizontal: number;
@@ -384,6 +405,7 @@ export interface Sections {
   color: Array<string>;
   details: Array<string>;
   effects: Array<string>;
+  blackAndWhite: Array<string>;
   film: Array<string>;
 }
 
@@ -394,6 +416,7 @@ export interface SectionVisibility {
   color: boolean;
   details: boolean;
   effects: boolean;
+  blackAndWhite: boolean;
   film: boolean;
 }
 
@@ -500,6 +523,7 @@ export const INITIAL_MASK_ADJUSTMENTS: MaskAdjustments = {
     color: true,
     details: true,
     effects: true,
+    blackAndWhite: true,
     film: true,
   },
   shadows: 0,
@@ -539,6 +563,9 @@ export const INITIAL_ADJUSTMENTS: Adjustments = {
   aspectRatio: null,
   blacks: 0,
   brightness: 0,
+  bwBlue: 7,
+  bwGreen: 72,
+  bwRed: 21,
   centré: 0,
   clarity: 0,
   chromaticAberrationBlueYellow: 0,
@@ -561,8 +588,6 @@ export const INITIAL_ADJUSTMENTS: Adjustments = {
   filmContrast: 100,
   filmCross: false,
   filmCurves: buildIdentityFilmCurves(),
-  filmGrainAmount: 0,
-  filmGrainSize: 50,
   crystalGrainAmount: 0,
   crystalGrainMono: 0,
   filmHighlights: 0,
@@ -574,6 +599,14 @@ export const INITIAL_ADJUSTMENTS: Adjustments = {
   filmStrength: 0,
   filmTemp: 6500,
   filmTint: 0,
+  flimPreset: 0,
+  flimEv: 0,
+  flimStrength: 100,
+  flimContrast: 100,
+  flimShoulder: 0,
+  flimToe: 0,
+  flimSaturation: 100,
+  flimWarmth: 0,
   flipHorizontal: false,
   flipVertical: false,
   flareAmount: 0,
@@ -620,6 +653,7 @@ export const INITIAL_ADJUSTMENTS: Adjustments = {
     color: true,
     details: true,
     effects: true,
+    blackAndWhite: false,
     film: true,
   },
   shadows: 0,
@@ -734,6 +768,9 @@ export const normalizeLoadedAdjustments = (loadedAdjustments: Adjustments): any 
     flareAmount: loadedAdjustments.flareAmount ?? INITIAL_ADJUSTMENTS.flareAmount,
     glowAmount: loadedAdjustments.glowAmount ?? INITIAL_ADJUSTMENTS.glowAmount,
     halationAmount: loadedAdjustments.halationAmount ?? INITIAL_ADJUSTMENTS.halationAmount,
+    bwRed: loadedAdjustments.bwRed ?? INITIAL_ADJUSTMENTS.bwRed,
+    bwGreen: loadedAdjustments.bwGreen ?? INITIAL_ADJUSTMENTS.bwGreen,
+    bwBlue: loadedAdjustments.bwBlue ?? INITIAL_ADJUSTMENTS.bwBlue,
     filmProfile: loadedAdjustments.filmProfile ?? INITIAL_ADJUSTMENTS.filmProfile,
     filmStrength: loadedAdjustments.filmStrength ?? INITIAL_ADJUSTMENTS.filmStrength,
     filmContrast: loadedAdjustments.filmContrast ?? INITIAL_ADJUSTMENTS.filmContrast,
@@ -747,10 +784,16 @@ export const normalizeLoadedAdjustments = (loadedAdjustments: Adjustments): any 
     filmHighlights: loadedAdjustments.filmHighlights ?? INITIAL_ADJUSTMENTS.filmHighlights,
     filmBlur: loadedAdjustments.filmBlur ?? INITIAL_ADJUSTMENTS.filmBlur,
     filmChroma: loadedAdjustments.filmChroma ?? INITIAL_ADJUSTMENTS.filmChroma,
-    filmGrainAmount: loadedAdjustments.filmGrainAmount ?? INITIAL_ADJUSTMENTS.filmGrainAmount,
-    filmGrainSize: loadedAdjustments.filmGrainSize ?? INITIAL_ADJUSTMENTS.filmGrainSize,
     crystalGrainAmount: loadedAdjustments.crystalGrainAmount ?? INITIAL_ADJUSTMENTS.crystalGrainAmount,
     crystalGrainMono: loadedAdjustments.crystalGrainMono ?? INITIAL_ADJUSTMENTS.crystalGrainMono,
+    flimPreset: loadedAdjustments.flimPreset ?? INITIAL_ADJUSTMENTS.flimPreset,
+    flimEv: loadedAdjustments.flimEv ?? INITIAL_ADJUSTMENTS.flimEv,
+    flimStrength: loadedAdjustments.flimStrength ?? INITIAL_ADJUSTMENTS.flimStrength,
+    flimContrast: loadedAdjustments.flimContrast ?? INITIAL_ADJUSTMENTS.flimContrast,
+    flimShoulder: loadedAdjustments.flimShoulder ?? INITIAL_ADJUSTMENTS.flimShoulder,
+    flimToe: loadedAdjustments.flimToe ?? INITIAL_ADJUSTMENTS.flimToe,
+    flimSaturation: loadedAdjustments.flimSaturation ?? INITIAL_ADJUSTMENTS.flimSaturation,
+    flimWarmth: loadedAdjustments.flimWarmth ?? INITIAL_ADJUSTMENTS.flimWarmth,
     filmBaseColor:
       loadedAdjustments.filmBaseColor?.length === 3
         ? loadedAdjustments.filmBaseColor
@@ -876,6 +919,12 @@ export const ADJUSTMENT_GROUPS: Record<string, AdjustmentGroup[]> = {
       keys: [Effect.LutIntensity, Effect.LutName, Effect.LutPath, Effect.LutSize, Effect.LutData],
     },
   ],
+  blackAndWhite: [
+    {
+      label: 'modals.copyPaste.groups.blackAndWhite',
+      keys: [BwAdjustment.BwRed, BwAdjustment.BwGreen, BwAdjustment.BwBlue],
+    },
+  ],
   film: [
     {
       label: 'modals.copyPaste.groups.film',
@@ -896,8 +945,14 @@ export const ADJUSTMENT_GROUPS: Record<string, AdjustmentGroup[]> = {
         FilmAdjustment.FilmHighlights,
         FilmAdjustment.FilmBlur,
         FilmAdjustment.FilmChroma,
-        FilmAdjustment.FilmGrainAmount,
-        FilmAdjustment.FilmGrainSize,
+        FilmAdjustment.FlimPreset,
+        FilmAdjustment.FlimEv,
+        FilmAdjustment.FlimStrength,
+        FilmAdjustment.FlimContrast,
+        FilmAdjustment.FlimShoulder,
+        FilmAdjustment.FlimToe,
+        FilmAdjustment.FlimSaturation,
+        FilmAdjustment.FlimWarmth,
       ],
     },
   ],
@@ -992,6 +1047,7 @@ export const ADJUSTMENT_SECTIONS: Sections = {
     Effect.VignetteMidpoint,
     Effect.VignetteRoundness,
   ],
+  blackAndWhite: [BwAdjustment.BwRed, BwAdjustment.BwGreen, BwAdjustment.BwBlue],
   film: [
     FilmAdjustment.FilmProfile,
     FilmAdjustment.FilmStrength,
@@ -1009,7 +1065,13 @@ export const ADJUSTMENT_SECTIONS: Sections = {
     FilmAdjustment.FilmHighlights,
     FilmAdjustment.FilmBlur,
     FilmAdjustment.FilmChroma,
-    FilmAdjustment.FilmGrainAmount,
-    FilmAdjustment.FilmGrainSize,
+    FilmAdjustment.FlimPreset,
+    FilmAdjustment.FlimEv,
+    FilmAdjustment.FlimStrength,
+    FilmAdjustment.FlimContrast,
+    FilmAdjustment.FlimShoulder,
+    FilmAdjustment.FlimToe,
+    FilmAdjustment.FlimSaturation,
+    FilmAdjustment.FlimWarmth,
   ],
 };
