@@ -565,7 +565,11 @@
       "saturation": "Saturation",
       "shoulder": "Shoulder",
       "toe": "Toe",
-      "warmth": "Warmth"
+      "warmth": "Warmth",
+      "halation": "Halation",
+      "adjacency": "Adjacency",
+      "hiTint": "Highlight tint",
+      "shTint": "Shadow tint"
     },
     "masks": {
       "actions": {
@@ -832,7 +836,8 @@
       "fileSettings": "File Settings",
       "imageSizing": "Image Sizing",
       "metadata": "Metadata",
-      "watermark": "Watermark"
+      "watermark": "Watermark",
+      "grain": "Grain"
     },
     "status": {
       "cancelExport": "Cancel Export",
@@ -872,6 +877,20 @@
       "scale": "Scale",
       "spacing": "Spacing",
       "watermarkImage": "Watermark Image"
+    },
+    "grain": {
+      "addGrain": "Add film grain",
+      "mono": "B&W noise (shared grain field)",
+      "modes": {
+        "fast": "Fast (matches preview)",
+        "pierre": "High quality — crystal emulsion (slow)",
+        "ipol": "High quality — Boolean model (very slow)"
+      },
+      "hints": {
+        "fast": "Baked-field grain — exactly what the editor preview shows.",
+        "pierre": "Full crystal-emulsion render after resize. Seconds per megapixel.",
+        "ipol": "Monte-Carlo Boolean model after resize. ~1 min per 24 MP."
+      }
     }
   },
   "library": {

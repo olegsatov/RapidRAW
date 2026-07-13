@@ -23,6 +23,10 @@ fn main() {
     let toe = argf(8, 0.0);
     let saturation = argf(9, 100.0);
     let warmth = argf(10, 0.0);
+    let halation = argf(11, 0.0);
+    let adjacency = argf(12, 0.0);
+    let hi_tint = argf(13, 0.0);
+    let sh_tint = argf(14, 0.0);
 
     let is_agx = preset == "agx";
     let preset_idx: i64 = if is_agx {
@@ -47,6 +51,10 @@ fn main() {
         "flimToe": toe,
         "flimSaturation": saturation,
         "flimWarmth": warmth,
+        "halationAmount": halation,
+        "flimAdjacency": adjacency,
+        "flimHiTint": hi_tint,
+        "flimShTint": sh_tint,
         "grainAmount": 0,
         "filmStrength": 0,
         "filmBlur": 0,

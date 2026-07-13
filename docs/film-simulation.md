@@ -394,6 +394,46 @@ realtime-режим, основанный на линеаризации моде
   просмотре; форму кристаллов разглядеть можно только на 100%, но общее
   впечатление от зерна корректно при любом зуме.
 
+## Зерно при штатном экспорте
+
+В панели экспорта есть блок **Grain**: галочка «Add film grain», выбор режима
+и галочка «B&W noise». `ExportSettings` получил `grain_enabled`,
+`grain_mode` (`fast` | `pierre` | `ipol`) и `grain_mono` — всё с
+`#[serde(default)]`, старые вызовы трактуются как «без зерна» (раньше зерно
+могло попасть в экспорт «если повезло» — только при живом bake в редакторе).
+
+- **fast (WYSIWYG)**: GPU-проход сэмплит baked-поле. Параметры зерна теперь
+  **персистятся в sidecar** (`crystalGrainFilling/Size/Layers/Std`,
+  `ipolGrainMuR/SigmaR/SigmaFilter/MonteCarlo` — см. `FilmAdjustment` в
+  `adjustments.ts`; Film.tsx больше не держит их в `useState`), поэтому
+  экспорт воспроизводит настройки из sidecar даже без открытого редактора.
+  Bake делается на экспорте по требованию: `get_export_grain_view()`
+  (export_processing.rs) печёт поле через `bake_grain_field` →
+  `upload_grain_field` и кеширует по `bake_cache_key(opts)` в
+  `AppState.grain_bake_cache` (batch с одинаковыми параметрами печёт один
+  раз). Текстура уезжает в `RenderRequest.grain_view` — per-request слот,
+  который в film post-pass имеет приоритет над shared
+  `context.crystal_grain_view` (гонок между параллельными export-джобами нет).
+- **pierre / ipol (high quality)**: полный CPU-рендер модели
+  (`apply_crystal_grain_rgb` / `apply_film_grain_rgb`) **после ресайза**
+  экспорта — зерно авторится в пикселях выходного файла (одинаковый
+  абсолютный размер при любом разрешении экспорта); watermark накладывается
+  после зерна и остаётся чистым. GPU-проход при этом зерно не кладёт
+  (`crystal_grain_amount = 0`), двойного зерна нет. Рендеры сериализованы
+  через `AppState.grain_render_lock` (rayon и так грузит все ядра).
+  Сила берётся из слайдера Amount (`crystalGrainAmount/100`) —
+  `mix_grain_amount` тем же миксом, что и шейдер/офлайн-кнопки.
+- **B&W noise** (`grain_mono`): форсит общее (монохромное) поле на экспорте
+  поверх редакторского `crystalGrainMono` (OR-семантика).
+- Параметры парсятся из sidecar через
+  `crystal_grain::options_from_adjustments` /
+  `film_grain::options_from_adjustments` (flat JSON, дефолты = дефолты
+  моделей; старые sidecar без новых ключей работают).
+- **Cube-экспорт и маски**: зерно принудительно выключено
+  (`crystal_grain_amount = 0` в LUT-пути и в `export_masks_for_image`);
+  `load_processed_for_grain` (офлайн-кнопки) рендерит базу с
+  `ExportGrainMode::Off` — фикс латентного двойного зерна.
+
 ## Тестирование
 
 Layout- и shader-тесты — `mod film_layout_tests` в `image_processing.rs`:

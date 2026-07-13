@@ -47,6 +47,9 @@ export interface ExportSettings {
   watermark: WatermarkSettings | null;
   exportMasks?: boolean;
   preserveFolders?: boolean;
+  grainEnabled?: boolean;
+  grainMode?: 'fast' | 'pierre' | 'ipol';
+  grainMono?: boolean;
 }
 
 export enum WatermarkAnchor {

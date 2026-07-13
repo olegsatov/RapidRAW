@@ -31,22 +31,24 @@ export default function FilmPanel({ adjustments, setAdjustments, onDragStateChan
   const [grainRendering, setGrainRendering] = useState(false);
   const [grainProgress, setGrainProgress] = useState('');
   const [grainPreview, setGrainPreview] = useState<string | null>(null);
-  const [grainOpts, setGrainOpts] = useState({
-    muR: 0.1,
-    sigmaR: 0,
-    sigmaFilter: 0.8,
-    nMonteCarlo: 100,
-    monochrome: false,
-  });
+  const [ipolMono, setIpolMono] = useState(false);
   const [xtalRendering, setXtalRendering] = useState(false);
   const [xtalProgress, setXtalProgress] = useState('');
   const [xtalPreview, setXtalPreview] = useState<string | null>(null);
-  const [xtalOpts, setXtalOpts] = useState({
-    filling: 0.25,
-    size: 5,
-    layers: 30,
-    std: 0.5,
-  });
+  // Grain engine parameters live in the adjustments (persisted to the sidecar)
+  // so the export pipeline can reproduce them without the editor being open.
+  const grainOpts = {
+    muR: adjustments.ipolGrainMuR,
+    sigmaR: adjustments.ipolGrainSigmaR,
+    sigmaFilter: adjustments.ipolGrainSigmaFilter,
+    nMonteCarlo: adjustments.ipolGrainMonteCarlo,
+  };
+  const xtalOpts = {
+    filling: adjustments.crystalGrainFilling,
+    size: adjustments.crystalGrainSize,
+    layers: adjustments.crystalGrainLayers,
+    std: adjustments.crystalGrainStd,
+  };
 
   useEffect(() => {
     const unProgress = listen<string>('film-grain-progress', (e) => setGrainProgress(e.payload));
@@ -84,7 +86,7 @@ export default function FilmPanel({ adjustments, setAdjustments, onDragStateChan
   useEffect(() => {
     const timer = setTimeout(() => {
       invoke('bake_crystal_grain_field', {
-        options: { filling: xtalOpts.filling, size: xtalOpts.size, layers: xtalOpts.layers, std: xtalOpts.std, seed: 1 },
+        options: { ...xtalOpts, seed: 1 },
       }).catch((e) => console.warn('Crystal grain bake failed:', e));
     }, 400);
     return () => clearTimeout(timer);
@@ -109,7 +111,7 @@ export default function FilmPanel({ adjustments, setAdjustments, onDragStateChan
       await invoke('render_film_grain', {
         path: selectedImage.path,
         adjustments,
-        options: { ...grainOpts, seed: 1 },
+        options: { ...grainOpts, monochrome: ipolMono, seed: 1 },
         preview,
       });
     } catch (e) {
@@ -119,7 +121,13 @@ export default function FilmPanel({ adjustments, setAdjustments, onDragStateChan
   };
 
   const handleGrainOptChange = (key: string, value: number | string) => {
-    setGrainOpts((prev) => ({ ...prev, [key]: parseFloat(String(value)) }));
+    const map: Record<string, string> = {
+      muR: 'ipolGrainMuR',
+      sigmaR: 'ipolGrainSigmaR',
+      sigmaFilter: 'ipolGrainSigmaFilter',
+      nMonteCarlo: 'ipolGrainMonteCarlo',
+    };
+    setAdjustments((prev: Partial<Adjustments>) => ({ ...prev, [map[key]]: parseFloat(String(value)) }));
   };
 
   const handleRenderXtal = async (preview: boolean) => {
@@ -148,7 +156,13 @@ export default function FilmPanel({ adjustments, setAdjustments, onDragStateChan
   };
 
   const handleXtalOptChange = (key: string, value: number | string) => {
-    setXtalOpts((prev) => ({ ...prev, [key]: parseFloat(String(value)) }));
+    const map: Record<string, string> = {
+      filling: 'crystalGrainFilling',
+      size: 'crystalGrainSize',
+      layers: 'crystalGrainLayers',
+      std: 'crystalGrainStd',
+    };
+    setAdjustments((prev: Partial<Adjustments>) => ({ ...prev, [map[key]]: parseFloat(String(value)) }));
   };
 
   return (
@@ -273,7 +287,7 @@ export default function FilmPanel({ adjustments, setAdjustments, onDragStateChan
         </Text>
         <Slider
           label={t('adjustments.effects.amount')}
-          max={100}
+          max={200}
           min={0}
           onChange={(e: any) => handleAdjustmentChange(CreativeAdjustment.HalationAmount, e.target.value)}
           step={1}
@@ -364,8 +378,8 @@ export default function FilmPanel({ adjustments, setAdjustments, onDragStateChan
         <Switch
           id="switch-grain-mono-ipol"
           label={t('adjustments.effects.grainMonochrome')}
-          checked={grainOpts.monochrome}
-          onChange={(v: boolean) => setGrainOpts((prev) => ({ ...prev, monochrome: v }))}
+          checked={ipolMono}
+          onChange={setIpolMono}
         />
         <div className="flex gap-2">
           <Button

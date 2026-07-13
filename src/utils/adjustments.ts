@@ -111,6 +111,14 @@ export enum FilmAdjustment {
   FilmChroma = 'filmChroma',
   CrystalGrainAmount = 'crystalGrainAmount',
   CrystalGrainMono = 'crystalGrainMono',
+  CrystalGrainFilling = 'crystalGrainFilling',
+  CrystalGrainSize = 'crystalGrainSize',
+  CrystalGrainLayers = 'crystalGrainLayers',
+  CrystalGrainStd = 'crystalGrainStd',
+  IpolGrainMuR = 'ipolGrainMuR',
+  IpolGrainSigmaR = 'ipolGrainSigmaR',
+  IpolGrainSigmaFilter = 'ipolGrainSigmaFilter',
+  IpolGrainMonteCarlo = 'ipolGrainMonteCarlo',
   FlimPreset = 'flimPreset',
   FlimEv = 'flimEv',
   FlimStrength = 'flimStrength',
@@ -119,6 +127,30 @@ export enum FilmAdjustment {
   FlimToe = 'flimToe',
   FlimSaturation = 'flimSaturation',
   FlimWarmth = 'flimWarmth',
+  FlimAdjacency = 'flimAdjacency',
+  FlimHiTint = 'flimHiTint',
+  FlimShTint = 'flimShTint',
+  // Advanced panel: absolute flim preset parameters (see FLIM_BUILTIN_PRESETS).
+  FlimAdvPreExposure = 'flimAdvPreExposure',
+  FlimAdvNegExposure = 'flimAdvNegExposure',
+  FlimAdvNegDensity = 'flimAdvNegDensity',
+  FlimAdvPrintExposure = 'flimAdvPrintExposure',
+  FlimAdvPrintDensity = 'flimAdvPrintDensity',
+  FlimAdvLog2Max = 'flimAdvLog2Max',
+  FlimAdvBacklightR = 'flimAdvBacklightR',
+  FlimAdvBacklightG = 'flimAdvBacklightG',
+  FlimAdvBacklightB = 'flimAdvBacklightB',
+  FlimAdvSaturation = 'flimAdvSaturation',
+  FlimAdvBlackAuto = 'flimAdvBlackAuto',
+  FlimAdvBlackPoint = 'flimAdvBlackPoint',
+  FlimAdvPreFilterHue = 'flimAdvPreFilterHue',
+  FlimAdvPreFilterStrength = 'flimAdvPreFilterStrength',
+  FlimAdvPostFilterHue = 'flimAdvPostFilterHue',
+  FlimAdvPostFilterStrength = 'flimAdvPostFilterStrength',
+  FlimAdvGamutExpand = 'flimAdvGamutExpand',
+  FlimAdvPaletteRotate = 'flimAdvPaletteRotate',
+  FlimAdvPushR = 'flimAdvPushR',
+  FlimAdvPushB = 'flimAdvPushB',
 }
 
 export enum BwAdjustment {
@@ -214,6 +246,14 @@ export interface Adjustments {
   filmCurves: Array<number>;
   crystalGrainAmount: number;
   crystalGrainMono: number;
+  crystalGrainFilling: number;
+  crystalGrainSize: number;
+  crystalGrainLayers: number;
+  crystalGrainStd: number;
+  ipolGrainMuR: number;
+  ipolGrainSigmaR: number;
+  ipolGrainSigmaFilter: number;
+  ipolGrainMonteCarlo: number;
   filmHighlights: number;
   filmProfile: string | null;
   filmRolloff: number;
@@ -231,6 +271,30 @@ export interface Adjustments {
   flimToe: number;
   flimSaturation: number;
   flimWarmth: number;
+  flimAdjacency: number;
+  flimHiTint: number;
+  flimShTint: number;
+  // Advanced panel: absolute flim preset parameters.
+  flimAdvPreExposure: number;
+  flimAdvNegExposure: number;
+  flimAdvNegDensity: number;
+  flimAdvPrintExposure: number;
+  flimAdvPrintDensity: number;
+  flimAdvLog2Max: number;
+  flimAdvBacklightR: number;
+  flimAdvBacklightG: number;
+  flimAdvBacklightB: number;
+  flimAdvSaturation: number;
+  flimAdvBlackAuto: number;
+  flimAdvBlackPoint: number;
+  flimAdvPreFilterHue: number;
+  flimAdvPreFilterStrength: number;
+  flimAdvPostFilterHue: number;
+  flimAdvPostFilterStrength: number;
+  flimAdvGamutExpand: number;
+  flimAdvPaletteRotate: number;
+  flimAdvPushR: number;
+  flimAdvPushB: number;
   flipHorizontal: boolean;
   flipVertical: boolean;
   flareAmount: number;
@@ -558,6 +622,130 @@ const buildIdentityFilmCurves = (): Array<number> => {
   return out;
 };
 
+// Absolute flim preset parameters, mirroring FLIM_PRESETS in
+// src-tauri/src/image_processing.rs (parity is enforced by the
+// flim_advanced_keys_match_builtin_presets test there). Selecting a preset
+// writes these into the flimAdv* keys; the advanced panel edits them directly.
+// Filters are hue + strength: a white filter at any strength equals strength 0,
+// so default/nostalgia (white @ 1.0 in the reference) are stored as strength 0.
+export interface FlimPresetParams {
+  flimAdvPreExposure: number;
+  flimAdvNegExposure: number;
+  flimAdvNegDensity: number;
+  flimAdvPrintExposure: number;
+  flimAdvPrintDensity: number;
+  flimAdvLog2Max: number;
+  flimAdvBacklightR: number;
+  flimAdvBacklightG: number;
+  flimAdvBacklightB: number;
+  flimAdvSaturation: number;
+  flimAdvBlackAuto: number;
+  flimAdvBlackPoint: number;
+  flimAdvPreFilterHue: number;
+  flimAdvPreFilterStrength: number;
+  flimAdvPostFilterHue: number;
+  flimAdvPostFilterStrength: number;
+  flimAdvGamutExpand: number;
+  flimAdvPaletteRotate: number;
+  flimAdvPushR: number;
+  flimAdvPushB: number;
+}
+
+export const FLIM_ADV_KEYS = [
+  'flimAdvPreExposure',
+  'flimAdvNegExposure',
+  'flimAdvNegDensity',
+  'flimAdvPrintExposure',
+  'flimAdvPrintDensity',
+  'flimAdvLog2Max',
+  'flimAdvBacklightR',
+  'flimAdvBacklightG',
+  'flimAdvBacklightB',
+  'flimAdvSaturation',
+  'flimAdvBlackAuto',
+  'flimAdvBlackPoint',
+  'flimAdvPreFilterHue',
+  'flimAdvPreFilterStrength',
+  'flimAdvPostFilterHue',
+  'flimAdvPostFilterStrength',
+  'flimAdvGamutExpand',
+  'flimAdvPaletteRotate',
+  'flimAdvPushR',
+  'flimAdvPushB',
+] as const;
+
+export const FLIM_BUILTIN_PRESETS: FlimPresetParams[] = [
+  {
+    // default
+    flimAdvPreExposure: 4.3,
+    flimAdvNegExposure: 6,
+    flimAdvNegDensity: 5,
+    flimAdvPrintExposure: 6,
+    flimAdvPrintDensity: 27.5,
+    flimAdvLog2Max: 22,
+    flimAdvBacklightR: 1,
+    flimAdvBacklightG: 1,
+    flimAdvBacklightB: 1,
+    flimAdvSaturation: 1.02,
+    flimAdvBlackAuto: 1,
+    flimAdvBlackPoint: 0,
+    flimAdvPreFilterHue: 0,
+    flimAdvPreFilterStrength: 0,
+    flimAdvPostFilterHue: 0,
+    flimAdvPostFilterStrength: 0,
+    flimAdvGamutExpand: 100,
+    flimAdvPaletteRotate: 0,
+    flimAdvPushR: 1,
+    flimAdvPushB: 1,
+  },
+  {
+    // nostalgia
+    flimAdvPreExposure: 5.563035,
+    flimAdvNegExposure: 5.8,
+    flimAdvNegDensity: 5,
+    flimAdvPrintExposure: 6,
+    flimAdvPrintDensity: 40,
+    flimAdvLog2Max: 23,
+    flimAdvBacklightR: 0.99,
+    flimAdvBacklightG: 1.1,
+    flimAdvBacklightB: 1.035989,
+    flimAdvSaturation: 1.1,
+    flimAdvBlackAuto: 0,
+    flimAdvBlackPoint: -5,
+    flimAdvPreFilterHue: 0,
+    flimAdvPreFilterStrength: 0,
+    flimAdvPostFilterHue: 0,
+    flimAdvPostFilterStrength: 0,
+    flimAdvGamutExpand: 100,
+    flimAdvPaletteRotate: 0,
+    flimAdvPushR: 1.1,
+    flimAdvPushB: 1.2,
+  },
+  {
+    // silver
+    flimAdvPreExposure: 3.9,
+    flimAdvNegExposure: 4.7,
+    flimAdvNegDensity: 7,
+    flimAdvPrintExposure: 4.7,
+    flimAdvPrintDensity: 30,
+    flimAdvLog2Max: 22,
+    flimAdvBacklightR: 0.9992,
+    flimAdvBacklightG: 0.99,
+    flimAdvBacklightB: 1,
+    flimAdvSaturation: 1,
+    flimAdvBlackAuto: 0,
+    flimAdvBlackPoint: 0.5,
+    flimAdvPreFilterHue: 210,
+    flimAdvPreFilterStrength: 0.05,
+    flimAdvPostFilterHue: 60,
+    flimAdvPostFilterStrength: 0.04,
+    flimAdvGamutExpand: 100,
+    flimAdvPaletteRotate: 0,
+    flimAdvPushR: 1,
+    flimAdvPushB: 1.06,
+  },
+];
+
 export const INITIAL_ADJUSTMENTS: Adjustments = {
   aiPatches: [],
   aspectRatio: null,
@@ -590,6 +778,14 @@ export const INITIAL_ADJUSTMENTS: Adjustments = {
   filmCurves: buildIdentityFilmCurves(),
   crystalGrainAmount: 0,
   crystalGrainMono: 0,
+  crystalGrainFilling: 0.25,
+  crystalGrainSize: 5,
+  crystalGrainLayers: 30,
+  crystalGrainStd: 0.5,
+  ipolGrainMuR: 0.1,
+  ipolGrainSigmaR: 0,
+  ipolGrainSigmaFilter: 0.8,
+  ipolGrainMonteCarlo: 100,
   filmHighlights: 0,
   filmProfile: null,
   filmRolloff: 0,
@@ -607,6 +803,9 @@ export const INITIAL_ADJUSTMENTS: Adjustments = {
   flimToe: 0,
   flimSaturation: 100,
   flimWarmth: 0,
+  flimAdjacency: 0,
+  flimHiTint: 0,
+  flimShTint: 0,
   flipHorizontal: false,
   flipVertical: false,
   flareAmount: 0,
@@ -784,6 +983,14 @@ export const normalizeLoadedAdjustments = (loadedAdjustments: Adjustments): any 
     filmHighlights: loadedAdjustments.filmHighlights ?? INITIAL_ADJUSTMENTS.filmHighlights,
     filmBlur: loadedAdjustments.filmBlur ?? INITIAL_ADJUSTMENTS.filmBlur,
     filmChroma: loadedAdjustments.filmChroma ?? INITIAL_ADJUSTMENTS.filmChroma,
+    crystalGrainFilling: loadedAdjustments.crystalGrainFilling ?? INITIAL_ADJUSTMENTS.crystalGrainFilling,
+    crystalGrainSize: loadedAdjustments.crystalGrainSize ?? INITIAL_ADJUSTMENTS.crystalGrainSize,
+    crystalGrainLayers: loadedAdjustments.crystalGrainLayers ?? INITIAL_ADJUSTMENTS.crystalGrainLayers,
+    crystalGrainStd: loadedAdjustments.crystalGrainStd ?? INITIAL_ADJUSTMENTS.crystalGrainStd,
+    ipolGrainMuR: loadedAdjustments.ipolGrainMuR ?? INITIAL_ADJUSTMENTS.ipolGrainMuR,
+    ipolGrainSigmaR: loadedAdjustments.ipolGrainSigmaR ?? INITIAL_ADJUSTMENTS.ipolGrainSigmaR,
+    ipolGrainSigmaFilter: loadedAdjustments.ipolGrainSigmaFilter ?? INITIAL_ADJUSTMENTS.ipolGrainSigmaFilter,
+    ipolGrainMonteCarlo: loadedAdjustments.ipolGrainMonteCarlo ?? INITIAL_ADJUSTMENTS.ipolGrainMonteCarlo,
     crystalGrainAmount: loadedAdjustments.crystalGrainAmount ?? INITIAL_ADJUSTMENTS.crystalGrainAmount,
     crystalGrainMono: loadedAdjustments.crystalGrainMono ?? INITIAL_ADJUSTMENTS.crystalGrainMono,
     flimPreset: loadedAdjustments.flimPreset ?? INITIAL_ADJUSTMENTS.flimPreset,
@@ -794,6 +1001,9 @@ export const normalizeLoadedAdjustments = (loadedAdjustments: Adjustments): any 
     flimToe: loadedAdjustments.flimToe ?? INITIAL_ADJUSTMENTS.flimToe,
     flimSaturation: loadedAdjustments.flimSaturation ?? INITIAL_ADJUSTMENTS.flimSaturation,
     flimWarmth: loadedAdjustments.flimWarmth ?? INITIAL_ADJUSTMENTS.flimWarmth,
+    flimAdjacency: loadedAdjustments.flimAdjacency ?? INITIAL_ADJUSTMENTS.flimAdjacency,
+    flimHiTint: loadedAdjustments.flimHiTint ?? INITIAL_ADJUSTMENTS.flimHiTint,
+    flimShTint: loadedAdjustments.flimShTint ?? INITIAL_ADJUSTMENTS.flimShTint,
     filmBaseColor:
       loadedAdjustments.filmBaseColor?.length === 3
         ? loadedAdjustments.filmBaseColor
@@ -953,6 +1163,9 @@ export const ADJUSTMENT_GROUPS: Record<string, AdjustmentGroup[]> = {
         FilmAdjustment.FlimToe,
         FilmAdjustment.FlimSaturation,
         FilmAdjustment.FlimWarmth,
+        FilmAdjustment.FlimAdjacency,
+        FilmAdjustment.FlimHiTint,
+        FilmAdjustment.FlimShTint,
       ],
     },
   ],
@@ -1073,5 +1286,8 @@ export const ADJUSTMENT_SECTIONS: Sections = {
     FilmAdjustment.FlimToe,
     FilmAdjustment.FlimSaturation,
     FilmAdjustment.FlimWarmth,
+    FilmAdjustment.FlimAdjacency,
+    FilmAdjustment.FlimHiTint,
+    FilmAdjustment.FlimShTint,
   ],
 };

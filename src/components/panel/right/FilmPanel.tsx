@@ -4,7 +4,7 @@ import Dropdown from '../../ui/Dropdown';
 import Slider from '../../ui/Slider';
 import Text from '../../ui/Text';
 import { TextVariants } from '../../../types/typography';
-import { Adjustments, FilmAdjustment } from '../../../utils/adjustments';
+import { Adjustments, CreativeAdjustment, FilmAdjustment } from '../../../utils/adjustments';
 import { useEditorStore } from '../../../store/useEditorStore';
 import { useEditorActions } from '../../../hooks/useEditorActions';
 
@@ -23,7 +23,7 @@ export default function FilmPanel() {
     [setEditor],
   );
 
-  const handleAdjustmentChange = (key: FilmAdjustment, value: string | number) => {
+  const handleAdjustmentChange = (key: FilmAdjustment | CreativeAdjustment, value: string | number) => {
     // Moving any flim control activates the flim tonemapper so the effect is
     // immediately visible.
     setAdjustments((prev: Partial<Adjustments>) => ({
@@ -152,6 +152,46 @@ export default function FilmPanel() {
             onChange={(e: any) => handleAdjustmentChange(FilmAdjustment.FlimWarmth, e.target.value)}
             step={1}
             value={adjustments.flimWarmth ?? 0}
+            onDragStateChange={onDragStateChange}
+          />
+          <Slider
+            defaultValue={0}
+            label={t('editor.film.halation')}
+            max={200}
+            min={0}
+            onChange={(e: any) => handleAdjustmentChange(CreativeAdjustment.HalationAmount, e.target.value)}
+            step={1}
+            value={adjustments.halationAmount ?? 0}
+            onDragStateChange={onDragStateChange}
+          />
+          <Slider
+            defaultValue={0}
+            label={t('editor.film.adjacency')}
+            max={100}
+            min={0}
+            onChange={(e: any) => handleAdjustmentChange(FilmAdjustment.FlimAdjacency, e.target.value)}
+            step={1}
+            value={adjustments.flimAdjacency ?? 0}
+            onDragStateChange={onDragStateChange}
+          />
+          <Slider
+            defaultValue={0}
+            label={t('editor.film.hiTint')}
+            max={100}
+            min={-100}
+            onChange={(e: any) => handleAdjustmentChange(FilmAdjustment.FlimHiTint, e.target.value)}
+            step={1}
+            value={adjustments.flimHiTint ?? 0}
+            onDragStateChange={onDragStateChange}
+          />
+          <Slider
+            defaultValue={0}
+            label={t('editor.film.shTint')}
+            max={100}
+            min={-100}
+            onChange={(e: any) => handleAdjustmentChange(FilmAdjustment.FlimShTint, e.target.value)}
+            step={1}
+            value={adjustments.flimShTint ?? 0}
             onDragStateChange={onDragStateChange}
           />
         </div>

@@ -74,6 +74,51 @@ fn default_amount() -> f32 {
     1.0
 }
 
+/// Read the crystal grain parameters from a (flat) adjustments JSON, falling
+/// back to the model defaults. Mirrors the keys persisted by the Film panel,
+/// so the export pipeline can reproduce the editor's settings from the
+/// sidecar alone. `amount` arrives in UI units (0..100) and is normalized.
+pub fn options_from_adjustments(js: &serde_json::Value) -> CrystalGrainOptions {
+    let d = CrystalGrainOptions::default();
+    let f = |key: &str, def: f32| -> f32 {
+        js.get(key)
+            .and_then(|v| v.as_f64())
+            .map(|v| v as f32)
+            .unwrap_or(def)
+    };
+    CrystalGrainOptions {
+        filling: f("crystalGrainFilling", d.filling),
+        size: f("crystalGrainSize", d.size),
+        layers: js
+            .get("crystalGrainLayers")
+            .and_then(|v| v.as_u64())
+            .map(|v| v as u32)
+            .unwrap_or(d.layers),
+        std: f("crystalGrainStd", d.std),
+        seed: d.seed,
+        monochrome: js
+            .get("crystalGrainMono")
+            .and_then(|v| v.as_f64())
+            .unwrap_or(0.0)
+            > 0.5,
+        amount: f("crystalGrainAmount", 100.0) / 100.0,
+    }
+}
+
+/// Stable key identifying a baked grain field, for the export-time cache.
+/// Mono/amount are shader-side and deliberately excluded.
+pub fn bake_cache_key(opts: &CrystalGrainOptions) -> u64 {
+    use std::collections::hash_map::DefaultHasher;
+    use std::hash::{Hash, Hasher};
+    let mut h = DefaultHasher::new();
+    opts.filling.to_bits().hash(&mut h);
+    opts.size.to_bits().hash(&mut h);
+    opts.layers.hash(&mut h);
+    opts.std.to_bits().hash(&mut h);
+    opts.seed.hash(&mut h);
+    h.finish()
+}
+
 impl Default for CrystalGrainOptions {
     fn default() -> Self {
         CrystalGrainOptions {
@@ -405,7 +450,7 @@ pub fn apply_crystal_grain_rgb(
 /// Blend the rendered grain with the clean image by `amount` — the exact
 /// same `mix(clean, clamp(grained, 0..1), amount)` the realtime shader
 /// performs in film_post.wgsl, so the exported file matches the preview.
-fn mix_grain_amount(clean: &Rgb32FImage, grained: &mut Rgb32FImage, amount: f32) {
+pub fn mix_grain_amount(clean: &Rgb32FImage, grained: &mut Rgb32FImage, amount: f32) {
     if amount >= 1.0 {
         return;
     }
@@ -576,6 +621,53 @@ pub fn bake_grain_field(opts: &CrystalGrainOptions, tile: usize) -> Vec<Vec<half
 
 /// Tauri command: bake the crystal grain field on the CPU and upload it as
 /// an RGBA16F texture into the shared GPU context. Emits
+/// Upload a baked grain field (mips from `bake_grain_field`) into a GPU
+/// texture. Shared by the realtime bake command and the export pipeline.
+pub fn upload_grain_field(
+    device: &wgpu::Device,
+    queue: &wgpu::Queue,
+    mips: &[Vec<half::f16>],
+    tile: usize,
+) -> wgpu::Texture {
+    let texture = device.create_texture(&wgpu::TextureDescriptor {
+        label: Some("Crystal Grain Field"),
+        size: wgpu::Extent3d {
+            width: tile as u32,
+            height: tile as u32,
+            depth_or_array_layers: 1,
+        },
+        mip_level_count: mips.len() as u32,
+        sample_count: 1,
+        dimension: wgpu::TextureDimension::D2,
+        format: wgpu::TextureFormat::Rgba16Float,
+        usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+        view_formats: &[],
+    });
+    for (level, data) in mips.iter().enumerate() {
+        let dim = (tile >> level) as u32;
+        queue.write_texture(
+            wgpu::TexelCopyTextureInfo {
+                texture: &texture,
+                mip_level: level as u32,
+                origin: wgpu::Origin3d::ZERO,
+                aspect: wgpu::TextureAspect::All,
+            },
+            bytemuck::cast_slice(data),
+            wgpu::TexelCopyBufferLayout {
+                offset: 0,
+                bytes_per_row: Some(dim * 4 * 2),
+                rows_per_image: Some(dim),
+            },
+            wgpu::Extent3d {
+                width: dim,
+                height: dim,
+                depth_or_array_layers: 1,
+            },
+        );
+    }
+    texture
+}
+
 /// "crystal-grain-baked" when the texture is live.
 #[tauri::command]
 pub async fn bake_crystal_grain_field(
@@ -593,42 +685,7 @@ pub async fn bake_crystal_grain_field(
         let mut lock = state.gpu_context.lock().map_err(|e| e.to_string())?;
         let ctx = lock.as_mut().ok_or("GPU context not initialized")?;
 
-        let texture = ctx.device.create_texture(&wgpu::TextureDescriptor {
-            label: Some("Crystal Grain Field"),
-            size: wgpu::Extent3d {
-                width: tile as u32,
-                height: tile as u32,
-                depth_or_array_layers: 1,
-            },
-            mip_level_count: mips.len() as u32,
-            sample_count: 1,
-            dimension: wgpu::TextureDimension::D2,
-            format: wgpu::TextureFormat::Rgba16Float,
-            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
-            view_formats: &[],
-        });
-        for (level, data) in mips.iter().enumerate() {
-            let dim = (tile >> level) as u32;
-            ctx.queue.write_texture(
-                wgpu::TexelCopyTextureInfo {
-                    texture: &texture,
-                    mip_level: level as u32,
-                    origin: wgpu::Origin3d::ZERO,
-                    aspect: wgpu::TextureAspect::All,
-                },
-                bytemuck::cast_slice(data),
-                wgpu::TexelCopyBufferLayout {
-                    offset: 0,
-                    bytes_per_row: Some(dim * 4 * 2),
-                    rows_per_image: Some(dim),
-                },
-                wgpu::Extent3d {
-                    width: dim,
-                    height: dim,
-                    depth_or_array_layers: 1,
-                },
-            );
-        }
+        let texture = upload_grain_field(&ctx.device, &ctx.queue, &mips, tile);
         *ctx.crystal_grain_view.lock().map_err(|e| e.to_string())? =
             Some(texture.create_view(&Default::default()));
         drop(lock);
@@ -904,5 +961,35 @@ mod tests {
         assert!((p[0] - 0.1).abs() < 1e-6);
         assert!((p[1] - 0.7).abs() < 1e-6);
         assert!((p[2] - 0.75).abs() < 1e-6);
+    }
+
+    #[test]
+    fn options_from_adjustments_reads_flat_json() {
+        let js = serde_json::json!({
+            "crystalGrainFilling": 0.4,
+            "crystalGrainSize": 8.0,
+            "crystalGrainLayers": 20,
+            "crystalGrainStd": 0.9,
+            "crystalGrainMono": 1,
+            "crystalGrainAmount": 50,
+        });
+        let opts = options_from_adjustments(&js);
+        assert!((opts.filling - 0.4).abs() < 1e-6);
+        assert!((opts.size - 8.0).abs() < 1e-6);
+        assert_eq!(opts.layers, 20);
+        assert!((opts.std - 0.9).abs() < 1e-6);
+        assert!(opts.monochrome);
+        assert!((opts.amount - 0.5).abs() < 1e-6);
+
+        // Missing keys -> model defaults (old sidecars).
+        let def = options_from_adjustments(&serde_json::json!({}));
+        let d = CrystalGrainOptions::default();
+        assert!((def.filling - d.filling).abs() < 1e-6);
+        assert!((def.size - d.size).abs() < 1e-6);
+        assert_eq!(def.layers, d.layers);
+        assert!((def.std - d.std).abs() < 1e-6);
+        assert!(!def.monochrome);
+        // No amount key: full strength, matching the old offline export.
+        assert!((def.amount - 1.0).abs() < 1e-6);
     }
 }

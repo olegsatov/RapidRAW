@@ -233,6 +233,12 @@ export default function ExportPanel({
     setWatermarkOpacity,
     preserveFolders,
     setPreserveFolders,
+    grainEnabled,
+    setGrainEnabled,
+    grainMode,
+    setGrainMode,
+    grainMono,
+    setGrainMono,
     handleApplyPreset,
     currentSettingsObject,
   } = useExportSettings();
@@ -390,6 +396,9 @@ export default function ExportPanel({
               opacity: watermarkOpacity,
             }
           : null,
+      grainEnabled: fileFormat !== FileFormats.Cube ? grainEnabled : false,
+      grainMode,
+      grainMono,
     };
     const format = FILE_FORMATS.find((f: FileFormat) => f.id === fileFormat)?.extensions[0] || 'jpeg';
     debouncedEstimateSize(pathsToExport, adjustments, selectedImage?.path, exportSettings, format);
@@ -417,6 +426,9 @@ export default function ExportPanel({
     debouncedEstimateSize,
     exportMasks,
     preserveFolders,
+    grainEnabled,
+    grainMode,
+    grainMono,
     isLibraryContext,
   ]);
 
@@ -466,6 +478,9 @@ export default function ExportPanel({
               opacity: watermarkOpacity,
             }
           : null,
+      grainEnabled: fileFormat !== FileFormats.Cube ? grainEnabled : false,
+      grainMode,
+      grainMono,
     };
 
     const lastExportPath = appSettings?.exportPresets?.find((p) => p.id === '__last_used__')?.lastExportPath;
@@ -765,6 +780,41 @@ export default function ExportPanel({
                           />
                         </>
                       )}
+                    </div>
+                  )}
+                </Section>
+
+                <Section title={t('export.sections.grain')}>
+                  <Switch
+                    label={t('export.grain.addGrain')}
+                    checked={grainEnabled}
+                    onChange={setGrainEnabled}
+                    disabled={isExporting}
+                    trackClassName="bg-surface"
+                  />
+                  {grainEnabled && (
+                    <div className="space-y-4 pl-2 border-l-2 border-surface">
+                      <Dropdown
+                        options={[
+                          { label: t('export.grain.modes.fast'), value: 'fast' },
+                          { label: t('export.grain.modes.pierre'), value: 'pierre' },
+                          { label: t('export.grain.modes.ipol'), value: 'ipol' },
+                        ]}
+                        value={grainMode}
+                        onChange={(val) => setGrainMode(val as 'fast' | 'pierre' | 'ipol')}
+                        disabled={isExporting}
+                        className="w-full"
+                      />
+                      <Switch
+                        label={t('export.grain.mono')}
+                        checked={grainMono}
+                        onChange={setGrainMono}
+                        disabled={isExporting}
+                        trackClassName="bg-surface"
+                      />
+                      <Text variant={TextVariants.small} color={TextColors.secondary}>
+                        {t(`export.grain.hints.${grainMode}`)}
+                      </Text>
                     </div>
                   )}
                 </Section>

@@ -519,6 +519,7 @@ fn process_preview_job(
                 } else {
                     1.0
                 },
+                grain_view: None,
             },
             "apply_adjustments",
             use_wgpu_renderer,
@@ -835,6 +836,7 @@ fn generate_uncropped_preview(
                 } else {
                     1.0
                 },
+                grain_view: None,
             },
             "generate_uncropped_preview",
         ) {
@@ -1002,6 +1004,7 @@ async fn preview_geometry_transform(
                     roi: None,
                     grain_mip_level: 0.0,
                     grain_coord_scale: 1.0,
+                    grain_view: None,
                 },
                 "preview_geometry_transform_base_gen",
             )?;
@@ -1186,6 +1189,7 @@ fn generate_preset_preview(
             roi: None,
             grain_mip_level: 0.0,
             grain_coord_scale: 1.0,
+            grain_view: None,
         },
         "generate_preset_preview",
     )?;
@@ -1283,6 +1287,7 @@ fn compute_bw_weights(
             roi: None,
             grain_mip_level: 0.0,
             grain_coord_scale: 1.0,
+            grain_view: None,
         },
         "compute_bw_weights",
     )?;
@@ -1435,6 +1440,7 @@ async fn generate_all_community_previews(
                     roi: None,
                     grain_mip_level: 0.0,
                     grain_coord_scale: 1.0,
+                    grain_view: None,
                 },
                 "generate_all_community_previews",
             )?;
@@ -1716,6 +1722,7 @@ fn generate_preview_for_path(
             roi: None,
             grain_mip_level: 0.0,
             grain_coord_scale: 1.0,
+            grain_view: None,
         },
         "generate_preview_for_path",
     )?;
@@ -2410,6 +2417,8 @@ pub fn run() {
             load_image_generation: Arc::new(AtomicUsize::new(0)),
             full_warped_cache: Mutex::new(None),
             full_transformed_cache: Mutex::new(None),
+            grain_bake_cache: Mutex::new(None),
+            grain_render_lock: Mutex::new(()),
             decoded_image_cache: Mutex::new(DecodedImageCache::new(5)),
             thumbnail_manager: ThumbnailManager::new(),
             metadata_manager: MetadataManager::new(),
@@ -2492,6 +2501,8 @@ pub fn run() {
             file_management::load_metadata,
             file_management::load_presets,
             file_management::save_presets,
+            file_management::load_flim_presets,
+            file_management::save_flim_presets,
             file_management::get_or_create_internal_library_root,
             file_management::reset_adjustments_for_paths,
             file_management::apply_auto_adjustments_to_paths,

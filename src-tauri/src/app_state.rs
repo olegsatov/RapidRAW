@@ -170,6 +170,14 @@ pub struct AppState {
     pub load_image_generation: Arc<AtomicUsize>,
     pub full_warped_cache: Mutex<Option<(u64, Arc<DynamicImage>)>>,
     pub full_transformed_cache: Mutex<Option<TransformedImageCache>>,
+    /// Cache of the last grain field baked for export, keyed by
+    /// `crystal_grain::bake_cache_key`. Parallel export jobs with identical
+    /// grain parameters share the texture; each job creates its own view.
+    pub grain_bake_cache: Mutex<Option<(u64, Arc<wgpu::Texture>)>>,
+    /// Serializes the CPU grain renderers (Pierre/IPOL) during export —
+    /// they already saturate all cores via rayon, so concurrent renders
+    /// would only thrash.
+    pub grain_render_lock: Mutex<()>,
     pub decoded_image_cache: Mutex<DecodedImageCache>,
     pub thumbnail_manager: Arc<ThumbnailManager>,
     pub metadata_manager: Arc<MetadataManager>,

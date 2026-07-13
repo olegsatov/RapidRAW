@@ -161,6 +161,36 @@ impl Default for FilmGrainOptions {
     }
 }
 
+/// Read the IPOL grain parameters from a (flat) adjustments JSON, falling
+/// back to the model defaults. Mirrors the keys persisted by the Film panel,
+/// so the export pipeline can reproduce the editor's settings from the
+/// sidecar alone. The mono flag is shared with the crystal grain.
+pub fn options_from_adjustments(js: &serde_json::Value) -> FilmGrainOptions {
+    let d = FilmGrainOptions::default();
+    let f = |key: &str, def: f32| -> f32 {
+        js.get(key)
+            .and_then(|v| v.as_f64())
+            .map(|v| v as f32)
+            .unwrap_or(def)
+    };
+    FilmGrainOptions {
+        mu_r: f("ipolGrainMuR", d.mu_r),
+        sigma_r: f("ipolGrainSigmaR", d.sigma_r),
+        sigma_filter: f("ipolGrainSigmaFilter", d.sigma_filter),
+        n_monte_carlo: js
+            .get("ipolGrainMonteCarlo")
+            .and_then(|v| v.as_u64())
+            .map(|v| v as u32)
+            .unwrap_or(d.n_monte_carlo),
+        seed: d.seed,
+        monochrome: js
+            .get("crystalGrainMono")
+            .and_then(|v| v.as_f64())
+            .unwrap_or(0.0)
+            > 0.5,
+    }
+}
+
 /// Render one output pixel: Monte-Carlo estimate of the coverage probability.
 #[allow(clippy::too_many_arguments)]
 #[inline]
@@ -469,6 +499,10 @@ pub(crate) fn load_processed_for_grain(
         is_raw,
         "grain_render",
         app_handle,
+        // The CPU grain renderer runs next, so the GPU pass must stay
+        // grain-free (no baked-field grain on top of the real render).
+        crate::export_processing::ExportGrainMode::Off,
+        false,
     )?;
     Ok((processed, source_path))
 }
@@ -685,5 +719,29 @@ mod tests {
         };
         let out = render_film_grain_channel(&img, w, h, &opts, None);
         assert!(out.iter().all(|&v| v == 0.0));
+    }
+
+    #[test]
+    fn options_from_adjustments_reads_flat_json() {
+        let js = serde_json::json!({
+            "ipolGrainMuR": 0.3,
+            "ipolGrainSigmaR": 0.5,
+            "ipolGrainSigmaFilter": 1.2,
+            "ipolGrainMonteCarlo": 200,
+            "crystalGrainMono": 1,
+        });
+        let opts = options_from_adjustments(&js);
+        assert!((opts.mu_r - 0.3).abs() < 1e-6);
+        assert!((opts.sigma_r - 0.5).abs() < 1e-6);
+        assert!((opts.sigma_filter - 1.2).abs() < 1e-6);
+        assert_eq!(opts.n_monte_carlo, 200);
+        assert!(opts.monochrome);
+
+        // Missing keys -> model defaults (old sidecars).
+        let def = options_from_adjustments(&serde_json::json!({}));
+        let d = FilmGrainOptions::default();
+        assert!((def.mu_r - d.mu_r).abs() < 1e-6);
+        assert_eq!(def.n_monte_carlo, d.n_monte_carlo);
+        assert!(!def.monochrome);
     }
 }

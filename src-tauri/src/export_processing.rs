@@ -72,6 +72,43 @@ pub struct ExportSettings {
     pub export_masks: bool,
     #[serde(default)]
     pub preserve_folders: bool,
+    /// Apply film grain during export. Off by default: grain is an explicit
+    /// per-export choice, not something implied by the editor preview.
+    #[serde(default)]
+    pub grain_enabled: bool,
+    /// "fast" = the same baked-field grain the realtime preview shows
+    /// (WYSIWYG); "pierre" / "ipol" = full-quality CPU renderers applied
+    /// after the export resize.
+    #[serde(default = "default_grain_mode")]
+    pub grain_mode: String,
+    /// Force monochrome (shared-field) grain regardless of the editor's
+    /// mono toggle.
+    #[serde(default)]
+    pub grain_mono: bool,
+}
+
+fn default_grain_mode() -> String {
+    "fast".to_string()
+}
+
+/// Grain application strategy for one export job.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ExportGrainMode {
+    Off,
+    Fast,
+    Pierre,
+    Ipol,
+}
+
+pub(crate) fn export_grain_mode(settings: &ExportSettings) -> ExportGrainMode {
+    if !settings.grain_enabled {
+        return ExportGrainMode::Off;
+    }
+    match settings.grain_mode.as_str() {
+        "pierre" => ExportGrainMode::Pierre,
+        "ipol" => ExportGrainMode::Ipol,
+        _ => ExportGrainMode::Fast,
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -284,6 +321,8 @@ pub(crate) fn process_image_for_export_pipeline(
     is_raw: bool,
     debug_tag: &str,
     app_handle: &tauri::AppHandle,
+    grain_mode: ExportGrainMode,
+    grain_mono: bool,
 ) -> Result<DynamicImage, String> {
     let (transformed_image, unscaled_crop_offset) =
         apply_all_transformations(Cow::Borrowed(base_image), js_adjustments);
@@ -313,6 +352,25 @@ pub(crate) fn process_image_for_export_pipeline(
     let mut all_adjustments = get_all_adjustments_from_json(js_adjustments, is_raw, tm_override);
     all_adjustments.global.show_clipping = 0;
 
+    // Grain routing. Only the "fast" mode grains on the GPU; the CPU modes
+    // render after the export resize (see process_image_for_export), and Off
+    // keeps the export clean even when the editor preview shows grain.
+    let mut grain_view = None;
+    match grain_mode {
+        ExportGrainMode::Fast => {
+            if grain_mono {
+                all_adjustments.global.crystal_grain_mono = 1.0;
+            }
+            if all_adjustments.global.crystal_grain_amount > 0.0 {
+                let opts = crate::crystal_grain::options_from_adjustments(js_adjustments);
+                grain_view = Some(get_export_grain_view(context, state, &opts)?);
+            }
+        }
+        _ => {
+            all_adjustments.global.crystal_grain_amount = 0.0;
+        }
+    }
+
     let lut_path = js_adjustments["lutPath"].as_str();
     let lut = lut_path.and_then(|p| get_or_load_lut(state, p).ok());
 
@@ -330,9 +388,41 @@ pub(crate) fn process_image_for_export_pipeline(
             roi: None,
             grain_mip_level: 0.0,
             grain_coord_scale: 1.0,
+            grain_view,
         },
         debug_tag,
     )
+}
+
+/// Grain field view for an export job, baked on demand and cached by
+/// parameters so a batch export with identical settings bakes once. Each
+/// job gets its own view into the shared texture — no cross-job races with
+/// the editor's realtime bake slot.
+fn get_export_grain_view(
+    context: &GpuContext,
+    state: &tauri::State<AppState>,
+    opts: &crate::crystal_grain::CrystalGrainOptions,
+) -> Result<wgpu::TextureView, String> {
+    let key = crate::crystal_grain::bake_cache_key(opts);
+    let texture = {
+        let mut cache = state.grain_bake_cache.lock().map_err(|e| e.to_string())?;
+        match cache.as_ref() {
+            Some((k, tex)) if *k == key => std::sync::Arc::clone(tex),
+            _ => {
+                let tile = crate::crystal_grain::GRAIN_FIELD_TILE;
+                let mips = crate::crystal_grain::bake_grain_field(opts, tile);
+                let tex = std::sync::Arc::new(crate::crystal_grain::upload_grain_field(
+                    &context.device,
+                    &context.queue,
+                    &mips,
+                    tile,
+                ));
+                *cache = Some((key, std::sync::Arc::clone(&tex)));
+                tex
+            }
+        }
+    };
+    Ok(texture.create_view(&Default::default()))
 }
 
 /// Headless full-pipeline render for examples (no Tauri state/handle):
@@ -411,6 +501,7 @@ pub fn render_image_headless(
             roi: None,
             grain_mip_level: 0.0,
             grain_coord_scale: 1.0,
+            grain_view: None,
         },
         false,
         false,
@@ -498,7 +589,8 @@ fn process_image_for_export(
     is_raw: bool,
     app_handle: &tauri::AppHandle,
 ) -> Result<DynamicImage, String> {
-    let processed_image = process_image_for_export_pipeline(
+    let grain_mode = export_grain_mode(export_settings);
+    let mut image = process_image_for_export_pipeline(
         path,
         base_image,
         js_adjustments,
@@ -507,9 +599,74 @@ fn process_image_for_export(
         is_raw,
         "process_image_for_export",
         app_handle,
+        grain_mode,
+        export_settings.grain_mono,
     )?;
 
-    apply_export_resize_and_watermark(processed_image, export_settings)
+    // Order: resize -> CPU grain -> watermark. The resize first authors the
+    // grain in output pixels (same absolute grain size at any export
+    // resolution); the watermark is a digital overlay and stays grain-free.
+    if let Some(resize_opts) = &export_settings.resize {
+        let (current_w, current_h) = image.dimensions();
+        let (target_w, target_h) = calculate_resize_target(current_w, current_h, resize_opts);
+        if target_w != current_w || target_h != current_h {
+            image = image.resize(target_w, target_h, imageops::FilterType::Lanczos3);
+        }
+    }
+
+    if matches!(grain_mode, ExportGrainMode::Pierre | ExportGrainMode::Ipol) {
+        image = apply_export_grain_cpu(
+            image,
+            js_adjustments,
+            grain_mode,
+            export_settings.grain_mono,
+            state,
+        )?;
+    }
+
+    if let Some(watermark_settings) = &export_settings.watermark {
+        apply_watermark(&mut image, watermark_settings)?;
+    }
+    Ok(image)
+}
+
+/// Full-quality grain for export: the complete Pierre/IPOL model on the
+/// CPU, mixed by the editor's Amount slider so the file tracks the preview
+/// strength. Serialized across export jobs — the renderers already use all
+/// cores via rayon.
+fn apply_export_grain_cpu(
+    image: DynamicImage,
+    js_adjustments: &Value,
+    grain_mode: ExportGrainMode,
+    grain_mono: bool,
+    state: &tauri::State<AppState>,
+) -> Result<DynamicImage, String> {
+    let amount = js_adjustments
+        .get("crystalGrainAmount")
+        .and_then(|v| v.as_f64())
+        .unwrap_or(100.0) as f32
+        / 100.0;
+    if amount <= 0.0 {
+        return Ok(image);
+    }
+
+    let _guard = state.grain_render_lock.lock().map_err(|e| e.to_string())?;
+    let rgb = image.to_rgb32f();
+    let mut grained = match grain_mode {
+        ExportGrainMode::Pierre => {
+            let mut opts = crate::crystal_grain::options_from_adjustments(js_adjustments);
+            opts.monochrome |= grain_mono;
+            crate::crystal_grain::apply_crystal_grain_rgb(&rgb, &opts, None)
+        }
+        ExportGrainMode::Ipol => {
+            let mut opts = crate::film_grain::options_from_adjustments(js_adjustments);
+            opts.monochrome |= grain_mono;
+            crate::film_grain::apply_film_grain_rgb(&rgb, &opts, None)
+        }
+        _ => return Ok(image),
+    };
+    crate::crystal_grain::mix_grain_amount(&rgb, &mut grained, amount.clamp(0.0, 1.0));
+    Ok(DynamicImage::ImageRgb32F(grained))
 }
 
 fn build_single_mask_adjustments(all: &AllAdjustments, mask_index: usize) -> AllAdjustments {
@@ -657,7 +814,9 @@ fn export_masks_for_image(
 
     if !mask_bitmaps.is_empty() {
         let tm_override = resolve_tonemapper_override_from_handle(app_handle, is_raw);
-        let all_adjustments = get_all_adjustments_from_json(js_adjustments, is_raw, tm_override);
+        let mut all_adjustments = get_all_adjustments_from_json(js_adjustments, is_raw, tm_override);
+        // Grain is an image-finishing effect; mask exports stay clean.
+        all_adjustments.global.crystal_grain_amount = 0.0;
         let lut_path = js_adjustments["lutPath"].as_str();
         let lut = lut_path.and_then(|p| get_or_load_lut(state, p).ok());
         let unique_hash = calculate_full_job_hash(source_path_str, js_adjustments);
@@ -688,6 +847,7 @@ fn export_masks_for_image(
                     roi: None,
                     grain_mip_level: 0.0,
                     grain_coord_scale: 1.0,
+                    grain_view: None,
                 },
                 "export_mask_image",
             )?;
@@ -754,6 +914,7 @@ fn export_adjustments_as_lut(
     all_adjustments.global.show_clipping = 0;
     all_adjustments.global.vignette_amount = 0.0;
     all_adjustments.global.grain_amount = 0.0;
+    all_adjustments.global.crystal_grain_amount = 0.0;
     all_adjustments.global.sharpness = 0.0;
     all_adjustments.global.clarity = 0.0;
     all_adjustments.global.dehaze = 0.0;
@@ -783,6 +944,7 @@ fn export_adjustments_as_lut(
             roi: None,
             grain_mip_level: 0.0,
             grain_coord_scale: 1.0,
+            grain_view: None,
         },
         "export_lut",
     )?;
@@ -1271,6 +1433,7 @@ pub async fn estimate_export_sizes(
                 roi: None,
                 grain_mip_level: 0.0,
                 grain_coord_scale: 1.0,
+                grain_view: None,
             },
             "estimate_export_size",
         )?;
@@ -1411,6 +1574,7 @@ pub async fn estimate_export_sizes(
                 roi: None,
                 grain_mip_level: 0.0,
                 grain_coord_scale: 1.0,
+                grain_view: None,
             },
             "estimate_batch_export_size",
         )?;

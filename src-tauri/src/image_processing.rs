@@ -1566,7 +1566,11 @@ pub struct GlobalAdjustments {
     pub flim_strength: f32,          // 0..1 mix against the non-AgX base look
     _pad_flim_end: f32,
     pub flim_warmth: [f32; 3],       // per-channel gain along the daylight locus (pre-sigmoid)
-    _pad_flim_end2: f32,
+    pub flim_adjacency: f32,         // log-domain unsharp (developer diffusion approx)
+    pub flim_hi_tint: [f32; 3],      // split-tone highlight tint (baked from slider, + = warm)
+    _pad_flim_hi: f32,
+    pub flim_sh_tint: [f32; 3],      // split-tone shadow tint (baked from slider, + = warm)
+    _pad_flim_sh: f32,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, Pod, Zeroable, Default)]
@@ -2153,6 +2157,7 @@ const FLIM_LOG2_MIN: f32 = -10.0;
 const FLIM_TOE: [f32; 2] = [0.44, 0.28];
 const FLIM_SHOULDER: [f32; 2] = [0.591, 0.779];
 
+#[derive(Clone, Copy)]
 struct FlimPreset {
     pre_exposure: f32,
     pre_filter: [f32; 3],
@@ -2232,6 +2237,63 @@ const FLIM_PRESETS: [FlimPreset; 3] = [
         midtone_saturation: 1.0,
     },
 ];
+
+// Canonical extended-gamut parameters shared by every flim preset; the
+// advanced panel exposes them as abstract knobs around these values.
+const FLIM_BASE_GAMUT_SCALES: [f32; 3] = [1.05, 1.12, 1.045];
+const FLIM_BASE_GAMUT_ROTATIONS: [f32; 3] = [0.5, 2.0, 0.1];
+
+// Build a preset from the advanced panel's absolute flimAdv* keys.
+// Returns None when the keys are absent (old sidecars) so callers fall
+// back to the builtin preset table.
+//
+// The gamut is steered through abstract knobs rather than raw numbers:
+// `flimAdvGamutExpand` (100 = canonical scales) and `flimAdvPaletteRotate`
+// (degrees added to every canonical rotation). Filters are hue + strength;
+// hue maps to RGB through flim's own hsv_to_rgb(h, 1, 1).
+fn flim_preset_from_advanced_json(js: &serde_json::Value) -> Option<FlimPreset> {
+    let pre_exposure = js.get("flimAdvPreExposure")?.as_f64()? as f32;
+    let get = |key: &str, default: f32| -> f32 {
+        js.get(key).and_then(|v| v.as_f64()).unwrap_or(default as f64) as f32
+    };
+    let expand = get("flimAdvGamutExpand", 100.0) / 100.0;
+    let rotate = get("flimAdvPaletteRotate", 0.0);
+    let mut gamut_scales = [0.0f32; 3];
+    let mut gamut_rotations = [0.0f32; 3];
+    for i in 0..3 {
+        gamut_scales[i] = 1.0 + (FLIM_BASE_GAMUT_SCALES[i] - 1.0) * expand;
+        gamut_rotations[i] = FLIM_BASE_GAMUT_ROTATIONS[i] + rotate;
+    }
+    let black_point = if get("flimAdvBlackAuto", 1.0) >= 0.5 {
+        None
+    } else {
+        Some(get("flimAdvBlackPoint", 0.0))
+    };
+    Some(FlimPreset {
+        pre_exposure,
+        pre_filter: flim_hsv_to_rgb(get("flimAdvPreFilterHue", 0.0) / 360.0, 1.0, 1.0),
+        pre_filter_strength: get("flimAdvPreFilterStrength", 0.0),
+        gamut_scales,
+        gamut_rotations,
+        gamut_muls: [get("flimAdvPushR", 1.0), 1.0, get("flimAdvPushB", 1.0)],
+        // Base sigmoid white point in stops; the Shoulder look-slider shifts
+        // it relatively on top of this.
+        sigmoid_log2_max: get("flimAdvLog2Max", 22.0),
+        negative_exposure: get("flimAdvNegExposure", 6.0),
+        negative_density: get("flimAdvNegDensity", 5.0),
+        print_backlight: [
+            get("flimAdvBacklightR", 1.0),
+            get("flimAdvBacklightG", 1.0),
+            get("flimAdvBacklightB", 1.0),
+        ],
+        print_exposure: get("flimAdvPrintExposure", 6.0),
+        print_density: get("flimAdvPrintDensity", 27.5),
+        black_point,
+        post_filter: flim_hsv_to_rgb(get("flimAdvPostFilterHue", 0.0) / 360.0, 1.0, 1.0),
+        post_filter_strength: get("flimAdvPostFilterStrength", 0.0),
+        midtone_saturation: get("flimAdvSaturation", 1.02),
+    })
+}
 
 struct FlimUniforms {
     extend_mat: GpuMat3,
@@ -2398,14 +2460,14 @@ fn gpu_mat3_from_rows(r: [[f32; 3]; 3]) -> GpuMat3 {
 /// warmth_t: -1..1 scaled channel split along the daylight locus.
 #[allow(clippy::too_many_arguments)]
 fn compute_flim_uniforms(
-    preset_idx: usize,
+    preset: &FlimPreset,
     contrast: f32,
     shoulder: f32,
     toe: f32,
     saturation: f32,
     warmth_t: f32,
 ) -> FlimUniforms {
-    let p = &FLIM_PRESETS[preset_idx.min(FLIM_PRESETS.len() - 1)];
+    let p = preset;
     let log2_max = (p.sigmoid_log2_max + shoulder * 4.0).max(12.0);
     let neg_density = p.negative_density * contrast;
     let print_density = p.print_density * contrast;
@@ -2607,8 +2669,15 @@ fn get_global_adjustments_from_json(
     let flim_toe = js_adjustments["flimToe"].as_f64().unwrap_or(0.0) as f32 / 100.0;
     let flim_saturation = js_adjustments["flimSaturation"].as_f64().unwrap_or(100.0) as f32 / 100.0;
     let flim_warmth_t = js_adjustments["flimWarmth"].as_f64().unwrap_or(0.0) as f32 / 100.0 * 0.15;
+    let flim_adjacency = js_adjustments["flimAdjacency"].as_f64().unwrap_or(0.0) as f32 / 100.0;
+    let flim_hi = js_adjustments["flimHiTint"].as_f64().unwrap_or(0.0) as f32 / 100.0;
+    let flim_sh = js_adjustments["flimShTint"].as_f64().unwrap_or(0.0) as f32 / 100.0;
+    // Advanced panel (flimAdv* keys) wins when present; otherwise the builtin
+    // preset table is used (old sidecars, headless tools).
+    let flim_preset_owned =
+        flim_preset_from_advanced_json(js_adjustments).unwrap_or(FLIM_PRESETS[flim_preset_idx]);
     let flim = compute_flim_uniforms(
-        flim_preset_idx,
+        &flim_preset_owned,
         flim_contrast,
         flim_shoulder,
         flim_toe,
@@ -2884,7 +2953,11 @@ fn get_global_adjustments_from_json(
         flim_strength,
         _pad_flim_end: 0.0,
         flim_warmth: flim.warmth,
-        _pad_flim_end2: 0.0,
+        flim_adjacency,
+        flim_hi_tint: [1.0 + 0.25 * flim_hi, 1.0, 1.0 - 0.25 * flim_hi],
+        _pad_flim_hi: 0.0,
+        flim_sh_tint: [1.0 + 0.25 * flim_sh, 1.0, 1.0 - 0.25 * flim_sh],
+        _pad_flim_sh: 0.0,
     }
 }
 
@@ -4065,5 +4138,150 @@ mod film_layout_tests {
             rust_size, wgsl_size,
             "Rust GlobalAdjustments ({rust_size} bytes) != WGSL ({wgsl_size} bytes)"
         );
+    }
+
+    // Advanced flim panel: absolute preset knobs arrive as flimAdv* JSON keys.
+    // A preset built from keys mirroring a builtin must yield render-equivalent
+    // uniforms to that builtin.
+    fn adv_json_for_builtin(idx: usize) -> serde_json::Value {
+        match idx {
+            0 => serde_json::json!({
+                "flimAdvPreExposure": 4.3, "flimAdvNegExposure": 6.0,
+                "flimAdvNegDensity": 5.0, "flimAdvPrintExposure": 6.0,
+                "flimAdvPrintDensity": 27.5,
+                "flimAdvBacklightR": 1.0, "flimAdvBacklightG": 1.0, "flimAdvBacklightB": 1.0,
+                "flimAdvSaturation": 1.02, "flimAdvBlackAuto": 1, "flimAdvBlackPoint": 0.0,
+                "flimAdvPreFilterHue": 0.0, "flimAdvPreFilterStrength": 0.0,
+                "flimAdvPostFilterHue": 0.0, "flimAdvPostFilterStrength": 0.0,
+                "flimAdvGamutExpand": 100.0, "flimAdvPaletteRotate": 0.0,
+                "flimAdvPushR": 1.0, "flimAdvPushB": 1.0
+            }),
+            1 => serde_json::json!({
+                "flimAdvPreExposure": 5.563035, "flimAdvNegExposure": 5.8,
+                "flimAdvNegDensity": 5.0, "flimAdvPrintExposure": 6.0,
+                "flimAdvPrintDensity": 40.0,
+                "flimAdvBacklightR": 0.99, "flimAdvBacklightG": 1.1, "flimAdvBacklightB": 1.035989,
+                "flimAdvSaturation": 1.1, "flimAdvBlackAuto": 0, "flimAdvBlackPoint": -5.0,
+                "flimAdvPreFilterHue": 0.0, "flimAdvPreFilterStrength": 0.0,
+                "flimAdvPostFilterHue": 0.0, "flimAdvPostFilterStrength": 0.0,
+                "flimAdvGamutExpand": 100.0, "flimAdvPaletteRotate": 0.0,
+                "flimAdvPushR": 1.1, "flimAdvPushB": 1.2, "flimAdvLog2Max": 23.0
+            }),
+            _ => serde_json::json!({
+                "flimAdvPreExposure": 3.9, "flimAdvNegExposure": 4.7,
+                "flimAdvNegDensity": 7.0, "flimAdvPrintExposure": 4.7,
+                "flimAdvPrintDensity": 30.0,
+                "flimAdvBacklightR": 0.9992, "flimAdvBacklightG": 0.99, "flimAdvBacklightB": 1.0,
+                "flimAdvSaturation": 1.0, "flimAdvBlackAuto": 0, "flimAdvBlackPoint": 0.5,
+                "flimAdvPreFilterHue": 210.0, "flimAdvPreFilterStrength": 0.05,
+                "flimAdvPostFilterHue": 60.0, "flimAdvPostFilterStrength": 0.04,
+                "flimAdvGamutExpand": 100.0, "flimAdvPaletteRotate": 0.0,
+                "flimAdvPushR": 1.0, "flimAdvPushB": 1.06
+            }),
+        }
+    }
+
+    fn eff_filter(f: [f32; 3], s: f32) -> [f32; 3] {
+        [
+            1.0 + (f[0] - 1.0) * s,
+            1.0 + (f[1] - 1.0) * s,
+            1.0 + (f[2] - 1.0) * s,
+        ]
+    }
+
+    fn assert_mat_close(a: &GpuMat3, b: &GpuMat3, eps: f32, label: &str) {
+        for (ca, cb) in [a.col0, a.col1, a.col2].iter().zip([b.col0, b.col1, b.col2].iter()) {
+            for k in 0..3 {
+                assert!((ca[k] - cb[k]).abs() < eps, "{label} col {k}");
+            }
+        }
+    }
+
+    #[test]
+    fn flim_advanced_keys_match_builtin_presets() {
+        for idx in 0..FLIM_PRESETS.len() {
+            let js = adv_json_for_builtin(idx);
+            let preset = flim_preset_from_advanced_json(&js)
+                .expect("advanced keys must produce a preset");
+            let a = compute_flim_uniforms(&preset, 1.0, 0.0, 0.0, 1.0, 0.0);
+            let b = compute_flim_uniforms(&FLIM_PRESETS[idx], 1.0, 0.0, 0.0, 1.0, 0.0);
+            let eps = 1e-5;
+            assert!((a.pre_exposure - b.pre_exposure).abs() < eps, "preset {idx} pre_exposure");
+            assert!((a.negative_exposure - b.negative_exposure).abs() < eps, "preset {idx} neg_exposure");
+            assert!((a.negative_density - b.negative_density).abs() < eps, "preset {idx} neg_density");
+            assert!((a.print_exposure - b.print_exposure).abs() < eps, "preset {idx} print_exposure");
+            assert!((a.print_density - b.print_density).abs() < eps, "preset {idx} print_density");
+            assert!((a.midtone_saturation - b.midtone_saturation).abs() < eps, "preset {idx} saturation");
+            assert!((a.black_cap_luma - b.black_cap_luma).abs() < 1e-6, "preset {idx} black_cap");
+            for k in 0..3 {
+                assert!((a.backlight_ext[k] - b.backlight_ext[k]).abs() < eps, "preset {idx} backlight {k}");
+                assert!(
+                    (eff_filter(a.pre_filter, a.pre_filter_strength)[k]
+                        - eff_filter(b.pre_filter, b.pre_filter_strength)[k])
+                        .abs()
+                        < 1e-4,
+                    "preset {idx} pre_filter {k}"
+                );
+                assert!(
+                    (eff_filter(a.post_filter, a.post_filter_strength)[k]
+                        - eff_filter(b.post_filter, b.post_filter_strength)[k])
+                        .abs()
+                        < 1e-4,
+                    "preset {idx} post_filter {k}"
+                );
+            }
+            assert_mat_close(&a.extend_mat, &b.extend_mat, eps, "extend_mat");
+            assert_mat_close(&a.extend_mat_inv, &b.extend_mat_inv, eps, "extend_mat_inv");
+            assert!((a.sigmoid_log2_max - b.sigmoid_log2_max).abs() < eps, "preset {idx} log2_max");
+            for k in 0..3 {
+                assert!((a.white_cap[k] - b.white_cap[k]).abs() < eps, "preset {idx} white_cap {k}");
+            }
+        }
+    }
+
+    #[test]
+    fn flim_advanced_knob_math() {
+        let js = serde_json::json!({
+            "flimAdvPreExposure": 4.3,
+            "flimAdvGamutExpand": 200.0, "flimAdvPaletteRotate": 5.0,
+            "flimAdvPushR": 1.3, "flimAdvPushB": 0.8,
+            "flimAdvBlackAuto": 0, "flimAdvBlackPoint": -3.0,
+            "flimAdvPreFilterHue": 120.0, "flimAdvPreFilterStrength": 0.1
+        });
+        let p = flim_preset_from_advanced_json(&js).expect("advanced keys must produce a preset");
+        for k in 0..3 {
+            let expect_scale = 1.0 + (FLIM_BASE_GAMUT_SCALES[k] - 1.0) * 2.0;
+            assert!((p.gamut_scales[k] - expect_scale).abs() < 1e-6, "scale {k}");
+            assert!(
+                (p.gamut_rotations[k] - (FLIM_BASE_GAMUT_ROTATIONS[k] + 5.0)).abs() < 1e-6,
+                "rotation {k}"
+            );
+        }
+        assert!((p.gamut_muls[0] - 1.3).abs() < 1e-6);
+        assert_eq!(p.gamut_muls[1], 1.0);
+        assert!((p.gamut_muls[2] - 0.8).abs() < 1e-6);
+        assert_eq!(p.black_point, Some(-3.0));
+        assert!((p.pre_filter[1] - 1.0).abs() < 1e-6, "hue 120 must be pure green");
+        assert!(p.pre_filter[0].abs() < 1e-6 && p.pre_filter[2].abs() < 1e-6);
+        assert!((p.pre_filter_strength - 0.1).abs() < 1e-6);
+        // Missing optional keys fall back to default-preset values.
+        assert!((p.negative_exposure - 6.0).abs() < 1e-6);
+        assert!((p.print_density - 27.5).abs() < 1e-6);
+        assert_eq!(p.sigmoid_log2_max, 22.0);
+
+        let shoulder = flim_preset_from_advanced_json(&serde_json::json!({
+            "flimAdvPreExposure": 4.3, "flimAdvLog2Max": 23.0
+        }))
+        .expect("advanced keys must produce a preset");
+        assert_eq!(shoulder.sigmoid_log2_max, 23.0);
+
+        let auto = flim_preset_from_advanced_json(&serde_json::json!({
+            "flimAdvPreExposure": 4.3, "flimAdvBlackAuto": 1
+        }))
+        .expect("advanced keys must produce a preset");
+        assert_eq!(auto.black_point, None);
+
+        // No advanced keys -> no preset (caller falls back to builtin table).
+        assert!(flim_preset_from_advanced_json(&serde_json::json!({})).is_none());
     }
 }

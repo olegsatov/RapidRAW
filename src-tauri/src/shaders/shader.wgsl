@@ -174,7 +174,11 @@ struct GlobalAdjustments {
     flim_strength: f32,             // 0..1 mix against the non-AgX base look
     _pad_flim_end: f32,
     flim_warmth: vec3<f32>,         // per-channel gain along the daylight locus (pre-sigmoid)
-    _pad_flim_end2: f32,
+    flim_adjacency: f32,            // log-domain unsharp (developer diffusion approx)
+    flim_hi_tint: vec3<f32>,        // split-tone highlight tint (baked from slider, + = warm)
+    _pad_flim_hi: f32,
+    flim_sh_tint: vec3<f32>,        // split-tone shadow tint (baked from slider, + = warm)
+    _pad_flim_sh: f32,
 }
 
 struct MaskAdjustments {
@@ -1332,7 +1336,7 @@ fn flim_hsv_to_rgb(inp: vec3<f32>) -> vec3<f32> {
     return vec3<f32>(v, p, q);
 }
 
-fn flim_transform(color_in: vec3<f32>) -> vec3<f32> {
+fn flim_transform(color_in: vec3<f32>, blur_in: vec3<f32>, exp: f32, bright: f32, is_raw: u32) -> vec3<f32> {
     let g = adjustments.global;
     let white = vec3<f32>(1.0);
     // exposure pivot (preset pre-exposure folded with the user EV at parse time)
@@ -1341,6 +1345,21 @@ fn flim_transform(color_in: vec3<f32>) -> vec3<f32> {
     inp = inp * mix(white, g.flim_pre_filter, g.flim_pre_filter_strength);
     // warmth — per-channel gain along the daylight locus (pre-sigmoid, can't clip)
     inp = inp * g.flim_warmth;
+    // adjacency: steady-state approximation of Filmulator's developer
+    // depletion + diffusion (CarVac, GPLv3 — model only). Developer flows from
+    // low-development (dark) areas into high-development (bright) ones, so the
+    // bright side of an edge develops harder: an unsharp mask in the log2
+    // domain with weight growing toward highlights reproduces that.
+    if (g.flim_adjacency > 0.0) {
+        var blur_lin = blur_in;
+        if (is_raw == 0u) { blur_lin = srgb_to_linear(blur_lin); }
+        blur_lin = apply_filmic_exposure(apply_linear_exposure(blur_lin, exp), bright);
+        blur_lin = blur_lin * exp2(g.flim_ev) * mix(white, g.flim_pre_filter, g.flim_pre_filter_strength) * g.flim_warmth;
+        let log_hi = log2(max(inp, vec3<f32>(1e-6)));
+        let log_lo = log2(max(blur_lin, vec3<f32>(1e-6)));
+        let w = clamp(log_hi * 0.3 + 1.2, vec3<f32>(0.2), vec3<f32>(2.0));
+        inp = exp2(log_hi + (log_hi - log_lo) * g.flim_adjacency * 0.5 * w);
+    }
     // extended gamut
     inp = g.flim_extend_mat * inp;
     // develop negative and print
@@ -1358,6 +1377,10 @@ fn flim_transform(color_in: vec3<f32>) -> vec3<f32> {
     inp = max(inp, vec3<f32>(0.0));
     // post-formation filter
     inp = inp * mix(white, g.flim_post_filter, g.flim_post_filter_strength);
+    // split-tone: tone-keyed warm/cool tinting (tints baked at parse time)
+    let mono_st = dot(inp, FLIM_LUMA);
+    inp = inp * mix(white, g.flim_hi_tint, smoothstep(0.5, 0.9, mono_st));
+    inp = inp * mix(white, g.flim_sh_tint, 1.0 - smoothstep(0.1, 0.5, mono_st));
     inp = clamp(inp, vec3<f32>(0.0), vec3<f32>(1.0));
     // midtone-keyed saturation (flim's hue offset +0.5 + 0.5 is a no-op)
     let mono = dot(inp, FLIM_LUMA);
@@ -1575,59 +1598,44 @@ fn apply_glow_bloom(
     return color + bloom_color * amount * 3.8 * protection;
 }
 
+// Halation: light scattered through the film base re-exposes the red-sensitive
+// layer, forming a red-orange halo around highlights. Two-component PSF
+// approximation: sharp core (clarity blur, r≈8) + long tail (structure blur,
+// r≈40); threshold in stops above middle grey (prior art: halation-dctl,
+// realbloom — idea only).
 fn apply_halation(
     color: vec3<f32>,
-    blurred_color_input_space: vec3<f32>,
+    blurred_core_input_space: vec3<f32>,
+    blurred_tail_input_space: vec3<f32>,
     amount: f32,
     is_raw: u32,
-    exp: f32, bright: f32, con: f32, wh: f32
+    exp: f32, bright: f32
 ) -> vec3<f32> {
     if (amount <= 0.0) { return color; }
 
-    var blurred_linear: vec3<f32>;
-    if (is_raw == 1u) {
-        blurred_linear = blurred_color_input_space;
-    } else {
-        blurred_linear = srgb_to_linear(blurred_color_input_space);
+    // The blur textures are computed on the pre-grade input; approximate the
+    // graded linear space by re-applying the exposure adjustments.
+    var core_lin = blurred_core_input_space;
+    var tail_lin = blurred_tail_input_space;
+    if (is_raw == 0u) {
+        core_lin = srgb_to_linear(core_lin);
+        tail_lin = srgb_to_linear(tail_lin);
     }
+    core_lin = apply_filmic_exposure(apply_linear_exposure(core_lin, exp), bright);
+    tail_lin = apply_filmic_exposure(apply_linear_exposure(tail_lin, exp), bright);
 
-    blurred_linear = apply_linear_exposure(blurred_linear, exp);
-    blurred_linear = apply_filmic_exposure(blurred_linear, bright);
-    blurred_linear = apply_tonal_adjustments(blurred_linear, blurred_color_input_space, is_raw, 0.0, 0.0, wh, 0.0);
+    // Threshold in stops above middle grey (0.18 scene-referred convention):
+    // the core reacts only to strong highlights, the tail reaches further down.
+    let core_stops = log2(max(get_luma(max(core_lin, vec3<f32>(0.0))), 1e-6) / 0.18);
+    let tail_stops = log2(max(get_luma(max(tail_lin, vec3<f32>(0.0))), 1e-6) / 0.18);
+    let core_w = smoothstep(2.5, 4.0, core_stops);
+    let tail_w = smoothstep(1.5, 3.5, tail_stops);
 
-    let linear_luma = get_luma(max(blurred_linear, vec3<f32>(0.0)));
+    // The core keeps part of the source hue; the tail is deep red-orange.
+    let core_glow = core_lin * mix(vec3<f32>(1.0), vec3<f32>(1.0, 0.45, 0.25), 0.6) * core_w;
+    let tail_glow = tail_lin * vec3<f32>(1.0, 0.20, 0.06) * tail_w;
 
-    var perceptual_luma: f32;
-    if (linear_luma <= 1.0) {
-        perceptual_luma = pow(max(linear_luma, 0.0), 1.0 / 2.2);
-    } else {
-        perceptual_luma = 1.0 + pow(linear_luma - 1.0, 1.0 / 2.2);
-    }
-
-    let luma_cutoff = mix(0.85, 0.1, clamp(amount, 0.0, 1.0));
-
-    if (perceptual_luma <= luma_cutoff) { return color; }
-
-    let excess = perceptual_luma - luma_cutoff;
-    let range = max(1.5 - luma_cutoff, 0.1);
-    let halation_mask = smoothstep(0.0, range * 0.6, excess);
-
-    let halation_core = vec3<f32>(1.0, 0.15, 0.03);
-    let halation_fringe = vec3<f32>(1.0, 0.32, 0.10);
-
-    let intensity_blend = smoothstep(0.0, 0.7, halation_mask);
-    let halation_tint = mix(halation_fringe, halation_core, intensity_blend);
-
-    let glow_intensity = halation_mask * linear_luma;
-    let halation_glow = halation_tint * glow_intensity;
-
-    let color_luma = get_luma(max(color, vec3<f32>(0.0)));
-    let desat_strength = halation_mask * 0.12;
-    let affected_color = mix(color, vec3<f32>(color_luma), desat_strength);
-
-    let contrast_reduced = mix(vec3<f32>(0.5), affected_color, 1.0 - halation_mask * 0.06);
-
-    return contrast_reduced + halation_glow * amount * 2.5;
+    return color + (core_glow * 0.8 + tail_glow * 0.5) * amount * 2.0;
 }
 
 // --- Film simulation (ported from the Krea WebGL2 film PoC) ---
@@ -1902,8 +1910,8 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
     }
     if (t_halation > 0.0) {
         processed_rgb = apply_halation(
-            processed_rgb, clarity_blurred, t_halation, is_raw,
-            t_exposure, t_brightness, t_contrast, t_whites
+            processed_rgb, clarity_blurred, structure_blurred, t_halation, is_raw,
+            t_exposure, t_brightness
         );
     }
     if (t_flare > 0.0) {
@@ -1992,7 +2000,7 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
         } else {
             flim_base = linear_to_srgb(composite_rgb_linear);
         }
-        let flim_srgb = linear_to_srgb(flim_transform(composite_rgb_linear));
+        let flim_srgb = linear_to_srgb(flim_transform(composite_rgb_linear, clarity_blurred, t_exposure, t_brightness, is_raw));
         base_srgb = mix(flim_base, flim_srgb, adjustments.global.flim_strength);
     } else if (is_raw == 1u) {
         var srgb_emulated = linear_to_srgb(composite_rgb_linear);

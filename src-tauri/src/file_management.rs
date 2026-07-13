@@ -1454,6 +1454,7 @@ pub fn generate_thumbnail_data(
                 // (at ~720px this averages fine grain out, as it should).
                 grain_mip_level: crate::image_processing::grain_mip_level_from_scale(total_scale),
                 grain_coord_scale: if total_scale > 0.0 { 1.0 / total_scale } else { 1.0 },
+                grain_view: None,
             },
             "generate_thumbnail_data",
         ) {
@@ -2697,6 +2698,50 @@ pub fn load_presets(app_handle: AppHandle) -> Result<Vec<PresetItem>, String> {
 #[tauri::command]
 pub fn save_presets(presets: Vec<PresetItem>, app_handle: AppHandle) -> Result<(), String> {
     let path = get_presets_path(&app_handle)?;
+    let json_string = serde_json::to_string_pretty(&presets).map_err(|e| e.to_string())?;
+    fs::write(path, json_string).map_err(|e| e.to_string())
+}
+
+// User-authored flim presets (Film tab, advanced panel). A flat list next to
+// the regular presets; params are the absolute flimAdv* values, kept as
+// opaque JSON so the frontend owns the schema.
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct FlimUserPreset {
+    pub id: String,
+    pub name: String,
+    pub params: serde_json::Value,
+}
+
+fn get_flim_presets_path(app_handle: &AppHandle) -> Result<std::path::PathBuf, String> {
+    let presets_dir = app_handle
+        .path()
+        .app_data_dir()
+        .map_err(|e| e.to_string())?
+        .join("presets");
+
+    if !presets_dir.exists() {
+        fs::create_dir_all(&presets_dir).map_err(|e| e.to_string())?;
+    }
+
+    Ok(presets_dir.join("flim_presets.json"))
+}
+
+#[tauri::command]
+pub fn load_flim_presets(app_handle: AppHandle) -> Result<Vec<FlimUserPreset>, String> {
+    let path = get_flim_presets_path(&app_handle)?;
+    if !path.exists() {
+        return Ok(Vec::new());
+    }
+    let content = fs::read_to_string(path).map_err(|e| e.to_string())?;
+    serde_json::from_str(&content).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn save_flim_presets(
+    presets: Vec<FlimUserPreset>,
+    app_handle: AppHandle,
+) -> Result<(), String> {
+    let path = get_flim_presets_path(&app_handle)?;
     let json_string = serde_json::to_string_pretty(&presets).map_err(|e| e.to_string())?;
     fs::write(path, json_string).map_err(|e| e.to_string())
 }

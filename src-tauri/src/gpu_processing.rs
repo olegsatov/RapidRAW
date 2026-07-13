@@ -38,6 +38,11 @@ pub struct RenderRequest<'a> {
     /// full-image coordinates — otherwise the grain pattern stretches with
     /// the downscale and mip averaging produces blotches instead of grain.
     pub grain_coord_scale: f32,
+    /// Per-request grain field. When set, the film post-pass samples this
+    /// view instead of the shared `context.crystal_grain_view` — export jobs
+    /// use it so concurrent renders with different grain parameters don't
+    /// race on the shared slot.
+    pub grain_view: Option<wgpu::TextureView>,
 }
 
 #[repr(C)]
@@ -1886,8 +1891,23 @@ impl GpuProcessor {
 
                     // Read the CURRENT baked grain field: the bake command
                     // swaps it behind the shared mutex, and this processor's
-                    // context is only a clone (see GpuContext docs).
-                    let grain_view_lock = self.context.crystal_grain_view.lock().unwrap();
+                    // Grain field: a per-request view (export) wins over the
+                    // shared editor bake, which wins over the dummy no-grain
+                    // view. The shared slot is read under its mutex because
+                    // the bake command swaps it and this processor's context
+                    // is only a clone (see GpuContext docs).
+                    let grain_view_lock;
+                    let grain_view = if let Some(v) = request.grain_view.as_ref() {
+                        grain_view_lock = None;
+                        v
+                    } else {
+                        grain_view_lock = Some(self.context.crystal_grain_view.lock().unwrap());
+                        grain_view_lock
+                            .as_ref()
+                            .unwrap()
+                            .as_ref()
+                            .unwrap_or(&self.dummy_grain_view)
+                    };
                     let post_bg = device.create_bind_group(&wgpu::BindGroupDescriptor {
                         label: Some("Film Post BG"),
                         layout: &self.film_post_bgl,
@@ -1910,9 +1930,7 @@ impl GpuProcessor {
                             },
                             wgpu::BindGroupEntry {
                                 binding: 3,
-                                resource: wgpu::BindingResource::TextureView(
-                                    grain_view_lock.as_ref().unwrap_or(&self.dummy_grain_view),
-                                ),
+                                resource: wgpu::BindingResource::TextureView(grain_view),
                             },
                             wgpu::BindGroupEntry {
                                 binding: 4,
@@ -1920,8 +1938,6 @@ impl GpuProcessor {
                             },
                         ],
                     });
-                    drop(grain_view_lock);
-
                     {
                         let mut cpass = main_encoder.begin_compute_pass(&Default::default());
                         cpass.set_pipeline(&self.film_post_pipeline);
@@ -1932,6 +1948,7 @@ impl GpuProcessor {
                             1,
                         );
                     }
+                    drop(grain_view_lock);
                 }
 
                 let graded_tile_texture = if film_post_active {

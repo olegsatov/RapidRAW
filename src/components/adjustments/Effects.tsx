@@ -68,7 +68,7 @@ export default function EffectsPanel({
 
         <Slider
           label={t('adjustments.effects.halation')}
-          max={100}
+          max={200}
           min={0}
           onChange={(e: any) => handleAdjustmentChange(CreativeAdjustment.HalationAmount, e.target.value)}
           step={1}
