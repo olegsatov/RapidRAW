@@ -165,6 +165,14 @@ export enum ThumbnailAspectRatio {
   Contain = 'contain',
 }
 
+export interface LastFolderState {
+  currentFolderPath: string | null;
+  expandedFolders: string[];
+  activeAlbumId: string | null;
+  expandedAlbumGroups: string[];
+  lastSelectedImage?: string | null;
+}
+
 export interface AppSettings {
   aiConnectorAddress?: string;
   aiProvider?: string;
@@ -177,7 +185,8 @@ export interface AppSettings {
   livePreviewQuality?: string;
   enableAiTagging?: boolean;
   filterCriteria?: FilterCriteria;
-  lastFolderState?: any;
+  lastFolderState?: LastFolderState | null;
+  activeRightPanel?: Panel | null;
   pinnedFolders?: any;
   lastRootPath: string | null;
   libraryViewMode?: LibraryViewMode;

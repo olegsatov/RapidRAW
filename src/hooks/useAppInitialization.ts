@@ -12,6 +12,7 @@ import {
   FilterCriteria,
   Invokes,
   LibraryViewMode,
+  Panel,
   RawStatus,
   EditedStatus,
   Theme,
@@ -80,9 +81,10 @@ export const useAppInitialization = ({
     })),
   );
 
-  const { uiVisibility, setUI } = useUIStore(
+  const { uiVisibility, activeRightPanel, setUI } = useUIStore(
     useShallow((state) => ({
       uiVisibility: state.uiVisibility,
+      activeRightPanel: state.activeRightPanel,
       setUI: state.setUI,
     })),
   );
@@ -111,9 +113,10 @@ export const useAppInitialization = ({
     })),
   );
 
-  const { setEditor } = useEditorStore(
+  const { setEditor, selectedImagePath } = useEditorStore(
     useShallow((state) => ({
       setEditor: state.setEditor,
+      selectedImagePath: state.selectedImage?.path ?? null,
     })),
   );
 
@@ -167,6 +170,10 @@ export const useAppInitialization = ({
 
         if (settings?.uiVisibility)
           setUI((state) => ({ uiVisibility: { ...state.uiVisibility, ...settings.uiVisibility } }));
+
+        if (settings?.activeRightPanel && Object.values(Panel).includes(settings.activeRightPanel)) {
+          setUI({ activeRightPanel: settings.activeRightPanel });
+        }
 
         if (settings?.isWaveformVisible !== undefined) setEditor({ isWaveformVisible: settings.isWaveformVisible });
         if (settings?.activeWaveformChannel) setEditor({ activeWaveformChannel: settings.activeWaveformChannel });
@@ -345,10 +352,40 @@ export const useAppInitialization = ({
           expandedFolders: currentExpanded,
           activeAlbumId,
           expandedAlbumGroups: currentExpandedAlbums,
+          lastSelectedImage: selectedImagePath,
         },
       });
     }
-  }, [currentFolderPath, expandedFolders, activeAlbumId, expandedAlbumGroups, appSettings, handleSettingsChange]);
+  }, [
+    currentFolderPath,
+    expandedFolders,
+    activeAlbumId,
+    expandedAlbumGroups,
+    selectedImagePath,
+    appSettings,
+    handleSettingsChange,
+  ]);
+
+  // Persist the image open in the editor so "Continue Session" can reopen it.
+  useEffect(() => {
+    if (isInitialMount.current || !appSettings) return;
+    const prevFolderState = appSettings.lastFolderState;
+    if (!prevFolderState) return;
+    if ((prevFolderState.lastSelectedImage ?? null) === selectedImagePath) return;
+
+    handleSettingsChange({
+      ...appSettings,
+      lastFolderState: { ...prevFolderState, lastSelectedImage: selectedImagePath },
+    });
+  }, [selectedImagePath, appSettings, handleSettingsChange]);
+
+  // Persist the active editor tab (right panel) across restarts.
+  useEffect(() => {
+    if (isInitialMount.current || !appSettings) return;
+    if ((appSettings.activeRightPanel ?? null) === activeRightPanel) return;
+
+    handleSettingsChange({ ...appSettings, activeRightPanel });
+  }, [activeRightPanel, appSettings, handleSettingsChange]);
 
   useEffect(() => {
     if (!appSettings) return;

@@ -577,6 +577,14 @@ export function useAppNavigation({ clearThumbnailQueue, refs }: AppNavigationPro
       } else {
         await handleSelectSubfolder(pathToSelect, false, preloadedImages, false);
       }
+
+      const lastImagePath = folderState?.lastSelectedImage;
+      if (lastImagePath) {
+        const { imageList } = useLibraryStore.getState();
+        if (imageList.some((file) => file.path === lastImagePath)) {
+          await handleImageSelect(lastImagePath);
+        }
+      }
     };
 
     restore().catch((err) => {
