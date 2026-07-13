@@ -4,12 +4,10 @@ import { motion, AnimatePresence } from 'framer-motion';
 import clsx from 'clsx';
 import { useTranslation } from 'react-i18next';
 import BasicAdjustments from '../../adjustments/Basic';
-import BlackAndWhitePanel from '../../adjustments/BlackAndWhite';
 import CurveGraph from '../../adjustments/Curves';
 import ColorPanel from '../../adjustments/Color';
 import DetailsPanel from '../../adjustments/Details';
 import EffectsPanel from '../../adjustments/Effects';
-import FilmPanel from '../../adjustments/Film';
 import CollapsibleSection from '../../ui/CollapsibleSection';
 import Waveform from '../editor/Waveform';
 import Resizer from '../../ui/Resizer';
@@ -274,15 +272,17 @@ export default function Controls() {
       </AnimatePresence>
 
       <div className="grow overflow-y-scroll p-4 flex flex-col gap-2">
-        {Object.keys(ADJUSTMENT_SECTIONS).map((sectionName: string) => {
+        {Object.keys(ADJUSTMENT_SECTIONS)
+          // film and blackAndWhite live in the Film tab now; they stay in
+          // ADJUSTMENT_SECTIONS so reset/copy-paste keep covering their keys.
+          .filter((sectionName) => sectionName !== 'film' && sectionName !== 'blackAndWhite')
+          .map((sectionName: string) => {
           const SectionComponent: any = {
             basic: BasicAdjustments,
             curves: CurveGraph,
             color: ColorPanel,
             details: DetailsPanel,
             effects: EffectsPanel,
-            blackAndWhite: BlackAndWhitePanel,
-            film: FilmPanel,
           }[sectionName];
 
           const title = t(`editor.adjustments.sections.${sectionName}`);

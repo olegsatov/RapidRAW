@@ -5,6 +5,10 @@ import { ChevronDown, ChevronRight } from 'lucide-react';
 import Dropdown from '../../ui/Dropdown';
 import Slider from '../../ui/Slider';
 import Text from '../../ui/Text';
+import CollapsibleSection from '../../ui/CollapsibleSection';
+import FilmLookPanel from '../../adjustments/Film';
+import BlackAndWhitePanel from '../../adjustments/BlackAndWhite';
+import GrainPanel from '../../adjustments/Grain';
 import { TextVariants } from '../../../types/typography';
 import {
   Adjustments,
@@ -14,8 +18,10 @@ import {
   FLIM_BUILTIN_PRESETS,
   FlimPresetParams,
   INITIAL_ADJUSTMENTS,
+  SectionVisibility,
 } from '../../../utils/adjustments';
 import { useEditorStore } from '../../../store/useEditorStore';
+import { useUIStore } from '../../../store/useUIStore';
 import { useEditorActions } from '../../../hooks/useEditorActions';
 import { Invokes } from '../../ui/AppProperties';
 
@@ -79,8 +85,11 @@ export default function FilmPanel() {
   const adjustments = useEditorStore((s) => s.adjustments);
   const setEditor = useEditorStore((s) => s.setEditor);
   const { setAdjustments } = useEditorActions();
+  const collapsibleSectionsState = useUIStore((s) => s.collapsibleSectionsState);
+  const setUI = useUIStore((s) => s.setUI);
 
   const [advancedOpen, setAdvancedOpen] = useState(false);
+  const [grainOpen, setGrainOpen] = useState(false);
   const [userPresets, setUserPresets] = useState<Array<FlimUserPreset>>([]);
   const [savingPreset, setSavingPreset] = useState(false);
   const [presetName, setPresetName] = useState('');
@@ -169,6 +178,31 @@ export default function FilmPanel() {
     }
   };
 
+  // The film/B&W/grain sections moved here from the Adjust tab; film and B&W
+  // keep their visibility toggles (they gate the render) and their shared
+  // open-state keys.
+  const handleToggleSection = (section: string) => {
+    setUI((state: any) => ({
+      collapsibleSectionsState: {
+        ...state.collapsibleSectionsState,
+        [section]: !state.collapsibleSectionsState[section],
+      },
+    }));
+  };
+
+  const handleToggleVisibility = (sectionName: string) => {
+    setAdjustments((prev: Partial<Adjustments>) => {
+      const current: SectionVisibility = prev.sectionVisibility || INITIAL_ADJUSTMENTS.sectionVisibility;
+      return {
+        ...prev,
+        sectionVisibility: {
+          ...current,
+          [sectionName]: !current[sectionName as keyof SectionVisibility],
+        },
+      };
+    });
+  };
+
   const tonemapperOptions = [
     { label: t('editor.film.mappers.basic'), value: 'basic' },
     { label: t('editor.film.mappers.agx'), value: 'agx' },
@@ -192,6 +226,8 @@ export default function FilmPanel() {
   ];
 
   const blackAuto = (adjustments.flimAdvBlackAuto ?? 1) >= 0.5;
+  const sectionVisibility: SectionVisibility =
+    adjustments.sectionVisibility || INITIAL_ADJUSTMENTS.sectionVisibility;
 
   return (
     <div className="flex flex-col h-full">
@@ -449,6 +485,48 @@ export default function FilmPanel() {
             </div>
           )}
         </div>
+
+        <CollapsibleSection
+          isContentVisible={sectionVisibility.film}
+          isOpen={!!collapsibleSectionsState.film}
+          onToggle={() => handleToggleSection('film')}
+          onToggleVisibility={() => handleToggleVisibility('film')}
+          title={t('editor.adjustments.sections.film')}
+        >
+          <FilmLookPanel
+            adjustments={adjustments}
+            setAdjustments={setAdjustments}
+            onDragStateChange={onDragStateChange}
+          />
+        </CollapsibleSection>
+
+        <CollapsibleSection
+          isContentVisible={sectionVisibility.blackAndWhite}
+          isOpen={!!collapsibleSectionsState.blackAndWhite}
+          onToggle={() => handleToggleSection('blackAndWhite')}
+          onToggleVisibility={() => handleToggleVisibility('blackAndWhite')}
+          title={t('editor.adjustments.sections.blackAndWhite')}
+        >
+          <BlackAndWhitePanel
+            adjustments={adjustments}
+            setAdjustments={setAdjustments}
+            onDragStateChange={onDragStateChange}
+          />
+        </CollapsibleSection>
+
+        <CollapsibleSection
+          canToggleVisibility={false}
+          isContentVisible={true}
+          isOpen={grainOpen}
+          onToggle={() => setGrainOpen((v) => !v)}
+          title={t('adjustments.effects.grain')}
+        >
+          <GrainPanel
+            adjustments={adjustments}
+            setAdjustments={setAdjustments}
+            onDragStateChange={onDragStateChange}
+          />
+        </CollapsibleSection>
       </div>
     </div>
   );
