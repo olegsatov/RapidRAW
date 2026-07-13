@@ -850,8 +850,8 @@ export const INITIAL_ADJUSTMENTS: Adjustments = {
     details: true,
     effects: true,
     blackAndWhite: false,
-    film: true,
-    grain: true,
+    film: false,
+    grain: false,
   },
   shadows: 0,
   sharpness: 0,
@@ -1061,6 +1061,10 @@ export const normalizeLoadedAdjustments = (loadedAdjustments: Adjustments): any 
     sectionVisibility: {
       ...INITIAL_ADJUSTMENTS.sectionVisibility,
       ...(loadedAdjustments.sectionVisibility || {}),
+      // The grain section toggle is newer than the grain feature itself:
+      // sidecars that predate it have no `grain` key — keep the section on
+      // when the image has grain configured instead of silently disabling it.
+      grain: loadedAdjustments.sectionVisibility?.grain ?? (loadedAdjustments.crystalGrainAmount ?? 0) > 0,
     },
     sharpnessThreshold: loadedAdjustments.sharpnessThreshold ?? INITIAL_ADJUSTMENTS.sharpnessThreshold,
   };
