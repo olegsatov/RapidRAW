@@ -58,15 +58,6 @@ export const useKeyboardShortcuts = ({
       }
     }
 
-    const presetComboMap = new Map<string, Preset>();
-    const presets = usePresetStore.getState().flattenPresets();
-    for (const preset of presets) {
-      if (preset.hotkey && preset.hotkey.length > 0) {
-        const key = preset.hotkey.join('+');
-        presetComboMap.set(key, preset);
-      }
-    }
-
     const actions: Record<string, any> = {
       open_image: {
         shouldFire: (s: any) => !s.editor.selectedImage && s.library.libraryActivePath !== null,
@@ -126,7 +117,7 @@ export const useKeyboardShortcuts = ({
           e.preventDefault();
           const currentIndex = sortedListRef.current.findIndex((img) => img.path === s.editor.selectedImage!.path);
           if (currentIndex === -1) return;
-          let nextIndex = currentIndex - 1 < 0 ? sortedListRef.current.length - 1 : currentIndex - 1;
+          const nextIndex = currentIndex - 1 < 0 ? sortedListRef.current.length - 1 : currentIndex - 1;
           handleImageSelect(sortedListRef.current[nextIndex].path);
         },
       },
@@ -136,7 +127,7 @@ export const useKeyboardShortcuts = ({
           e.preventDefault();
           const currentIndex = sortedListRef.current.findIndex((img) => img.path === s.editor.selectedImage!.path);
           if (currentIndex === -1) return;
-          let nextIndex = currentIndex + 1 >= sortedListRef.current.length ? 0 : currentIndex + 1;
+          const nextIndex = currentIndex + 1 >= sortedListRef.current.length ? 0 : currentIndex + 1;
           handleImageSelect(sortedListRef.current[nextIndex].path);
         },
       },
@@ -557,6 +548,13 @@ export const useKeyboardShortcuts = ({
         if (builtin.match(event, state)) {
           builtin.execute(event, state);
           return;
+        }
+      }
+
+      const presetComboMap = new Map<string, Preset>();
+      for (const preset of usePresetStore.getState().flattenPresets()) {
+        if (preset.hotkey && preset.hotkey.length > 0) {
+          presetComboMap.set(preset.hotkey.join('+'), preset);
         }
       }
 
