@@ -1,12 +1,7 @@
 import { create } from 'zustand';
 import { invoke } from '@tauri-apps/api/core';
 import debounce from 'lodash.debounce';
-import {
-  Adjustments,
-  COPYABLE_ADJUSTMENT_KEYS,
-  INITIAL_ADJUSTMENTS,
-  PasteMode,
-} from '../utils/adjustments';
+import { Adjustments, COPYABLE_ADJUSTMENT_KEYS, INITIAL_ADJUSTMENTS, PasteMode } from '../utils/adjustments';
 import { normalizePreset, getPresetMode, getPresetIncludedAdjustments } from '../utils/presetUtils';
 import { Folder, Invokes, Preset } from '../components/ui/AppProperties';
 
@@ -69,12 +64,7 @@ interface PresetState {
   addFolder: (name: string) => void;
   deleteItem: (id: string) => void;
   renameItem: (id: string | null, newName: string) => void;
-  configurePreset: (
-    id: string | null,
-    name: string,
-    mode: PasteMode,
-    includedAdjustments: string[],
-  ) => Preset | null;
+  configurePreset: (id: string | null, name: string, mode: PasteMode, includedAdjustments: string[]) => Preset | null;
   overwritePreset: (currentAdjustments: Adjustments, id: string | null) => Preset | null;
   duplicatePreset: (presetId: string | null) => Preset | null;
   movePreset: (presetId: string, targetFolderId: string | null, overId?: string | null) => void;
@@ -480,9 +470,7 @@ export const usePresetStore = create<PresetState>((set, get) => {
       set((state) => {
         const currentPresets = state.presets;
         const getIndex = (arr: Array<UserPreset>, id: string) =>
-          arr.findIndex(
-            (item: UserPreset) => item.preset?.id === id || item.folder?.id === id || item?.id === id,
-          );
+          arr.findIndex((item: UserPreset) => item.preset?.id === id || item.folder?.id === id || item?.id === id);
 
         const activeRootIndex = getIndex(currentPresets, activeId);
         const overRootIndex = getIndex(currentPresets, overId);
@@ -594,9 +582,7 @@ export const usePresetStore = create<PresetState>((set, get) => {
             return {
               folder: {
                 ...item.folder,
-                children: item.folder.children.map((child: Preset) =>
-                  child.id === id ? updater(child) : child,
-                ),
+                children: item.folder.children.map((child: Preset) => (child.id === id ? updater(child) : child)),
               },
             };
           }
