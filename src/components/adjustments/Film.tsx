@@ -123,21 +123,6 @@ export default function FilmPanel({ adjustments, setAdjustments, onDragStateChan
           onDragStateChange={onDragStateChange}
         />
       </div>
-
-      <div className="p-2 bg-bg-tertiary rounded-md">
-        <Text variant={TextVariants.heading} className="mb-2">
-          {t('adjustments.effects.filmEmulsion')}
-        </Text>
-        <Slider
-          label={t('adjustments.effects.filmBlur')}
-          max={100}
-          min={0}
-          onChange={(e: any) => handleAdjustmentChange(FilmAdjustment.FilmBlur, e.target.value)}
-          step={1}
-          value={adjustments.filmBlur}
-          onDragStateChange={onDragStateChange}
-        />
-      </div>
     </div>
   );
 }
