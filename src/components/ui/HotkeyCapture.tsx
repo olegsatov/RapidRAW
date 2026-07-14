@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
+import { X } from 'lucide-react';
 import { formatKeyCode, normalizeCombo } from '../../utils/keyboardUtils';
 import Text from './Text';
 import { TextColors, TextVariants, TextWeights } from '../../types/typography';
@@ -110,10 +111,11 @@ export default function HotkeyCapture({ combo, onChange, osPlatform, conflict, o
         {displayCombo && !isRecording && (
           <button
             onClick={() => onChange(null)}
-            className="text-text-secondary hover:text-text-primary text-xs"
+            className="text-text-secondary hover:text-text-primary p-1"
             type="button"
+            aria-label={t('modals.configurePreset.cancel')}
           >
-            ✕
+            <X size={12} />
           </button>
         )}
       </div>
