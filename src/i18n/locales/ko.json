@@ -1439,7 +1439,11 @@
       "themeDesc": "애플리케이션의 모양과 느낌을 변경합니다.",
       "title": "일반 설정",
       "xmpSync": "XMP 메타데이터 동기화",
-      "xmpSyncDesc": "다른 사진 편집기와의 호환성을 위해 평점, 색상 레이블, 태그를 표준 XMP 사이드카 파일에 동기화합니다."
+      "xmpSyncDesc": "다른 사진 편집기와의 호환성을 위해 평점, 색상 레이블, 태그를 표준 XMP 사이드카 파일에 동기화합니다.",
+      "proofMarginLevel1": "Proof Margin — Level 1",
+      "proofMarginLevel1Desc": "Small padding around the image in the editor (pixels).",
+      "proofMarginLevel2": "Proof Margin — Level 2",
+      "proofMarginLevel2Desc": "Large padding around the image in the editor (pixels)."
     },
     "keybinds": {
       "actions": {
@@ -1482,6 +1486,8 @@
         "toggle_masks": "마스크 패널 전환",
         "toggle_metadata": "메타데이터 패널 전환",
         "toggle_presets": "프리셋 패널 전환",
+        "toggle_clean_view": "Toggle clean view",
+        "toggle_proof_margin": "Toggle proof margin level",
         "undo": "조정 실행 취소",
         "zoom_100": "100%로 확대/축소",
         "zoom_fit": "맞춤으로 확대/축소",

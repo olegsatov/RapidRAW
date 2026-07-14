@@ -1439,7 +1439,11 @@
       "themeDesc": "Modifier l'apparence et l'ergonomie de l'application.",
       "title": "Paramètres généraux",
       "xmpSync": "Synchronisation des métadonnées XMP",
-      "xmpSyncDesc": "Synchroniser les notes, les étiquettes de couleur et les tags vers des fichiers annexes XMP standard pour la compatibilité avec d'autres éditeurs de photos."
+      "xmpSyncDesc": "Synchroniser les notes, les étiquettes de couleur et les tags vers des fichiers annexes XMP standard pour la compatibilité avec d'autres éditeurs de photos.",
+      "proofMarginLevel1": "Proof Margin — Level 1",
+      "proofMarginLevel1Desc": "Small padding around the image in the editor (pixels).",
+      "proofMarginLevel2": "Proof Margin — Level 2",
+      "proofMarginLevel2Desc": "Large padding around the image in the editor (pixels)."
     },
     "keybinds": {
       "actions": {
@@ -1482,6 +1486,8 @@
         "toggle_masks": "Basculer le panneau des masques",
         "toggle_metadata": "Basculer le panneau des métadonnées",
         "toggle_presets": "Basculer le panneau des paramètres prédéfinis",
+        "toggle_clean_view": "Toggle clean view",
+        "toggle_proof_margin": "Toggle proof margin level",
         "undo": "Annuler l'ajustement",
         "zoom_100": "Zoomer à 100%",
         "zoom_fit": "Zoomer pour ajuster",

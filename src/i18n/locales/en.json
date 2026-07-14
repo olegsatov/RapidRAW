@@ -1567,7 +1567,11 @@
       "uiScaleDesc": "Scale the size of all interface elements.",
       "title": "General Settings",
       "xmpSync": "XMP Metadata Sync",
-      "xmpSyncDesc": "Sync ratings, color labels and tags to standard XMP sidecar files for compatibility with other photo editors."
+      "xmpSyncDesc": "Sync ratings, color labels and tags to standard XMP sidecar files for compatibility with other photo editors.",
+      "proofMarginLevel1": "Proof Margin — Level 1",
+      "proofMarginLevel1Desc": "Small padding around the image in the editor (pixels).",
+      "proofMarginLevel2": "Proof Margin — Level 2",
+      "proofMarginLevel2Desc": "Large padding around the image in the editor (pixels)."
     },
     "keybinds": {
       "actions": {
@@ -1610,6 +1614,8 @@
         "toggle_masks": "Toggle Masks panel",
         "toggle_metadata": "Toggle Metadata panel",
         "toggle_presets": "Toggle Presets panel",
+        "toggle_clean_view": "Toggle clean view",
+        "toggle_proof_margin": "Toggle proof margin level",
         "undo": "Undo adjustment",
         "zoom_100": "Zoom to 100%",
         "zoom_fit": "Zoom to fit",

@@ -1439,7 +1439,11 @@
       "themeDesc": "Ändern Sie das Aussehen und Gefühl der Anwendung.",
       "title": "Allgemeine Einstellungen",
       "xmpSync": "XMP-Metadaten-Sync",
-      "xmpSyncDesc": "Synchronisieren Sie Bewertungen, Farbmarkierungen und Tags in Standard-XMP-Filialdateien für Kompatibilität mit anderen Foto-Editoren."
+      "xmpSyncDesc": "Synchronisieren Sie Bewertungen, Farbmarkierungen und Tags in Standard-XMP-Filialdateien für Kompatibilität mit anderen Foto-Editoren.",
+      "proofMarginLevel1": "Proof Margin — Level 1",
+      "proofMarginLevel1Desc": "Small padding around the image in the editor (pixels).",
+      "proofMarginLevel2": "Proof Margin — Level 2",
+      "proofMarginLevel2Desc": "Large padding around the image in the editor (pixels)."
     },
     "keybinds": {
       "actions": {
@@ -1482,6 +1486,8 @@
         "toggle_masks": "Maskieren-Panel ein-/ausblenden",
         "toggle_metadata": "Metadaten-Panel ein-/ausblenden",
         "toggle_presets": "Vorgaben-Panel ein-/ausblenden",
+        "toggle_clean_view": "Toggle clean view",
+        "toggle_proof_margin": "Toggle proof margin level",
         "undo": "Bearbeitung rückgängig machen",
         "zoom_100": "Auf 100% zoomen",
         "zoom_fit": "Auf Fenstergröße einpassen",

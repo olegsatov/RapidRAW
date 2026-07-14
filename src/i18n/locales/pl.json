@@ -1501,7 +1501,11 @@
       "themeDesc": "Zmień wygląd aplikacji.",
       "title": "Ustawienia ogólne",
       "xmpSync": "Synchronizacja metadanych XMP",
-      "xmpSyncDesc": "Synchronizuj oceny, etykiety kolorów i tagi do standardowych plików XMP w celu zachowania kompatybilności z innymi edytorami zdjęć."
+      "xmpSyncDesc": "Synchronizuj oceny, etykiety kolorów i tagi do standardowych plików XMP w celu zachowania kompatybilności z innymi edytorami zdjęć.",
+      "proofMarginLevel1": "Proof Margin — Level 1",
+      "proofMarginLevel1Desc": "Small padding around the image in the editor (pixels).",
+      "proofMarginLevel2": "Proof Margin — Level 2",
+      "proofMarginLevel2Desc": "Large padding around the image in the editor (pixels)."
     },
     "keybinds": {
       "actions": {
@@ -1544,6 +1548,8 @@
         "toggle_masks": "Przełącz panel Maski",
         "toggle_metadata": "Przełącz panel Metadane",
         "toggle_presets": "Przełącz panel Presety",
+        "toggle_clean_view": "Toggle clean view",
+        "toggle_proof_margin": "Toggle proof margin level",
         "undo": "Cofnij korektę",
         "zoom_100": "Powiększ do 100%",
         "zoom_fit": "Dopasuj do ekranu",

@@ -100,20 +100,18 @@ interface PresetItemDisplayProps {
 
 interface PresetsBrowserProps {
   isVisible: boolean;
+  isInstantTransition?: boolean;
 }
 
-const itemVariants = {
+const getItemVariants = (isInstantTransition?: boolean) => ({
   hidden: { opacity: 0, x: -15 },
   visible: (i: number) => ({
     opacity: 1,
     x: 0,
-    transition: {
-      duration: 0.25,
-      delay: i * 0.05,
-    },
+    transition: isInstantTransition ? { duration: 0 } : { duration: 0.25, delay: i * 0.05 },
   }),
-  exit: { opacity: 0, x: -15, transition: { duration: 0.2 } },
-};
+  exit: { opacity: 0, x: -15, transition: isInstantTransition ? { duration: 0 } : { duration: 0.2 } },
+});
 
 const evaluateCurveY = (curve: Array<{ x: number; y: number }>, targetX: number): number => {
   const len = curve.length;
@@ -480,7 +478,7 @@ function DroppableFolderItem({ folder, onContextMenu, children, onToggle, isExpa
   );
 }
 
-export default function PresetsBrowser({ isVisible }: PresetsBrowserProps) {
+export default function PresetsBrowser({ isVisible, isInstantTransition }: PresetsBrowserProps) {
   const { t } = useTranslation();
   const selectedImage = useEditorStore((s) => s.selectedImage);
   const adjustments = useEditorStore((s) => s.adjustments);
@@ -1220,7 +1218,7 @@ export default function PresetsBrowser({ isVisible }: PresetsBrowserProps) {
                       initial="hidden"
                       key={item.folder?.id}
                       layout="position"
-                      variants={itemVariants}
+                      variants={getItemVariants(isInstantTransition)}
                     >
                       <DroppableFolderItem
                         folder={item.folder}
@@ -1267,7 +1265,7 @@ export default function PresetsBrowser({ isVisible }: PresetsBrowserProps) {
                       initial="hidden"
                       key={item.preset?.id}
                       layout="position"
-                      variants={itemVariants}
+                      variants={getItemVariants(isInstantTransition)}
                     >
                       <DraggablePresetItem
                         isGeneratingPreviews={isGeneratingPreviews}

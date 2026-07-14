@@ -296,6 +296,13 @@ export const useKeyboardShortcuts = ({
           });
         },
       },
+      toggle_clean_view: {
+        shouldFire: (s: any) => !s.ui.isFullScreen,
+        execute: (e: any, s: any) => {
+          e.preventDefault();
+          s.ui.toggleCleanView();
+        },
+      },
       toggle_metadata: {
         shouldFire: (s: any) => !!s.editor.selectedImage,
         execute: (e: any, s: any) => {
@@ -424,6 +431,15 @@ export const useKeyboardShortcuts = ({
         execute: (e: any) => {
           e.preventDefault();
           handleSetColorLabel('purple');
+        },
+      },
+      toggle_proof_margin: {
+        shouldFire: (s: any) => !!s.editor.selectedImage,
+        execute: (e: any, s: any) => {
+          e.preventDefault();
+          const settings = s.settings.appSettings || {};
+          const nextLevel = settings.proofMarginLevel === 2 ? 1 : 2;
+          s.settings.handleSettingsChange({ ...settings, proofMarginLevel: nextLevel });
         },
       },
       brush_size_up: {

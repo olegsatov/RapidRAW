@@ -1439,7 +1439,11 @@
       "themeDesc": "更改应用程序的外观和风格。",
       "title": "通用设置",
       "xmpSync": "XMP 元数据同步",
-      "xmpSyncDesc": "将评分、颜色标签和标签同步到标准 XMP 附属文件，以便与其他照片编辑器兼容。"
+      "xmpSyncDesc": "将评分、颜色标签和标签同步到标准 XMP 附属文件，以便与其他照片编辑器兼容。",
+      "proofMarginLevel1": "Proof Margin — Level 1",
+      "proofMarginLevel1Desc": "Small padding around the image in the editor (pixels).",
+      "proofMarginLevel2": "Proof Margin — Level 2",
+      "proofMarginLevel2Desc": "Large padding around the image in the editor (pixels)."
     },
     "keybinds": {
       "actions": {
@@ -1482,6 +1486,8 @@
         "toggle_masks": "切换蒙版面板",
         "toggle_metadata": "切换元数据面板",
         "toggle_presets": "切换预设面板",
+        "toggle_clean_view": "Toggle clean view",
+        "toggle_proof_margin": "Toggle proof margin level",
         "undo": "撤销调整",
         "zoom_100": "缩放到 100%",
         "zoom_fit": "缩放以适应",

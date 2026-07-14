@@ -188,6 +188,12 @@ export const KEYBIND_DEFINITIONS: KeybindDefinition[] = [
     section: 'panels',
   },
   {
+    action: 'toggle_clean_view',
+    description: 'settings.keybinds.actions.toggle_clean_view',
+    defaultCombo: ['Tab'],
+    section: 'panels',
+  },
+  {
     action: 'toggle_metadata',
     description: 'settings.keybinds.actions.toggle_metadata',
     defaultCombo: ['KeyI'],
@@ -248,6 +254,12 @@ export const KEYBIND_DEFINITIONS: KeybindDefinition[] = [
     description: 'settings.keybinds.actions.brush_size_up',
     defaultCombo: ['ctrl', 'ArrowUp'],
     section: 'editing',
+  },
+  {
+    action: 'toggle_proof_margin',
+    description: 'settings.keybinds.actions.toggle_proof_margin',
+    defaultCombo: ['Quote'],
+    section: 'view',
   },
   {
     action: 'brush_size_down',

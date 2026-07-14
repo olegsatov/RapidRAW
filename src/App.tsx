@@ -4,6 +4,7 @@ import { listen } from '@tauri-apps/api/event';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { ClerkProvider } from '@clerk/react';
 import { ToastContainer, toast, Slide } from 'react-toastify';
+import { MotionConfig } from 'framer-motion';
 import clsx from 'clsx';
 
 import TitleBar from './window/TitleBar';
@@ -635,21 +636,23 @@ function App() {
           style={{ width: uiVisibility.folderTree ? `${leftPanelWidth}px` : '32px' }}
         >
           <div className="flex-1 min-h-0 overflow-hidden">
-            <FolderTree
-              isResizing={isResizing}
-              isVisible={uiVisibility.folderTree}
-              onContextMenu={handleFolderTreeContextMenu}
-              onAlbumContextMenu={handleAlbumTreeContextMenu}
-              onSelectAlbum={handleSelectAlbum}
-              onFolderSelect={(path) => handleSelectSubfolder(path, false)}
-              onToggleFolder={handleToggleFolder}
-              onOpenFolder={handleOpenFolder}
-              setIsVisible={(value: boolean) =>
-                setUI((state) => ({ uiVisibility: { ...state.uiVisibility, folderTree: value } }))
-              }
-              style={{ width: '100%', height: '100%' }}
-              isInstantTransition={isInstantTransition}
-            />
+            <MotionConfig reducedMotion={isInstantTransition ? 'always' : 'user'}>
+              <FolderTree
+                isResizing={isResizing}
+                isVisible={uiVisibility.folderTree}
+                onContextMenu={handleFolderTreeContextMenu}
+                onAlbumContextMenu={handleAlbumTreeContextMenu}
+                onSelectAlbum={handleSelectAlbum}
+                onFolderSelect={(path) => handleSelectSubfolder(path, false)}
+                onToggleFolder={handleToggleFolder}
+                onOpenFolder={handleOpenFolder}
+                setIsVisible={(value: boolean) =>
+                  setUI((state) => ({ uiVisibility: { ...state.uiVisibility, folderTree: value } }))
+                }
+                style={{ width: '100%', height: '100%' }}
+                isInstantTransition={isInstantTransition}
+              />
+            </MotionConfig>
           </div>
           {uiVisibility.folderTree && uiVisibility.leftBottomPanel && (
             <>

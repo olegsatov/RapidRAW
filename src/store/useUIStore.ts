@@ -142,6 +142,13 @@ interface UIState {
   setRightPanel: (panel: Panel | null) => void;
   customEscapeHandler: (() => void) | null;
   setCustomEscapeHandler: (handler: (() => void) | null) => void;
+  cleanViewActive: boolean;
+  cleanViewSnapshot: {
+    activeRightPanel: Panel | null;
+    renderedRightPanel: Panel | null;
+    isLibraryExportPanelVisible: boolean;
+  } | null;
+  toggleCleanView: () => void;
 }
 
 export const useUIStore = create<UIState>((set, get) => ({
@@ -152,6 +159,8 @@ export const useUIStore = create<UIState>((set, get) => ({
   isLayoutReady: false,
   uiVisibility: { folderTree: true, filmstrip: true, leftBottomPanel: true },
   isLibraryExportPanelVisible: false,
+  cleanViewActive: false,
+  cleanViewSnapshot: null,
 
   leftPanelWidth: 256,
   rightPanelWidth: 320,
@@ -239,4 +248,45 @@ export const useUIStore = create<UIState>((set, get) => ({
 
   customEscapeHandler: null,
   setCustomEscapeHandler: (handler) => set({ customEscapeHandler: handler }),
+
+  toggleCleanView: () => {
+    const state = get();
+    if (state.cleanViewActive) {
+      const snapshot = state.cleanViewSnapshot;
+      if (!snapshot) return;
+      set({
+        isInstantTransition: true,
+        cleanViewActive: false,
+        cleanViewSnapshot: null,
+        uiVisibility: {
+          ...state.uiVisibility,
+          folderTree: true,
+          leftBottomPanel: true,
+        },
+        activeRightPanel: snapshot.activeRightPanel,
+        renderedRightPanel: snapshot.renderedRightPanel,
+        isLibraryExportPanelVisible: snapshot.isLibraryExportPanelVisible,
+      });
+      setTimeout(() => set({ isInstantTransition: false }), 400);
+    } else {
+      set({
+        isInstantTransition: true,
+        cleanViewActive: true,
+        cleanViewSnapshot: {
+          activeRightPanel: state.activeRightPanel,
+          renderedRightPanel: state.renderedRightPanel,
+          isLibraryExportPanelVisible: state.isLibraryExportPanelVisible,
+        },
+        uiVisibility: {
+          ...state.uiVisibility,
+          folderTree: false,
+          leftBottomPanel: false,
+          filmstrip: false,
+        },
+        activeRightPanel: null,
+        isLibraryExportPanelVisible: false,
+      });
+      setTimeout(() => set({ isInstantTransition: false }), 400);
+    }
+  },
 }));

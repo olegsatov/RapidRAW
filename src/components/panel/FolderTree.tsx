@@ -320,6 +320,7 @@ function AlbumTreeNode({
   onContextMenu,
   selectedAlbumId,
   showImageCounts,
+  isInstantTransition,
 }: {
   item: AlbumItem;
   expandedGroups: Set<string>;
@@ -328,6 +329,7 @@ function AlbumTreeNode({
   onContextMenu: (e: any, item: AlbumItem) => void;
   selectedAlbumId: string | null;
   showImageCounts: boolean;
+  isInstantTransition: boolean;
 }) {
   const isGroup = item.type === 'group';
   const isExpanded = expandedGroups.has(item.id);
@@ -398,9 +400,17 @@ function AlbumTreeNode({
       <AnimatePresence>
         {isGroup && isExpanded && (item as AlbumGroup).children.length > 0 && (
           <motion.div
-            initial={{ height: 0, opacity: 0 }}
-            animate={{ height: 'auto', opacity: 1 }}
-            exit={{ height: 0, opacity: 0 }}
+            initial={isInstantTransition ? 'open' : 'closed'}
+            animate="open"
+            exit="closed"
+            variants={{
+              closed: { height: 0, opacity: 0, transition: isInstantTransition ? { duration: 0 } : { duration: 0.2 } },
+              open: {
+                height: 'auto',
+                opacity: 1,
+                transition: isInstantTransition ? { duration: 0 } : { duration: 0.2 },
+              },
+            }}
             className="pl-1 border-l-[1.5px] border-border-color/50 ml-3.75 overflow-hidden"
           >
             <div className="py-1">
@@ -408,10 +418,25 @@ function AlbumTreeNode({
                 {(item as AlbumGroup).children.map((child) => (
                   <motion.div
                     key={child.id}
-                    initial={{ opacity: 0, height: 0, x: -10 }}
-                    animate={{ opacity: 1, height: 'auto', x: 0 }}
-                    exit={{ opacity: 0, height: 0, x: -10, overflow: 'hidden' }}
-                    transition={{ duration: 0.2 }}
+                    initial={isInstantTransition ? 'visible' : 'hidden'}
+                    animate="visible"
+                    exit="exit"
+                    variants={{
+                      hidden: { opacity: 0, height: 0, x: -10 },
+                      visible: {
+                        opacity: 1,
+                        height: 'auto',
+                        x: 0,
+                        transition: isInstantTransition ? { duration: 0 } : { duration: 0.2 },
+                      },
+                      exit: {
+                        opacity: 0,
+                        height: 0,
+                        x: -10,
+                        overflow: 'hidden',
+                        transition: isInstantTransition ? { duration: 0 } : { duration: 0.2 },
+                      },
+                    }}
                   >
                     <AlbumTreeNode
                       item={child}
@@ -421,6 +446,7 @@ function AlbumTreeNode({
                       onContextMenu={onContextMenu}
                       selectedAlbumId={selectedAlbumId}
                       showImageCounts={showImageCounts}
+                      isInstantTransition={isInstantTransition}
                     />
                   </motion.div>
                 ))}
@@ -468,8 +494,16 @@ function TreeNode({
   };
 
   const containerVariants: any = {
-    closed: { height: 0, opacity: 0, transition: { duration: 0.2, ease: 'easeInOut' } },
-    open: { height: 'auto', opacity: 1, transition: { duration: 0.25, ease: 'easeInOut' } },
+    closed: {
+      height: 0,
+      opacity: 0,
+      transition: isInstantTransition ? { duration: 0 } : { duration: 0.2, ease: 'easeInOut' },
+    },
+    open: {
+      height: 'auto',
+      opacity: 1,
+      transition: isInstantTransition ? { duration: 0 } : { duration: 0.25, ease: 'easeInOut' },
+    },
   };
 
   const itemVariants = {
@@ -477,12 +511,9 @@ function TreeNode({
     visible: ({ index, total }: VisibleProps) => ({
       opacity: 1,
       x: 0,
-      transition: {
-        duration: 0.25,
-        delay: total < 8 ? index * 0.05 : 0,
-      },
+      transition: isInstantTransition ? { duration: 0 } : { duration: 0.25, delay: total < 8 ? index * 0.05 : 0 },
     }),
-    exit: { opacity: 0, x: -15, transition: { duration: 0.2 } },
+    exit: { opacity: 0, x: -15, transition: isInstantTransition ? { duration: 0 } : { duration: 0.2 } },
   };
 
   const currentFolderIconKey = folderIcons[node.path];
@@ -865,7 +896,7 @@ export default function FolderTree({
                       initial={{ height: 0, opacity: 0 }}
                       animate={{ height: 'auto', opacity: 1 }}
                       exit={{ height: 0, opacity: 0 }}
-                      transition={{ duration: 0.2, ease: 'easeInOut' }}
+                      transition={isInstantTransition ? { duration: 0 } : { duration: 0.2, ease: 'easeInOut' }}
                       className="overflow-hidden"
                     >
                       <div className="pt-1 pb-2">
@@ -883,9 +914,15 @@ export default function FolderTree({
                                 visible: ({ index, total }: VisibleProps) => ({
                                   opacity: 1,
                                   x: 0,
-                                  transition: { duration: 0.25, delay: total < 8 ? index * 0.05 : 0 },
+                                  transition: isInstantTransition
+                                    ? { duration: 0 }
+                                    : { duration: 0.25, delay: total < 8 ? index * 0.05 : 0 },
                                 }),
-                                exit: { opacity: 0, x: -15, transition: { duration: 0.2 } },
+                                exit: {
+                                  opacity: 0,
+                                  x: -15,
+                                  transition: isInstantTransition ? { duration: 0 } : { duration: 0.2 },
+                                },
                               }}
                             >
                               <TreeNode
@@ -926,6 +963,7 @@ export default function FolderTree({
                       initial={{ height: 0, opacity: 0 }}
                       animate={{ height: 'auto', opacity: 1 }}
                       exit={{ height: 0, opacity: 0 }}
+                      transition={isInstantTransition ? { duration: 0 } : { duration: 0.2, ease: 'easeInOut' }}
                       className="overflow-hidden"
                       onContextMenu={(e) => {
                         e.preventDefault();
@@ -938,11 +976,26 @@ export default function FolderTree({
                           {filteredAlbumTree.map((item: any) => (
                             <motion.div
                               key={item.id}
-                              initial={{ opacity: 0, height: 0, x: -15 }}
-                              animate={{ opacity: 1, height: 'auto', x: 0 }}
-                              exit={{ opacity: 0, height: 0, x: -15, overflow: 'hidden' }}
-                              transition={{ duration: 0.2 }}
-                              layout="position"
+                              initial={isInstantTransition ? 'visible' : 'hidden'}
+                              animate="visible"
+                              exit="exit"
+                              variants={{
+                                hidden: { opacity: 0, height: 0, x: -15 },
+                                visible: {
+                                  opacity: 1,
+                                  height: 'auto',
+                                  x: 0,
+                                  transition: isInstantTransition ? { duration: 0 } : { duration: 0.2 },
+                                },
+                                exit: {
+                                  opacity: 0,
+                                  height: 0,
+                                  x: -15,
+                                  overflow: 'hidden',
+                                  transition: isInstantTransition ? { duration: 0 } : { duration: 0.2 },
+                                },
+                              }}
+                              layout={isInstantTransition ? false : 'position'}
                             >
                               <AlbumTreeNode
                                 item={item}
@@ -952,6 +1005,7 @@ export default function FolderTree({
                                 onContextMenu={onAlbumContextMenu}
                                 selectedAlbumId={activeAlbumId}
                                 showImageCounts={showImageCounts && isHovering}
+                                isInstantTransition={isInstantTransition}
                               />
                             </motion.div>
                           ))}
@@ -985,7 +1039,7 @@ export default function FolderTree({
                       initial={{ height: 0, opacity: 0 }}
                       animate={{ height: 'auto', opacity: 1 }}
                       exit={{ height: 0, opacity: 0 }}
-                      transition={{ duration: 0.2, ease: 'easeInOut' }}
+                      transition={isInstantTransition ? { duration: 0 } : { duration: 0.2, ease: 'easeInOut' }}
                       className="overflow-hidden"
                     >
                       <div className="pt-1">
@@ -1003,9 +1057,15 @@ export default function FolderTree({
                                 visible: ({ index, total }: VisibleProps) => ({
                                   opacity: 1,
                                   x: 0,
-                                  transition: { duration: 0.25, delay: total < 8 ? index * 0.05 : 0 },
+                                  transition: isInstantTransition
+                                    ? { duration: 0 }
+                                    : { duration: 0.25, delay: total < 8 ? index * 0.05 : 0 },
                                 }),
-                                exit: { opacity: 0, x: -15, transition: { duration: 0.2 } },
+                                exit: {
+                                  opacity: 0,
+                                  x: -15,
+                                  transition: isInstantTransition ? { duration: 0 } : { duration: 0.2 },
+                                },
                               }}
                             >
                               <TreeNode

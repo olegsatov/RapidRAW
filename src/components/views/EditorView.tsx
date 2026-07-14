@@ -1,5 +1,5 @@
 import { type RefObject, type PointerEvent as ReactPointerEvent } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence, MotionConfig } from 'framer-motion';
 import { useShallow } from 'zustand/react/shallow';
 import clsx from 'clsx';
 
@@ -202,37 +202,39 @@ export default function EditorView({
   );
 
   const editorRightPanelContent = (
-    <AnimatePresence mode="wait" custom={slideDirection}>
-      {activeRightPanel && (
-        <motion.div
-          animate="animate"
-          className="h-full w-full"
-          custom={slideDirection}
-          exit="exit"
-          initial="initial"
-          key={renderedRightPanel}
-          variants={panelVariants}
-        >
-          {renderedRightPanel === Panel.Adjustments && <Controls />}
-          {renderedRightPanel === Panel.Metadata && <MetadataPanel />}
-          {renderedRightPanel === Panel.Crop && <CropPanel />}
-          {renderedRightPanel === Panel.Film && <FilmPanel />}
-          {renderedRightPanel === Panel.Masks && <MasksPanel />}
-          {renderedRightPanel === Panel.Export && (
-            <ExportPanel
-              exportState={exportState}
-              multiSelectedPaths={multiSelectedPaths}
-              selectedImage={selectedImage}
-              setExportState={setExportState}
-              appSettings={appSettings}
-              onSettingsChange={handleSettingsChange}
-              rootPaths={rootPaths}
-            />
-          )}
-          {renderedRightPanel === Panel.Ai && <AIPanel />}
-        </motion.div>
-      )}
-    </AnimatePresence>
+    <MotionConfig reducedMotion={isInstantTransition ? 'always' : 'user'}>
+      <AnimatePresence mode="wait" custom={slideDirection}>
+        {activeRightPanel && (
+          <motion.div
+            animate="animate"
+            className="h-full w-full"
+            custom={slideDirection}
+            exit={isInstantTransition ? 'animate' : 'exit'}
+            initial={isInstantTransition ? 'animate' : 'initial'}
+            key={renderedRightPanel}
+            variants={panelVariants}
+          >
+            {renderedRightPanel === Panel.Adjustments && <Controls />}
+            {renderedRightPanel === Panel.Metadata && <MetadataPanel />}
+            {renderedRightPanel === Panel.Crop && <CropPanel />}
+            {renderedRightPanel === Panel.Film && <FilmPanel />}
+            {renderedRightPanel === Panel.Masks && <MasksPanel />}
+            {renderedRightPanel === Panel.Export && (
+              <ExportPanel
+                exportState={exportState}
+                multiSelectedPaths={multiSelectedPaths}
+                selectedImage={selectedImage}
+                setExportState={setExportState}
+                appSettings={appSettings}
+                onSettingsChange={handleSettingsChange}
+                rootPaths={rootPaths}
+              />
+            )}
+            {renderedRightPanel === Panel.Ai && <AIPanel />}
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </MotionConfig>
   );
 
   return (
