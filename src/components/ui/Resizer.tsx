@@ -9,7 +9,7 @@ interface ResizerProps {
 
 const Resizer = ({ direction, onMouseDown }: ResizerProps) => (
   <div
-    className={clsx('shrink-0 z-10 touch-none flex items-center justify-center', {
+    className={clsx('shrink-0 z-10 touch-none flex items-center justify-center bg-bg-secondary', {
       'w-2 cursor-col-resize': direction === Orientation.Vertical,
       'h-2 cursor-row-resize': direction === Orientation.Horizontal,
     })}

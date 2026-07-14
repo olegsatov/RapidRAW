@@ -831,27 +831,25 @@ export default function PresetsBrowser({ isVisible, onNavigateToCommunity }: Pre
     [setAdjustments],
   );
 
-  const handleSaveConfiguredPreset = async (
-    name: string,
-    mode: PasteMode,
-    includedAdjustments: string[],
-    hotkey: string[] | null,
-  ) => {
-    if (configureModalState.preset) {
-      const updated = configurePreset(configureModalState.preset.id, name, mode, includedAdjustments);
-      if (updated) {
-        usePresetStore.getState().updatePreset(updated.id, (p) => ({ ...p, hotkey }));
-        await generateSinglePreview(updated);
+  const handleSaveConfiguredPreset = useCallback(
+    async (name: string, mode: PasteMode, includedAdjustments: string[], hotkey: string[] | null) => {
+      if (configureModalState.preset) {
+        const updated = configurePreset(configureModalState.preset.id, name, mode, includedAdjustments);
+        if (updated) {
+          usePresetStore.getState().updatePreset(updated.id, (p) => ({ ...p, hotkey }));
+          await generateSinglePreview(updated);
+        }
+      } else {
+        const newPreset = addPreset(name, null, mode, includedAdjustments);
+        if (newPreset) {
+          usePresetStore.getState().updatePreset(newPreset.id, (p) => ({ ...p, hotkey }));
+          await generateSinglePreview(newPreset);
+        }
       }
-    } else {
-      const newPreset = addPreset(name, null, mode, includedAdjustments);
-      if (newPreset) {
-        usePresetStore.getState().updatePreset(newPreset.id, (p) => ({ ...p, hotkey }));
-        await generateSinglePreview(newPreset);
-      }
-    }
-    setConfigureModalState({ isOpen: false, preset: null });
-  };
+      setConfigureModalState({ isOpen: false, preset: null });
+    },
+    [configurePreset, addPreset, generateSinglePreview, configureModalState.preset, setConfigureModalState],
+  );
 
   const handleAddFolder = (name: string) => {
     addFolder(name);

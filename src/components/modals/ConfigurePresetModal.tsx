@@ -38,7 +38,15 @@ export default function ConfigurePresetModal({
 
   const appSettings = useSettingsStore((s) => s.appSettings);
   const updatePreset = usePresetStore((s) => s.updatePreset);
-  const allPresets = usePresetStore((s) => s.flattenPresets());
+  const presets = usePresetStore((s) => s.presets);
+  const allPresets = useMemo(() => {
+    const result: Preset[] = [];
+    for (const item of presets) {
+      if (item.preset) result.push(item.preset);
+      else if (item.folder) result.push(...item.folder.children);
+    }
+    return result;
+  }, [presets]);
 
   useEffect(() => {
     if (isOpen) {
@@ -71,7 +79,7 @@ export default function ConfigurePresetModal({
     for (const def of KEYBIND_DEFINITIONS) {
       const combo = userKb[def.action]?.length ? userKb[def.action] : def.defaultCombo;
       if (combo && combo.join('+') === key) {
-        return { type: 'app' as const, label: t(def.description as any) as string };
+        return { type: 'app' as const, label: t(def.description) };
       }
     }
     for (const preset of allPresets) {
