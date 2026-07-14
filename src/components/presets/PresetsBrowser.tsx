@@ -42,7 +42,11 @@ import Text from '../ui/Text';
 import Slider from '../ui/Slider';
 import { TextColors, TextVariants, TextWeights } from '../../types/typography';
 import { Adjustments, INITIAL_ADJUSTMENTS, ADJUSTMENT_GROUPS, PasteMode } from '../../utils/adjustments';
-import { getEffectivePresetAdjustments, getPresetIncludedAdjustments } from '../../utils/presetUtils';
+import {
+  buildPresetPreviewAdjustments,
+  getEffectivePresetAdjustments,
+  getPresetIncludedAdjustments,
+} from '../../utils/presetUtils';
 import { formatKeyCode } from '../../utils/keyboardUtils';
 import { Invokes, OPTION_SEPARATOR, Preset } from '../ui/AppProperties';
 import { useEditorStore } from '../../store/useEditorStore';
@@ -647,7 +651,7 @@ export default function PresetsBrowser({ isVisible, onNavigateToCommunity }: Pre
       }
 
       try {
-        const fullPresetAdjustments = { ...INITIAL_ADJUSTMENTS, ...preset.adjustments };
+        const fullPresetAdjustments = buildPresetPreviewAdjustments(preset);
         const imageData: Uint8Array = await invoke(Invokes.GeneratePresetPreview, {
           jsAdjustments: fullPresetAdjustments,
         });
@@ -716,7 +720,7 @@ export default function PresetsBrowser({ isVisible, onNavigateToCommunity }: Pre
       const pathAtStart = currentImagePathRef.current;
 
       try {
-        const fullPresetAdjustments: any = { ...INITIAL_ADJUSTMENTS, ...preset.adjustments };
+        const fullPresetAdjustments = buildPresetPreviewAdjustments(preset);
         const imageData: Uint8Array = await invoke(Invokes.GeneratePresetPreview, {
           jsAdjustments: fullPresetAdjustments,
         });
@@ -838,6 +842,10 @@ export default function PresetsBrowser({ isVisible, onNavigateToCommunity }: Pre
     setAdjustments((prevAdjustments: Adjustments) => ({
       ...prevAdjustments,
       ...effective,
+      sectionVisibility: {
+        ...prevAdjustments.sectionVisibility,
+        ...(effective.sectionVisibility || {}),
+      },
     }));
   };
 
@@ -846,12 +854,21 @@ export default function PresetsBrowser({ isVisible, onNavigateToCommunity }: Pre
       setPresetIntensity(intensity);
       const effective = getEffectivePresetAdjustments(preset);
       const mixed = mixAdjustments(effective, intensity);
-      setAdjustments((prev: Adjustments) => ({
-        ...prev,
-        ...mixed,
-      }));
+      setAdjustments((prev: Adjustments) => {
+        if (intensity === 0 && baseAdjustments) {
+          return baseAdjustments;
+        }
+        return {
+          ...prev,
+          ...mixed,
+          sectionVisibility: {
+            ...prev.sectionVisibility,
+            ...(effective.sectionVisibility || {}),
+          },
+        };
+      });
     },
-    [setAdjustments],
+    [setAdjustments, baseAdjustments],
   );
 
   const handleSaveConfiguredPreset = useCallback(

@@ -347,3 +347,10 @@ export function formatKeyCode(key: string, osPlatform: string): string {
 export function arraysEqual(a: string[], b: string[]): boolean {
   return a.length === b.length && a.every((v, i) => v === b[i]);
 }
+
+export function getEffectiveKeybind(userCombo: string[] | undefined, defaultCombo: string[]): string[] | null {
+  if (Array.isArray(userCombo)) {
+    return userCombo.length > 0 ? userCombo : null;
+  }
+  return defaultCombo || null;
+}

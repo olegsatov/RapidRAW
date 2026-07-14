@@ -37,6 +37,7 @@ import { Invokes } from '../ui/AppProperties';
 import type { Preset } from '../ui/AppProperties';
 import {
   formatKeyCode,
+  getEffectiveKeybind,
   KeybindDefinition,
   KEYBIND_DEFINITIONS,
   KEYBIND_SECTIONS,
@@ -974,8 +975,7 @@ export default function SettingsPanel({
     const map = new Map<string, Set<string>>();
     const userKb = appSettings?.keybinds || {};
     for (const def of KEYBIND_DEFINITIONS) {
-      const userCombo = userKb[def.action];
-      const effective = userCombo?.length ? userCombo : userCombo === undefined ? def.defaultCombo : null;
+      const effective = getEffectiveKeybind(userKb[def.action], def.defaultCombo);
       if (!effective) continue;
       const key = effective.join('+');
       if (!map.has(key)) map.set(key, new Set());
@@ -1003,16 +1003,16 @@ export default function SettingsPanel({
   const comboConflicts = useMemo(() => {
     const map = new Map<string, { type: 'app' | 'preset'; label: string; presetId?: string }>();
     const userKb = appSettings?.keybinds || {};
-    for (const def of KEYBIND_DEFINITIONS) {
-      const effective = userKb[def.action]?.length ? userKb[def.action] : def.defaultCombo;
-      if (!effective) continue;
-      const key = effective.join('+');
-      map.set(key, { type: 'app', label: t(def.description as string, def.description) });
-    }
     for (const preset of allPresets) {
       if (!preset.hotkey?.length) continue;
       const key = preset.hotkey.join('+');
       map.set(key, { type: 'preset', label: preset.name, presetId: preset.id });
+    }
+    for (const def of KEYBIND_DEFINITIONS) {
+      const effective = getEffectiveKeybind(userKb[def.action], def.defaultCombo);
+      if (!effective) continue;
+      const key = effective.join('+');
+      map.set(key, { type: 'app', label: t(def.description as string, def.description) });
     }
     return map;
   }, [appSettings?.keybinds, allPresets, t]);
@@ -1038,7 +1038,7 @@ export default function SettingsPanel({
     if (conflict.type === 'app') {
       const newKeybinds = { ...(appSettings?.keybinds || {}) };
       for (const def of KEYBIND_DEFINITIONS) {
-        const effective = newKeybinds[def.action]?.length ? newKeybinds[def.action] : def.defaultCombo;
+        const effective = getEffectiveKeybind(newKeybinds[def.action], def.defaultCombo);
         if (effective && effective.join('+') === key) {
           newKeybinds[def.action] = [];
           break;

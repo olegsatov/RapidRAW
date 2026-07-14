@@ -2,7 +2,10 @@ import { Preset } from '../components/ui/AppProperties';
 import {
   ADJUSTMENT_GROUPS,
   Adjustments,
+  BwAdjustment,
   COPYABLE_ADJUSTMENT_KEYS,
+  CreativeAdjustment,
+  FilmAdjustment,
   INITIAL_ADJUSTMENTS,
   LensAdjustment,
   PasteMode,
@@ -10,6 +13,59 @@ import {
 
 const MASK_KEYS = ADJUSTMENT_GROUPS.masks.flatMap((group) => group.keys);
 const GEOMETRY_KEYS = ADJUSTMENT_GROUPS.geometry.flatMap((group) => group.keys);
+
+const FILM_LOOK_KEYS = [
+  FilmAdjustment.FilmProfile,
+  FilmAdjustment.FilmStrength,
+  FilmAdjustment.FilmContrast,
+  FilmAdjustment.FilmSaturation,
+  FilmAdjustment.FilmRolloff,
+  FilmAdjustment.FilmBleed,
+  FilmAdjustment.FilmCross,
+  FilmAdjustment.FilmBaseColor,
+  FilmAdjustment.FilmShadowTint,
+  FilmAdjustment.FilmCurves,
+  FilmAdjustment.FilmShadows,
+  FilmAdjustment.FilmHighlights,
+  FilmAdjustment.FilmBlur,
+];
+
+const BLACK_AND_WHITE_KEYS = [BwAdjustment.BwRed, BwAdjustment.BwGreen, BwAdjustment.BwBlue];
+
+const GRAIN_KEYS = [
+  FilmAdjustment.GrainEngine,
+  FilmAdjustment.CrystalGrainAmount,
+  FilmAdjustment.CrystalGrainMono,
+  FilmAdjustment.CrystalGrainFilling,
+  FilmAdjustment.CrystalGrainSize,
+  FilmAdjustment.CrystalGrainLayers,
+  FilmAdjustment.CrystalGrainStd,
+  FilmAdjustment.IpolGrainMuR,
+  FilmAdjustment.IpolGrainSigmaR,
+  FilmAdjustment.IpolGrainSigmaFilter,
+  FilmAdjustment.IpolGrainMonteCarlo,
+];
+
+const FILM_EFFECTS_KEYS = [
+  CreativeAdjustment.GlowAmount,
+  CreativeAdjustment.HalationAmount,
+  CreativeAdjustment.FlareAmount,
+  FilmAdjustment.FlimWarmth,
+  FilmAdjustment.FlimAdjacency,
+  FilmAdjustment.FlimHiTint,
+  FilmAdjustment.FlimShTint,
+  FilmAdjustment.FilmBlurPreAmount,
+  FilmAdjustment.FilmBlurPreRadius,
+  FilmAdjustment.FilmBlurPreSoftAmount,
+  FilmAdjustment.FilmBlurPreSoftRadius,
+];
+
+export const PRESET_SECTION_VISIBILITY_KEYS: Record<string, string[]> = {
+  film: FILM_LOOK_KEYS,
+  blackAndWhite: BLACK_AND_WHITE_KEYS,
+  grain: GRAIN_KEYS,
+  filmEffects: FILM_EFFECTS_KEYS,
+};
 
 export function getPresetMode(preset: Preset): PasteMode {
   if (preset.mode) {
@@ -81,5 +137,25 @@ export function getEffectivePresetAdjustments(preset: Preset): Partial<Adjustmen
     result.lensDistortionParams = null;
   }
 
+  // Section visibility is stored as an explicit part of the preset (not in
+  // COPYABLE_ADJUSTMENT_KEYS), so it must be applied directly.
+  if (preset.adjustments.sectionVisibility) {
+    result.sectionVisibility = preset.adjustments.sectionVisibility;
+  }
+
   return result;
+}
+
+export function buildPresetPreviewAdjustments(preset: Preset): Adjustments {
+  const effective = getEffectivePresetAdjustments(preset);
+
+  return {
+    ...INITIAL_ADJUSTMENTS,
+    ...effective,
+    sectionVisibility: {
+      ...INITIAL_ADJUSTMENTS.sectionVisibility,
+      ...(effective.sectionVisibility || {}),
+    },
+    toneMapper: effective.toneMapper ?? INITIAL_ADJUSTMENTS.toneMapper,
+  } as Adjustments;
 }

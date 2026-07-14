@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { ImageFile, Panel, ExifOverlay, LeftPanelTab, Preset } from '../components/ui/AppProperties';
-import { KEYBIND_DEFINITIONS, normalizeCombo } from '../utils/keyboardUtils';
+import { getEffectiveKeybind, KEYBIND_DEFINITIONS, normalizeCombo } from '../utils/keyboardUtils';
 import { useEditorStore } from '../store/useEditorStore';
 import { useLibraryStore } from '../store/useLibraryStore';
 import { useSettingsStore } from '../store/useSettingsStore';
@@ -46,17 +46,6 @@ export const useKeyboardShortcuts = ({
       settings: useSettingsStore.getState(),
       process: useProcessStore.getState(),
     });
-
-    const comboMap = new Map<string, string>();
-    const keybinds = useSettingsStore.getState().appSettings?.keybinds;
-
-    for (const def of KEYBIND_DEFINITIONS) {
-      const userCombo = keybinds?.[def.action];
-      const effective = userCombo && userCombo.length > 0 ? userCombo : def.defaultCombo;
-      if (effective) {
-        comboMap.set(effective.join('+'), def.action);
-      }
-    }
 
     const actions: Record<string, any> = {
       open_image: {
@@ -552,6 +541,15 @@ export const useKeyboardShortcuts = ({
         }
       }
 
+      const keybinds = useSettingsStore.getState().appSettings?.keybinds;
+      const comboMap = new Map<string, string>();
+      for (const def of KEYBIND_DEFINITIONS) {
+        const effective = getEffectiveKeybind(keybinds?.[def.action], def.defaultCombo);
+        if (effective) {
+          comboMap.set(effective.join('+'), def.action);
+        }
+      }
+
       const presetComboMap = new Map<string, Preset>();
       for (const preset of usePresetStore.getState().flattenPresets()) {
         if (preset.hotkey && preset.hotkey.length > 0) {
@@ -574,7 +572,14 @@ export const useKeyboardShortcuts = ({
       if (preset && state.editor.selectedImage) {
         event.preventDefault();
         const effective = getEffectivePresetAdjustments(preset);
-        const newAdjustments = { ...state.editor.adjustments, ...effective };
+        const newAdjustments = {
+          ...state.editor.adjustments,
+          ...effective,
+          sectionVisibility: {
+            ...state.editor.adjustments.sectionVisibility,
+            ...(effective.sectionVisibility || {}),
+          },
+        };
         state.editor.setEditor({ adjustments: newAdjustments });
         debouncedSetHistory(newAdjustments);
         return;

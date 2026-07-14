@@ -6,10 +6,10 @@ import Button from '../ui/Button';
 import PasteModeSwitch from '../ui/PasteModeSwitch';
 import AdjustmentKeyPicker from '../ui/AdjustmentKeyPicker';
 import HotkeyCapture from '../ui/HotkeyCapture';
-import { Preset, AppSettings } from '../ui/AppProperties';
+import { Preset } from '../ui/AppProperties';
 import { COPYABLE_ADJUSTMENT_KEYS, PasteMode } from '../../utils/adjustments';
 import { getPresetMode, getPresetIncludedAdjustments } from '../../utils/presetUtils';
-import { KEYBIND_DEFINITIONS } from '../../utils/keyboardUtils';
+import { getEffectiveKeybind, KEYBIND_DEFINITIONS } from '../../utils/keyboardUtils';
 import { usePresetStore } from '../../store/usePresetStore';
 import { useSettingsStore } from '../../store/useSettingsStore';
 
@@ -77,7 +77,7 @@ export default function ConfigurePresetModal({
     const key = hotkey.join('+');
     const userKb = appSettings?.keybinds || {};
     for (const def of KEYBIND_DEFINITIONS) {
-      const combo = userKb[def.action]?.length ? userKb[def.action] : def.defaultCombo;
+      const combo = getEffectiveKeybind(userKb[def.action], def.defaultCombo);
       if (combo && combo.join('+') === key) {
         return { type: 'app' as const, label: t(def.description as string, def.description) };
       }
@@ -95,15 +95,17 @@ export default function ConfigurePresetModal({
     if (!hotkey || hotkey.length === 0 || !conflict) return;
 
     if (conflict.type === 'app') {
-      const newKeybinds = { ...(appSettings?.keybinds || {}) };
+      const currentSettings = useSettingsStore.getState().appSettings;
+      if (!currentSettings) return;
+      const newKeybinds = { ...(currentSettings.keybinds || {}) };
       for (const def of KEYBIND_DEFINITIONS) {
-        const combo = newKeybinds[def.action]?.length ? newKeybinds[def.action] : def.defaultCombo;
+        const combo = getEffectiveKeybind(newKeybinds[def.action], def.defaultCombo);
         if (combo && combo.join('+') === hotkey.join('+')) {
           newKeybinds[def.action] = [];
           break;
         }
       }
-      useSettingsStore.getState().handleSettingsChange({ ...appSettings, keybinds: newKeybinds } as AppSettings);
+      useSettingsStore.getState().handleSettingsChange({ ...currentSettings, keybinds: newKeybinds });
     } else {
       const key = hotkey.join('+');
       for (const preset of allPresets) {
@@ -113,7 +115,7 @@ export default function ConfigurePresetModal({
         }
       }
     }
-  }, [hotkey, conflict, appSettings, allPresets, updatePreset, initialPreset?.id]);
+  }, [hotkey, conflict, allPresets, updatePreset, initialPreset?.id]);
 
   const handleSave = useCallback(() => {
     if (name.trim()) {

@@ -17,6 +17,7 @@ import {
 import { calculateCenteredCrop } from '../utils/cropUtils';
 import { Invokes } from '../components/ui/AppProperties';
 import { globalImageCache } from '../utils/ImageLRUCache';
+import { PRESET_SECTION_VISIBILITY_KEYS } from '../utils/presetUtils';
 
 export const debouncedSetHistory = debounce((newAdj: Adjustments) => {
   useEditorStore.getState().pushHistory(newAdj);
@@ -87,9 +88,10 @@ export function useEditorActions() {
       const isAndroid = useSettingsStore.getState().osPlatform === 'android';
       try {
         const result: { size: number } = await invoke('load_and_parse_lut', { path });
-        let name = isAndroid && path.startsWith('content://')
-          ? await invoke<string>('resolve_android_content_uri_name', { uriStr: path })
-          : path.split(/[\\/]/).pop() || 'LUT';
+        let name =
+          isAndroid && path.startsWith('content://')
+            ? await invoke<string>('resolve_android_content_uri_name', { uriStr: path })
+            : path.split(/[\\/]/).pop() || 'LUT';
         setAdjustments((prev: Adjustments) => ({
           ...prev,
           lutPath: path,
@@ -177,13 +179,29 @@ export function useEditorActions() {
 
     if (!sourceAdjustments) return;
 
+    const { appSettings } = useSettingsStore.getState();
+    const includedAdjustments = appSettings?.copyPasteSettings?.includedAdjustments ?? COPYABLE_ADJUSTMENT_KEYS;
+    const includedSet = new Set(includedAdjustments);
     const adjustmentsToCopy: any = {};
 
-    for (const key of COPYABLE_ADJUSTMENT_KEYS) {
+    for (const key of includedAdjustments) {
       if (Object.prototype.hasOwnProperty.call(sourceAdjustments, key)) {
         adjustmentsToCopy[key] = structuredClone(sourceAdjustments[key]);
       }
     }
+
+    // Copy Film-tab section visibility state when any of the section's keys
+    // are included, so paste can turn sections on/off, not just set values.
+    const sectionVisibility: any = {};
+    for (const [section, keys] of Object.entries(PRESET_SECTION_VISIBILITY_KEYS)) {
+      if (keys.some((key) => includedSet.has(key))) {
+        sectionVisibility[section] = sourceAdjustments.sectionVisibility?.[section] ?? false;
+      }
+    }
+    if (Object.keys(sectionVisibility).length > 0) {
+      adjustmentsToCopy.sectionVisibility = sectionVisibility;
+    }
+
     useEditorStore.getState().setEditor({ copiedAdjustments: adjustmentsToCopy });
     useProcessStore.getState().setProcess({ isCopied: true });
   }, []);
@@ -231,7 +249,14 @@ export function useEditorActions() {
       pathsToUpdate.forEach((p) => globalImageCache.delete(p));
 
       if (selectedImage && pathsToUpdate.includes(selectedImage.path)) {
-        setAdjustments({ ...adjustments, ...adjustmentsToApply });
+        setAdjustments({
+          ...adjustments,
+          ...adjustmentsToApply,
+          sectionVisibility: {
+            ...adjustments.sectionVisibility,
+            ...(adjustmentsToApply.sectionVisibility || {}),
+          },
+        });
       }
 
       invoke(Invokes.ApplyAdjustmentsToPaths, { paths: pathsToUpdate, adjustments: adjustmentsToApply })

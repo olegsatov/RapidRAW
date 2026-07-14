@@ -2,7 +2,12 @@ import { create } from 'zustand';
 import { invoke } from '@tauri-apps/api/core';
 import debounce from 'lodash.debounce';
 import { Adjustments, COPYABLE_ADJUSTMENT_KEYS, INITIAL_ADJUSTMENTS, PasteMode } from '../utils/adjustments';
-import { normalizePreset, getPresetMode, getPresetIncludedAdjustments } from '../utils/presetUtils';
+import {
+  normalizePreset,
+  getPresetMode,
+  getPresetIncludedAdjustments,
+  PRESET_SECTION_VISIBILITY_KEYS,
+} from '../utils/presetUtils';
 import { Folder, Invokes, Preset } from '../components/ui/AppProperties';
 
 export enum PresetListType {
@@ -84,6 +89,7 @@ const buildPresetAdjustments = (
   includedAdjustments: string[],
 ): Record<string, any> => {
   const presetAdjustments: Record<string, any> = {};
+  const includedSet = new Set(includedAdjustments);
 
   for (const key of includedAdjustments) {
     if (Object.prototype.hasOwnProperty.call(currentAdjustments, key)) {
@@ -97,6 +103,19 @@ const buildPresetAdjustments = (
         presetAdjustments[key] = currentValue;
       }
     }
+  }
+
+  // Persist the visibility state of Film-tab sections alongside their
+  // parameters so presets can turn sections on/off, not just supply values.
+  const sectionVisibility: Record<string, boolean> = {};
+  for (const [section, keys] of Object.entries(PRESET_SECTION_VISIBILITY_KEYS)) {
+    if (keys.some((key) => includedSet.has(key))) {
+      sectionVisibility[section] =
+        currentAdjustments.sectionVisibility[section as keyof Adjustments['sectionVisibility']] ?? false;
+    }
+  }
+  if (Object.keys(sectionVisibility).length > 0) {
+    presetAdjustments.sectionVisibility = sectionVisibility;
   }
 
   return presetAdjustments;
