@@ -684,7 +684,7 @@ function App() {
           className={clsx(
             'flex-1 flex flex-col min-h-0',
             isLayoutReady && hasMainContent && !isInstantTransition && 'transition-all duration-300 ease-in-out',
-            [hasMainContent && (isFullScreen ? 'p-0 gap-0' : 'p-2 gap-2')],
+            [hasMainContent && (isFullScreen ? 'p-0 gap-0' : 'p-px gap-px')],
           )}
         >
           <div className="flex flex-row grow h-full min-h-0">

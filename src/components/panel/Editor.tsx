@@ -1923,7 +1923,10 @@ export default function Editor({ onBackToLibrary, onContextMenu, transformWrappe
         !isInstantTransition && 'transition-all duration-300 ease-in-out',
         isFullScreen
           ? 'rounded-none p-0 gap-0'
-          : clsx('rounded-lg p-2 gap-2', appSettings?.useWgpuRenderer !== false ? 'bg-transparent' : 'bg-bg-secondary'),
+          : clsx(
+              'rounded-lg p-px gap-px',
+              appSettings?.useWgpuRenderer !== false ? 'bg-transparent' : 'bg-bg-secondary',
+            ),
       )}
     >
       <div
