@@ -1,13 +1,12 @@
 import { useCallback } from 'react';
 import { Adjustments, PasteMode } from '../utils/adjustments';
-import { Preset } from '../components/ui/AppProperties';
 import { usePresetStore } from '../store/usePresetStore';
 
 export { PresetListType } from '../store/usePresetStore';
 export type { UserPreset } from '../store/usePresetStore';
 
 export function usePresets(currentAdjustments: Adjustments) {
-  const store = usePresetStore();
+  const { addPreset: storeAddPreset, overwritePreset: storeOverwritePreset, ...store } = usePresetStore();
 
   const addPreset = useCallback(
     (
@@ -15,13 +14,13 @@ export function usePresets(currentAdjustments: Adjustments) {
       folderId: string | null = null,
       mode: PasteMode = PasteMode.Replace,
       includedAdjustments: string[] = [],
-    ) => store.addPreset(currentAdjustments, name, folderId, mode, includedAdjustments),
-    [store, currentAdjustments],
+    ) => storeAddPreset(currentAdjustments, name, folderId, mode, includedAdjustments),
+    [storeAddPreset, currentAdjustments],
   );
 
   const overwritePreset = useCallback(
-    (id: string | null) => store.overwritePreset(currentAdjustments, id),
-    [store, currentAdjustments],
+    (id: string | null) => storeOverwritePreset(currentAdjustments, id),
+    [storeOverwritePreset, currentAdjustments],
   );
 
   return {
