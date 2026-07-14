@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
+import { RotateCcw } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
 import clsx from 'clsx';
@@ -89,6 +90,7 @@ export default function FilmPanel() {
   const { t } = useTranslation();
   const adjustments = useEditorStore((s) => s.adjustments);
   const histogram = useEditorStore((s) => s.histogram);
+  const selectedImage = useEditorStore((s) => s.selectedImage);
   const setEditor = useEditorStore((s) => s.setEditor);
   const { setAdjustments } = useEditorActions();
   const theme = useSettingsStore((s) => s.theme);
@@ -232,21 +234,31 @@ export default function FilmPanel() {
     <div className="flex flex-col h-full">
       <div className="p-4 flex justify-between items-center shrink-0 border-b border-surface">
         <Text variant={TextVariants.title}>{t('editor.film.title')}</Text>
-        <button
-          className={clsx(
-            'px-3 py-1 text-sm font-medium rounded-md transition-colors',
-            flimEnabled ? 'bg-accent text-button-text' : 'bg-card-active text-text-secondary hover:bg-surface',
-          )}
-          onClick={() =>
-            setAdjustments((prev: Partial<Adjustments>) => ({
-              ...prev,
-              toneMapper: flimEnabled ? 'basic' : 'flim',
-            }))
-          }
-          data-tooltip={t('editor.film.toggleTooltip')}
-        >
-          {flimEnabled ? t('editor.film.toggleOn') : t('editor.film.toggleOff')}
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            className="p-2 rounded-full hover:bg-surface disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            disabled={!selectedImage}
+            onClick={handleResetImage}
+            data-tooltip={t('editor.adjustments.tooltips.resetAdjustments')}
+          >
+            <RotateCcw size={18} />
+          </button>
+          <button
+            className={clsx(
+              'px-3 py-1 text-sm font-medium rounded-md transition-colors',
+              flimEnabled ? 'bg-accent text-button-text' : 'bg-card-active text-text-secondary hover:bg-surface',
+            )}
+            onClick={() =>
+              setAdjustments((prev: Partial<Adjustments>) => ({
+                ...prev,
+                toneMapper: flimEnabled ? 'basic' : 'flim',
+              }))
+            }
+            data-tooltip={t('editor.film.toggleTooltip')}
+          >
+            {flimEnabled ? t('editor.film.toggleOn') : t('editor.film.toggleOff')}
+          </button>
+        </div>
       </div>
 
       <div
