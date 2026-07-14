@@ -2695,7 +2695,10 @@ fn get_global_adjustments_from_json(
     let flim_user_ev = js_adjustments["flimEv"].as_f64().unwrap_or(0.0) as f32;
     let flim_strength = js_adjustments["flimStrength"].as_f64().unwrap_or(100.0) as f32 / 100.0;
     let flim_contrast = js_adjustments["flimContrast"].as_f64().unwrap_or(100.0) as f32 / 100.0;
-    let flim_shoulder = js_adjustments["flimShoulder"].as_f64().unwrap_or(0.0) as f32 / 100.0;
+    // Recalibrate shoulder so that the new UI default (0) matches the previous
+    // -50 position, shifting the whole range by -50.
+    let flim_shoulder =
+        (js_adjustments["flimShoulder"].as_f64().unwrap_or(0.0) as f32 - 50.0) / 100.0;
     let flim_toe = js_adjustments["flimToe"].as_f64().unwrap_or(0.0) as f32 / 100.0;
     let flim_saturation = js_adjustments["flimSaturation"].as_f64().unwrap_or(100.0) as f32 / 100.0;
     let flim_warmth_t = js_adjustments["flimWarmth"].as_f64().unwrap_or(0.0) as f32 / 100.0 * 0.15;
@@ -4343,6 +4346,23 @@ mod film_layout_tests {
 
         // No advanced keys -> no preset (caller falls back to builtin table).
         assert!(flim_preset_from_advanced_json(&serde_json::json!({})).is_none());
+    }
+
+    #[test]
+    fn flim_shoulder_recalibration_offset() {
+        // Shoulder is recalibrated by -50 UI units: new default (0) equals the
+        // previous -50, and the whole slider range shifts by the same amount.
+        // Default preset sigmoid_log2_max = 22; each shoulder unit moves it by 4.
+        let run = |v: i32| -> f32 {
+            let js = serde_json::json!({
+                "toneMapper": "flim",
+                "flimShoulder": v
+            });
+            get_global_adjustments_from_json(&js, true, None).flim_sigmoid_log2_max
+        };
+        assert!((run(0) - 20.0).abs() < 1e-5, "new default 0 should equal old -50");
+        assert!((run(50) - 22.0).abs() < 1e-5, "new 50 should equal old 0");
+        assert!((run(-50) - 18.0).abs() < 1e-5, "new -50 should equal old -100");
     }
 
     #[test]
