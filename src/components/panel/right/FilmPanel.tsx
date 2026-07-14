@@ -286,16 +286,6 @@ export default function FilmPanel() {
               value={adjustments.flimEv ?? 0}
               onDragStateChange={onDragStateChange}
             />
-            <Slider
-              defaultValue={100}
-              label={t('editor.film.strength')}
-              max={100}
-              min={0}
-              onChange={(e: any) => handleAdjustmentChange(FilmAdjustment.FlimStrength, e.target.value)}
-              step={1}
-              value={adjustments.flimStrength ?? 100}
-              onDragStateChange={onDragStateChange}
-            />
           </div>
           <div className="flex gap-2 mt-2">
             <div className="w-1/2">
