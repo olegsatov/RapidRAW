@@ -2504,15 +2504,22 @@ fn compute_flim_uniforms(
         black_raw[1] / white_cap[1],
         black_raw[2] / white_cap[2],
     ];
-    let black_cap_luma = (match p.black_point {
+    let base_black_cap = match p.black_point {
         None => {
             black_cap[0] * FLIM_LUMA_WEIGHTS[0]
                 + black_cap[1] * FLIM_LUMA_WEIGHTS[1]
                 + black_cap[2] * FLIM_LUMA_WEIGHTS[2]
         }
-        Some(bp) => bp / 1000.0,
-    } + toe * 0.1)
-        .clamp(0.0, 0.95);
+        Some(bp) => (bp / 1000.0).max(0.0),
+    };
+    // Apply toe exponentially so the slider feels smooth across the full -100..100
+    // range: positive toe deepens blacks, negative toe lifts/fades them, and small
+    // values no longer cause a huge relative jump from a tiny base black cap.
+    // Negative toe needs a steeper scale to produce a visible fade.
+    let toe_value = toe.clamp(-1.0, 1.0);
+    let effective_base = base_black_cap.max(1e-5);
+    let toe_scale = if toe_value >= 0.0 { 2.0 } else { 4.5 };
+    let black_cap_luma = (effective_base * (toe_value * toe_scale).exp()).clamp(0.0, 0.95);
     FlimUniforms {
         extend_mat: gpu_mat3_from_rows(rows),
         extend_mat_inv: gpu_mat3_from_rows(flim_mat3_inv(rows)),
