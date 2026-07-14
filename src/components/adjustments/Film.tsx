@@ -91,6 +91,15 @@ export default function FilmPanel({ adjustments, setAdjustments, onDragStateChan
           value={adjustments.filmBleed}
           onDragStateChange={onDragStateChange}
         />
+        <Slider
+          label={t('adjustments.basic.shadows')}
+          max={100}
+          min={-100}
+          onChange={(e: any) => handleAdjustmentChange(FilmAdjustment.FilmShadows, e.target.value)}
+          step={1}
+          value={adjustments.filmShadows}
+          onDragStateChange={onDragStateChange}
+        />
         <Switch
           label={t('adjustments.effects.filmCross')}
           checked={!!adjustments.filmCross}
