@@ -1180,6 +1180,11 @@
     },
     "configurePreset": {
       "cancel": "Cancel",
+      "hotkey": "Hotkey",
+      "hotkeyOverwrite": "Overwrite",
+      "hotkeyReserved": "This combination is reserved by the application.",
+      "hotkeyUsedByApp": "Used by: {{action}}",
+      "hotkeyUsedByPreset": "Used by preset: {{name}}",
       "pasteMode": "Apply Mode",
       "placeholder": "Enter preset name...",
       "save": "Save",
