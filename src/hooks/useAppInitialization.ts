@@ -6,6 +6,7 @@ import { useUIStore } from '../store/useUIStore';
 import { useLibraryStore } from '../store/useLibraryStore';
 import { useEditorStore } from '../store/useEditorStore';
 import { useProcessStore } from '../store/useProcessStore';
+import { usePresetStore } from '../store/usePresetStore';
 import { THEMES, DEFAULT_THEME_ID, ThemeProps } from '../utils/themes';
 import { COPYABLE_ADJUSTMENT_KEYS } from '../utils/adjustments';
 import {
@@ -153,6 +154,7 @@ export const useAppInitialization = ({
         }
 
         setAppSettings(settings);
+        usePresetStore.getState().loadPresets();
         i18n.changeLanguage(settings.language);
 
         if (settings?.sortCriteria) setSortCriteria(settings.sortCriteria);
