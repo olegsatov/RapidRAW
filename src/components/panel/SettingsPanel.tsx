@@ -45,6 +45,9 @@ import Text from '../ui/Text';
 import { TextColors, TextVariants, TextWeights } from '../../types/typography';
 import { useOsPlatform } from '../../hooks/useOsPlatform';
 import { open } from '@tauri-apps/plugin-shell';
+import HotkeyCapture from '../ui/HotkeyCapture';
+import { usePresetStore } from '../../store/usePresetStore';
+import type { HotkeyCaptureConflict } from '../ui/HotkeyCapture';
 
 interface ConfirmModalState {
   confirmText: string;
@@ -517,6 +520,7 @@ export default function SettingsPanel({
   const [testStatus, setTestStatus] = useState<TestStatus>({ message: '', success: null, testing: false });
   const [hasInteractedWithLivePreview, setHasInteractedWithLivePreview] = useState(false);
   const [recordingAction, setRecordingAction] = useState<string | null>(null);
+  const [recordingPresetId, setRecordingPresetId] = useState<string | null>(null);
 
   const [aiProvider, setAiProvider] = useState(appSettings?.aiProvider || 'cpu');
   const [aiConnectorAddress, setAiConnectorAddress] = useState<string>(appSettings?.aiConnectorAddress || '');
@@ -983,6 +987,57 @@ export default function SettingsPanel({
     }
     return keys;
   }, [appSettings?.keybinds]);
+
+  const presetStore = usePresetStore();
+
+  const handlePresetHotkeySave = (presetId: string, combo: string[] | null) => {
+    presetStore.updatePreset(presetId, (p) => ({ ...p, hotkey: combo }));
+  };
+
+  const getPresetHotkeyConflict = (presetId: string, combo: string[] | null): HotkeyCaptureConflict | null => {
+    if (!combo || combo.length === 0) return null;
+    const key = combo.join('+');
+    const userKb = appSettings?.keybinds || {};
+    for (const def of KEYBIND_DEFINITIONS) {
+      const effective = userKb[def.action]?.length ? userKb[def.action] : def.defaultCombo;
+      if (effective && effective.join('+') === key) {
+        return { type: 'app', label: t(def.description as any) as string };
+      }
+    }
+    for (const preset of presetStore.flattenPresets()) {
+      if (preset.id === presetId) continue;
+      if (preset.hotkey && preset.hotkey.join('+') === key) {
+        return { type: 'preset', label: preset.name };
+      }
+    }
+    return null;
+  };
+
+  const handlePresetHotkeyOverwrite = (presetId: string, combo: string[] | null) => {
+    if (!combo || combo.length === 0) return;
+    const key = combo.join('+');
+    const conflict = getPresetHotkeyConflict(presetId, combo);
+    if (!conflict) return;
+
+    if (conflict.type === 'app') {
+      const newKeybinds = { ...(appSettings?.keybinds || {}) };
+      for (const def of KEYBIND_DEFINITIONS) {
+        const effective = newKeybinds[def.action]?.length ? newKeybinds[def.action] : def.defaultCombo;
+        if (effective && effective.join('+') === key) {
+          newKeybinds[def.action] = [];
+          break;
+        }
+      }
+      onSettingsChange({ ...appSettings, keybinds: newKeybinds });
+    } else {
+      for (const preset of presetStore.flattenPresets()) {
+        if (preset.id !== presetId && preset.hotkey?.join('+') === key) {
+          presetStore.updatePreset(preset.id, (p) => ({ ...p, hotkey: null }));
+          break;
+        }
+      }
+    }
+  };
 
   return (
     <>
@@ -2416,6 +2471,41 @@ export default function SettingsPanel({
                         </div>
                       );
                     })}
+                    <div>
+                      <Text variant={TextVariants.heading} className="mb-4">
+                        {t('settings.controls.presetHotkeys' as any) as string}
+                      </Text>
+                      <div className="divide-y divide-border-color">
+                        {presetStore
+                          .flattenPresets()
+                          .slice()
+                          .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }))
+                          .map((preset) => {
+                            const conflict = getPresetHotkeyConflict(preset.id, preset.hotkey ?? null);
+                            return (
+                              <div key={preset.id} className="flex justify-between items-center py-2">
+                                <div className="flex flex-col min-w-0 mr-4">
+                                  <Text variant={TextVariants.label} className="truncate">
+                                    {preset.name}
+                                  </Text>
+                                  {preset.folder?.name && (
+                                    <Text variant={TextVariants.small} color={TextColors.secondary}>
+                                      {preset.folder.name}
+                                    </Text>
+                                  )}
+                                </div>
+                                <HotkeyCapture
+                                  combo={preset.hotkey}
+                                  onChange={(combo) => handlePresetHotkeySave(preset.id, combo)}
+                                  osPlatform={osPlatform}
+                                  conflict={conflict}
+                                  onOverwrite={() => handlePresetHotkeyOverwrite(preset.id, preset.hotkey ?? null)}
+                                />
+                              </div>
+                            );
+                          })}
+                      </div>
+                    </div>
                     <div className="flex justify-end mt-6">
                       <Button variant="ghost" onClick={() => onSettingsChange({ ...appSettings, keybinds: {} })}>
                         {t('settings.controls.resetDefaults')}
