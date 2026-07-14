@@ -316,9 +316,6 @@ export default function FilmPanel() {
         </div>
 
         <div className="p-2 bg-bg-tertiary rounded-md">
-          <Text variant={TextVariants.heading} className="mb-2">
-            {t('editor.film.look')}
-          </Text>
           <Slider
             defaultValue={100}
             label={t('editor.film.contrast')}
@@ -327,16 +324,6 @@ export default function FilmPanel() {
             onChange={(e: any) => handleAdjustmentChange(FilmAdjustment.FlimContrast, e.target.value)}
             step={1}
             value={adjustments.flimContrast ?? 100}
-            onDragStateChange={onDragStateChange}
-          />
-          <Slider
-            defaultValue={100}
-            label={t('editor.film.saturation')}
-            max={200}
-            min={0}
-            onChange={(e: any) => handleAdjustmentChange(FilmAdjustment.FlimSaturation, e.target.value)}
-            step={1}
-            value={adjustments.flimSaturation ?? 100}
             onDragStateChange={onDragStateChange}
           />
           <Slider
@@ -360,13 +347,13 @@ export default function FilmPanel() {
             onDragStateChange={onDragStateChange}
           />
           <Slider
-            defaultValue={0}
-            label={t('editor.film.warmth')}
-            max={100}
-            min={-100}
-            onChange={(e: any) => handleAdjustmentChange(FilmAdjustment.FlimWarmth, e.target.value)}
+            defaultValue={100}
+            label={t('editor.film.saturation')}
+            max={200}
+            min={0}
+            onChange={(e: any) => handleAdjustmentChange(FilmAdjustment.FlimSaturation, e.target.value)}
             step={1}
-            value={adjustments.flimWarmth ?? 0}
+            value={adjustments.flimSaturation ?? 100}
             onDragStateChange={onDragStateChange}
           />
         </div>
@@ -457,6 +444,16 @@ export default function FilmPanel() {
           onToggleVisibility={() => handleToggleVisibility('filmEffects')}
           title={t('editor.film.effects')}
         >
+          <Slider
+            defaultValue={0}
+            label={t('editor.film.warmth')}
+            max={100}
+            min={-100}
+            onChange={(e: any) => handleAdjustmentChange(FilmAdjustment.FlimWarmth, e.target.value)}
+            step={1}
+            value={adjustments.flimWarmth ?? 0}
+            onDragStateChange={onDragStateChange}
+          />
           <Slider
             defaultValue={0}
             label={t('editor.film.halation')}
