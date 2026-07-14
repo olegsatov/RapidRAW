@@ -437,6 +437,44 @@ export default function FilmPanel() {
         </CollapsibleSection>
 
         <CollapsibleSection
+          isContentVisible={sectionVisibility.film}
+          isOpen={!!collapsibleSectionsState.film}
+          onToggle={() => handleToggleSection('film')}
+          onToggleVisibility={() => handleToggleVisibility('film')}
+          title={t('editor.adjustments.sections.film')}
+        >
+          <FilmLookPanel
+            adjustments={adjustments}
+            setAdjustments={setAdjustments}
+            onDragStateChange={onDragStateChange}
+          />
+        </CollapsibleSection>
+
+        <CollapsibleSection
+          isContentVisible={sectionVisibility.blackAndWhite}
+          isOpen={!!collapsibleSectionsState.blackAndWhite}
+          onToggle={() => handleToggleSection('blackAndWhite')}
+          onToggleVisibility={() => handleToggleVisibility('blackAndWhite')}
+          title={t('editor.adjustments.sections.blackAndWhite')}
+        >
+          <BlackAndWhitePanel
+            adjustments={adjustments}
+            setAdjustments={setAdjustments}
+            onDragStateChange={onDragStateChange}
+          />
+        </CollapsibleSection>
+
+        <CollapsibleSection
+          isContentVisible={sectionVisibility.grain}
+          isOpen={grainOpen}
+          onToggle={() => setGrainOpen((v) => !v)}
+          onToggleVisibility={() => handleToggleVisibility('grain')}
+          title={t('adjustments.effects.grain')}
+        >
+          <GrainPanel adjustments={adjustments} setAdjustments={setAdjustments} onDragStateChange={onDragStateChange} />
+        </CollapsibleSection>
+
+        <CollapsibleSection
           canToggleVisibility={false}
           isContentVisible={true}
           isOpen={advancedOpen}
@@ -534,44 +572,6 @@ export default function FilmPanel() {
               {t('editor.film.savePreset')}
             </button>
           )}
-        </CollapsibleSection>
-
-        <CollapsibleSection
-          isContentVisible={sectionVisibility.film}
-          isOpen={!!collapsibleSectionsState.film}
-          onToggle={() => handleToggleSection('film')}
-          onToggleVisibility={() => handleToggleVisibility('film')}
-          title={t('editor.adjustments.sections.film')}
-        >
-          <FilmLookPanel
-            adjustments={adjustments}
-            setAdjustments={setAdjustments}
-            onDragStateChange={onDragStateChange}
-          />
-        </CollapsibleSection>
-
-        <CollapsibleSection
-          isContentVisible={sectionVisibility.blackAndWhite}
-          isOpen={!!collapsibleSectionsState.blackAndWhite}
-          onToggle={() => handleToggleSection('blackAndWhite')}
-          onToggleVisibility={() => handleToggleVisibility('blackAndWhite')}
-          title={t('editor.adjustments.sections.blackAndWhite')}
-        >
-          <BlackAndWhitePanel
-            adjustments={adjustments}
-            setAdjustments={setAdjustments}
-            onDragStateChange={onDragStateChange}
-          />
-        </CollapsibleSection>
-
-        <CollapsibleSection
-          isContentVisible={sectionVisibility.grain}
-          isOpen={grainOpen}
-          onToggle={() => setGrainOpen((v) => !v)}
-          onToggleVisibility={() => handleToggleVisibility('grain')}
-          title={t('adjustments.effects.grain')}
-        >
-          <GrainPanel adjustments={adjustments} setAdjustments={setAdjustments} onDragStateChange={onDragStateChange} />
         </CollapsibleSection>
       </div>
     </div>
