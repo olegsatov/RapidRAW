@@ -90,6 +90,7 @@ export default function FilmPanel() {
   const setUI = useUIStore((s) => s.setUI);
 
   const [advancedOpen, setAdvancedOpen] = useState(false);
+  const [filmEffectsOpen, setFilmEffectsOpen] = useState(false);
   const [grainOpen, setGrainOpen] = useState(false);
   const [userPresets, setUserPresets] = useState<Array<FlimUserPreset>>([]);
   const [savingPreset, setSavingPreset] = useState(false);
@@ -205,8 +206,7 @@ export default function FilmPanel() {
   const currentParams = paramsFromAdjustments(adjustments);
   const builtinIdx = FLIM_BUILTIN_PRESETS.findIndex((p) => paramsEqual(currentParams, p));
   const userMatch = userPresets.find((p) => paramsEqual(currentParams, p.params));
-  const resolvedPreset: number | string =
-    builtinIdx >= 0 ? builtinIdx : userMatch ? `u:${userMatch.id}` : 'custom';
+  const resolvedPreset: number | string = builtinIdx >= 0 ? builtinIdx : userMatch ? `u:${userMatch.id}` : 'custom';
 
   const presetOptions: Array<{ label: string; value: number | string }> = [
     { label: t('editor.film.presets.default'), value: 0 },
@@ -217,8 +217,7 @@ export default function FilmPanel() {
   ];
 
   const blackAuto = (adjustments.flimAdvBlackAuto ?? 1) >= 0.5;
-  const sectionVisibility: SectionVisibility =
-    adjustments.sectionVisibility || INITIAL_ADJUSTMENTS.sectionVisibility;
+  const sectionVisibility: SectionVisibility = adjustments.sectionVisibility || INITIAL_ADJUSTMENTS.sectionVisibility;
   const flimEnabled = adjustments.toneMapper === 'flim';
 
   return (
@@ -228,9 +227,7 @@ export default function FilmPanel() {
         <button
           className={clsx(
             'px-3 py-1 text-sm font-medium rounded-md transition-colors',
-            flimEnabled
-              ? 'bg-accent text-button-text'
-              : 'bg-card-active text-text-secondary hover:bg-surface',
+            flimEnabled ? 'bg-accent text-button-text' : 'bg-card-active text-text-secondary hover:bg-surface',
           )}
           onClick={() =>
             setAdjustments((prev: Partial<Adjustments>) => ({
@@ -336,6 +333,15 @@ export default function FilmPanel() {
             value={adjustments.flimWarmth ?? 0}
             onDragStateChange={onDragStateChange}
           />
+        </div>
+
+        <CollapsibleSection
+          isContentVisible={sectionVisibility.filmEffects}
+          isOpen={filmEffectsOpen}
+          onToggle={() => setFilmEffectsOpen((v) => !v)}
+          onToggleVisibility={() => handleToggleVisibility('filmEffects')}
+          title={t('editor.film.effects')}
+        >
           <Slider
             defaultValue={0}
             label={t('editor.film.halation')}
@@ -356,6 +362,58 @@ export default function FilmPanel() {
             value={adjustments.flimAdjacency ?? 0}
             onDragStateChange={onDragStateChange}
           />
+          <div className="flex gap-2">
+            <div className="w-2/3">
+              <Slider
+                defaultValue={0}
+                label={t('editor.film.preToneDiffusionAmount')}
+                max={100}
+                min={0}
+                onChange={(e: any) => handleAdjustmentChange(FilmAdjustment.FilmBlurPreAmount, e.target.value)}
+                step={1}
+                value={adjustments.filmBlurPreAmount ?? 0}
+                onDragStateChange={onDragStateChange}
+              />
+            </div>
+            <div className="w-1/3">
+              <Slider
+                defaultValue={0.5}
+                label={t('editor.film.preToneDiffusionRadius')}
+                max={4}
+                min={0.5}
+                onChange={(e: any) => handleAdjustmentChange(FilmAdjustment.FilmBlurPreRadius, e.target.value)}
+                step={0.1}
+                value={adjustments.filmBlurPreRadius ?? 0.5}
+                onDragStateChange={onDragStateChange}
+              />
+            </div>
+          </div>
+          <div className="flex gap-2">
+            <div className="w-2/3">
+              <Slider
+                defaultValue={0}
+                label={t('editor.film.preToneSoftBlurAmount')}
+                max={100}
+                min={0}
+                onChange={(e: any) => handleAdjustmentChange(FilmAdjustment.FilmBlurPreSoftAmount, e.target.value)}
+                step={1}
+                value={adjustments.filmBlurPreSoftAmount ?? 0}
+                onDragStateChange={onDragStateChange}
+              />
+            </div>
+            <div className="w-1/3">
+              <Slider
+                defaultValue={0.5}
+                label={t('editor.film.preToneSoftBlurRadius')}
+                max={4}
+                min={0.5}
+                onChange={(e: any) => handleAdjustmentChange(FilmAdjustment.FilmBlurPreSoftRadius, e.target.value)}
+                step={0.1}
+                value={adjustments.filmBlurPreSoftRadius ?? 0.5}
+                onDragStateChange={onDragStateChange}
+              />
+            </div>
+          </div>
           <Slider
             defaultValue={0}
             label={t('editor.film.hiTint')}
@@ -376,7 +434,7 @@ export default function FilmPanel() {
             value={adjustments.flimShTint ?? 0}
             onDragStateChange={onDragStateChange}
           />
-        </div>
+        </CollapsibleSection>
 
         <div className="p-2 bg-bg-tertiary rounded-md">
           <button
@@ -519,11 +577,7 @@ export default function FilmPanel() {
           onToggleVisibility={() => handleToggleVisibility('grain')}
           title={t('adjustments.effects.grain')}
         >
-          <GrainPanel
-            adjustments={adjustments}
-            setAdjustments={setAdjustments}
-            onDragStateChange={onDragStateChange}
-          />
+          <GrainPanel adjustments={adjustments} setAdjustments={setAdjustments} onDragStateChange={onDragStateChange} />
         </CollapsibleSection>
       </div>
     </div>

@@ -1525,10 +1525,14 @@ pub struct GlobalAdjustments {
     pub film_shadows: f32,
     pub film_highlights: f32,
     pub film_blur: f32,
+    pub film_blur_pre_amount: f32,
+    pub film_blur_pre_radius: f32,
+    pub film_blur_pre_soft_amount: f32,
+    pub film_blur_pre_soft_radius: f32,
 
-    // Alignment padding: in WGSL the next member (bw_weights: vec3<f32>) must
-    // start at a 16-byte boundary, and naga inserts these 4 bytes implicitly.
-    // Mirror them explicitly so the bytemuck upload matches.
+    // Alignment padding: the next member (bw_weights: vec4<f32>) must start at
+    // a 16-byte boundary. We now have 7 f32s here, so 1 explicit pad keeps the
+    // WGSL/Rust layouts identical.
     pub _pad_bw_align: [f32; 1],
 
     // Black & white conversion — layout MUST match shader.wgsl.
@@ -2558,6 +2562,14 @@ fn get_global_adjustments_from_json(
             .and_then(|s| s.as_bool())
             .unwrap_or(false);
 
+    // Film-tab Effects block (halation, adjacency, diffusion, soft blur, tints).
+    // Disabled when the flim panel itself is off or the block's eye is closed.
+    let film_effects_on = flim_panel_on
+        && visibility
+            .and_then(|v| v.get("filmEffects"))
+            .and_then(|s| s.as_bool())
+            .unwrap_or(true);
+
     let get_val = |section: &str, key: &str, scale: f32, default: Option<f64>| -> f32 {
         if is_visible(section) {
             js_adjustments[key]
@@ -2878,7 +2890,7 @@ fn get_global_adjustments_from_json(
 
         glow_amount: get_val("effects", "glowAmount", SCALES.glow, None),
         // Also editable from the Film section -> active if either is visible.
-        halation_amount: get_val_any(&["effects", "film"], "halationAmount", SCALES.halation, None),
+        halation_amount: get_val_any(&["effects", "film", "filmEffects"], "halationAmount", SCALES.halation, None),
         flare_amount: get_val("effects", "flareAmount", SCALES.flares, None),
         sharpness_threshold: get_val(
             "details",
@@ -2920,6 +2932,26 @@ fn get_global_adjustments_from_json(
         film_shadows: get_val("film", "filmShadows", 1.0, None),
         film_highlights: get_val("film", "filmHighlights", 1.0, None),
         film_blur: get_val("film", "filmBlur", 100.0, None),
+        film_blur_pre_amount: if tone_mapper == "flim" && film_effects_on {
+            js_adjustments["filmBlurPreAmount"].as_f64().unwrap_or(0.0) as f32 / 100.0
+        } else {
+            0.0
+        },
+        film_blur_pre_radius: if tone_mapper == "flim" {
+            js_adjustments["filmBlurPreRadius"].as_f64().unwrap_or(0.5) as f32
+        } else {
+            0.5
+        },
+        film_blur_pre_soft_amount: if tone_mapper == "flim" && film_effects_on {
+            js_adjustments["filmBlurPreSoftAmount"].as_f64().unwrap_or(0.0) as f32 / 100.0
+        } else {
+            0.0
+        },
+        film_blur_pre_soft_radius: if tone_mapper == "flim" {
+            js_adjustments["filmBlurPreSoftRadius"].as_f64().unwrap_or(0.5) as f32
+        } else {
+            0.5
+        },
         _pad_bw_align: [0.0; 1],
 
         // Black & white channel weights (frontend 0..100 -> 0..1, normalized
@@ -2967,10 +2999,18 @@ fn get_global_adjustments_from_json(
         flim_strength,
         _pad_flim_end: 0.0,
         flim_warmth: flim.warmth,
-        flim_adjacency,
-        flim_hi_tint: [1.0 + 0.25 * flim_hi, 1.0, 1.0 - 0.25 * flim_hi],
+        flim_adjacency: if film_effects_on { flim_adjacency } else { 0.0 },
+        flim_hi_tint: if film_effects_on {
+            [1.0 + 0.25 * flim_hi, 1.0, 1.0 - 0.25 * flim_hi]
+        } else {
+            [1.0, 1.0, 1.0]
+        },
         _pad_flim_hi: 0.0,
-        flim_sh_tint: [1.0 + 0.25 * flim_sh, 1.0, 1.0 - 0.25 * flim_sh],
+        flim_sh_tint: if film_effects_on {
+            [1.0 + 0.25 * flim_sh, 1.0, 1.0 - 0.25 * flim_sh]
+        } else {
+            [1.0, 1.0, 1.0]
+        },
         _pad_flim_sh: 0.0,
     }
 }
@@ -4122,6 +4162,7 @@ mod film_layout_tests {
     fn aux_shaders_validate() {
         for (name, src) in [
             ("blur.wgsl", include_str!("shaders/blur.wgsl")),
+            ("pre_tone.wgsl", include_str!("shaders/pre_tone.wgsl")),
             ("film_post.wgsl", include_str!("shaders/film_post.wgsl")),
         ] {
             let module = naga::front::wgsl::parse_str(src).unwrap_or_else(|e| panic!("{name} must parse: {e}"));

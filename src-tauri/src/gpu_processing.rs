@@ -574,6 +574,7 @@ struct FilmPostParams {
     grain_mono: f32,   // 1 = single shared field (B&W), 0 = per-channel
     grain_level: f32,  // mip level matching the render downscale (log2(full/processed))
     grain_coord_scale: f32, // full-res px per processed px (grain sampled in full-image coords)
+    blur_amount: f32,  // post-tone emulsion diffusion strength 0..1
     _pad3: f32,
     _pad4: f32,
     _pad5: f32,
@@ -609,8 +610,11 @@ pub struct GpuProcessor {
     flare_final_view: wgpu::TextureView,
     flare_sampler: wgpu::Sampler,
 
-    main_bgl: wgpu::BindGroupLayout,
-    main_pipeline: wgpu::ComputePipeline,
+    common_bgl: wgpu::BindGroupLayout,
+    pre_tone_io_bgl: wgpu::BindGroupLayout,
+    post_tone_io_bgl: wgpu::BindGroupLayout,
+    pre_tone_pipeline: wgpu::ComputePipeline,
+    post_tone_pipeline: wgpu::ComputePipeline,
     adjustments_buffer: wgpu::Buffer,
     dummy_blur_view: wgpu::TextureView,
     dummy_lut_view: wgpu::TextureView,
@@ -625,6 +629,9 @@ pub struct GpuProcessor {
     film_post_pipeline: wgpu::ComputePipeline,
     film_post_params_buffer: wgpu::Buffer,
     film_blur_view: wgpu::TextureView,
+    pre_tone_linear_view: wgpu::TextureView,
+    pre_blur_view: wgpu::TextureView,
+    pre_soft_blur_view: wgpu::TextureView,
     pub film_post_texture: wgpu::Texture,
     film_post_view: wgpu::TextureView,
     /// 1×1 fallback grain field (G = 1 = no-op), used until the first
@@ -646,8 +653,6 @@ const FLARE_MAP_SIZE: u32 = 512;
 impl GpuProcessor {
     pub fn new(context: GpuContext, max_width: u32, max_height: u32) -> Result<Self, String> {
         let device = &context.device;
-        const MAX_MASK_BINDINGS: u32 = 1;
-
         let blur_shader_module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("Blur Shader"),
             source: wgpu::ShaderSource::Wgsl(include_str!("shaders/blur.wgsl").into()),
@@ -741,6 +746,16 @@ impl GpuProcessor {
                 wgpu::BindGroupLayoutEntry {
                     binding: 1,
                     visibility: wgpu::ShaderStages::COMPUTE,
+                    ty: wgpu::BindingType::Texture {
+                        sample_type: wgpu::TextureSampleType::Float { filterable: false },
+                        view_dimension: wgpu::TextureViewDimension::D2,
+                        multisampled: false,
+                    },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 2,
+                    visibility: wgpu::ShaderStages::COMPUTE,
                     ty: wgpu::BindingType::StorageTexture {
                         access: wgpu::StorageTextureAccess::WriteOnly,
                         format: wgpu::TextureFormat::Rgba8Unorm,
@@ -749,7 +764,7 @@ impl GpuProcessor {
                     count: None,
                 },
                 wgpu::BindGroupLayoutEntry {
-                    binding: 2,
+                    binding: 3,
                     visibility: wgpu::ShaderStages::COMPUTE,
                     ty: wgpu::BindingType::Buffer {
                         ty: wgpu::BufferBindingType::Uniform,
@@ -761,7 +776,7 @@ impl GpuProcessor {
                 // Baked crystal grain coverage field (Pierre), rgba16float,
                 // mipmapped: the mip level emulates downscale averaging.
                 wgpu::BindGroupLayoutEntry {
-                    binding: 3,
+                    binding: 4,
                     visibility: wgpu::ShaderStages::COMPUTE,
                     ty: wgpu::BindingType::Texture {
                         sample_type: wgpu::TextureSampleType::Float { filterable: true },
@@ -771,7 +786,7 @@ impl GpuProcessor {
                     count: None,
                 },
                 wgpu::BindGroupLayoutEntry {
-                    binding: 4,
+                    binding: 5,
                     visibility: wgpu::ShaderStages::COMPUTE,
                     ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
                     count: None,
@@ -945,14 +960,56 @@ impl GpuProcessor {
             ..Default::default()
         });
 
-        let shader_module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some("Image Processing Shader"),
+        let pre_tone_shader_module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("Pre-tone Shader"),
+            source: wgpu::ShaderSource::Wgsl(include_str!("shaders/pre_tone.wgsl").into()),
+        });
+        let post_tone_shader_module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("Post-tone Shader"),
             source: wgpu::ShaderSource::Wgsl(include_str!("shaders/shader.wgsl").into()),
         });
 
-        let mut bind_group_layout_entries = vec![
+        // Common bind group layout: shared by both the pre-tone and post-tone
+        // compute passes (group 1 in WGSL).
+        let common_bgl_entries = vec![
             wgpu::BindGroupLayoutEntry {
                 binding: 0,
+                visibility: wgpu::ShaderStages::COMPUTE,
+                ty: wgpu::BindingType::Buffer {
+                    ty: wgpu::BufferBindingType::Storage { read_only: true },
+                    has_dynamic_offset: false,
+                    min_binding_size: None,
+                },
+                count: None,
+            },
+            wgpu::BindGroupLayoutEntry {
+                binding: 1,
+                visibility: wgpu::ShaderStages::COMPUTE,
+                ty: wgpu::BindingType::Texture {
+                    sample_type: wgpu::TextureSampleType::Float { filterable: false },
+                    view_dimension: wgpu::TextureViewDimension::D2Array,
+                    multisampled: false,
+                },
+                count: None,
+            },
+            wgpu::BindGroupLayoutEntry {
+                binding: 2,
+                visibility: wgpu::ShaderStages::COMPUTE,
+                ty: wgpu::BindingType::Texture {
+                    sample_type: wgpu::TextureSampleType::Float { filterable: false },
+                    view_dimension: wgpu::TextureViewDimension::D3,
+                    multisampled: false,
+                },
+                count: None,
+            },
+            wgpu::BindGroupLayoutEntry {
+                binding: 3,
+                visibility: wgpu::ShaderStages::COMPUTE,
+                ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::NonFiltering),
+                count: None,
+            },
+            wgpu::BindGroupLayoutEntry {
+                binding: 4,
                 visibility: wgpu::ShaderStages::COMPUTE,
                 ty: wgpu::BindingType::Texture {
                     sample_type: wgpu::TextureSampleType::Float { filterable: false },
@@ -962,128 +1019,154 @@ impl GpuProcessor {
                 count: None,
             },
             wgpu::BindGroupLayoutEntry {
-                binding: 1,
+                binding: 5,
                 visibility: wgpu::ShaderStages::COMPUTE,
-                ty: wgpu::BindingType::StorageTexture {
-                    access: wgpu::StorageTextureAccess::WriteOnly,
-                    format: wgpu::TextureFormat::Rgba8Unorm,
+                ty: wgpu::BindingType::Texture {
+                    sample_type: wgpu::TextureSampleType::Float { filterable: false },
                     view_dimension: wgpu::TextureViewDimension::D2,
+                    multisampled: false,
                 },
                 count: None,
             },
             wgpu::BindGroupLayoutEntry {
-                binding: 2,
+                binding: 6,
                 visibility: wgpu::ShaderStages::COMPUTE,
-                ty: wgpu::BindingType::Buffer {
-                    ty: wgpu::BufferBindingType::Storage { read_only: true },
-                    has_dynamic_offset: false,
-                    min_binding_size: None,
+                ty: wgpu::BindingType::Texture {
+                    sample_type: wgpu::TextureSampleType::Float { filterable: false },
+                    view_dimension: wgpu::TextureViewDimension::D2,
+                    multisampled: false,
                 },
+                count: None,
+            },
+            wgpu::BindGroupLayoutEntry {
+                binding: 7,
+                visibility: wgpu::ShaderStages::COMPUTE,
+                ty: wgpu::BindingType::Texture {
+                    sample_type: wgpu::TextureSampleType::Float { filterable: false },
+                    view_dimension: wgpu::TextureViewDimension::D2,
+                    multisampled: false,
+                },
+                count: None,
+            },
+            wgpu::BindGroupLayoutEntry {
+                binding: 8,
+                visibility: wgpu::ShaderStages::COMPUTE,
+                ty: wgpu::BindingType::Texture {
+                    sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                    view_dimension: wgpu::TextureViewDimension::D2,
+                    multisampled: false,
+                },
+                count: None,
+            },
+            wgpu::BindGroupLayoutEntry {
+                binding: 9,
+                visibility: wgpu::ShaderStages::COMPUTE,
+                ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
                 count: None,
             },
         ];
 
-        bind_group_layout_entries.push(wgpu::BindGroupLayoutEntry {
-            binding: 3,
-            visibility: wgpu::ShaderStages::COMPUTE,
-            ty: wgpu::BindingType::Texture {
-                sample_type: wgpu::TextureSampleType::Float { filterable: false },
-                view_dimension: wgpu::TextureViewDimension::D2Array,
-                multisampled: false,
-            },
-            count: None,
+        let common_bgl = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("Common BGL"),
+            entries: &common_bgl_entries,
         });
 
-        bind_group_layout_entries.push(wgpu::BindGroupLayoutEntry {
-            binding: 3 + MAX_MASK_BINDINGS,
-            visibility: wgpu::ShaderStages::COMPUTE,
-            ty: wgpu::BindingType::Texture {
-                sample_type: wgpu::TextureSampleType::Float { filterable: false },
-                view_dimension: wgpu::TextureViewDimension::D3,
-                multisampled: false,
-            },
-            count: None,
-        });
-        bind_group_layout_entries.push(wgpu::BindGroupLayoutEntry {
-            binding: 4 + MAX_MASK_BINDINGS,
-            visibility: wgpu::ShaderStages::COMPUTE,
-            ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::NonFiltering),
-            count: None,
-        });
-
-        bind_group_layout_entries.push(wgpu::BindGroupLayoutEntry {
-            binding: 5 + MAX_MASK_BINDINGS,
-            visibility: wgpu::ShaderStages::COMPUTE,
-            ty: wgpu::BindingType::Texture {
-                sample_type: wgpu::TextureSampleType::Float { filterable: false },
-                view_dimension: wgpu::TextureViewDimension::D2,
-                multisampled: false,
-            },
-            count: None,
-        });
-        bind_group_layout_entries.push(wgpu::BindGroupLayoutEntry {
-            binding: 6 + MAX_MASK_BINDINGS,
-            visibility: wgpu::ShaderStages::COMPUTE,
-            ty: wgpu::BindingType::Texture {
-                sample_type: wgpu::TextureSampleType::Float { filterable: false },
-                view_dimension: wgpu::TextureViewDimension::D2,
-                multisampled: false,
-            },
-            count: None,
-        });
-        bind_group_layout_entries.push(wgpu::BindGroupLayoutEntry {
-            binding: 7 + MAX_MASK_BINDINGS,
-            visibility: wgpu::ShaderStages::COMPUTE,
-            ty: wgpu::BindingType::Texture {
-                sample_type: wgpu::TextureSampleType::Float { filterable: false },
-                view_dimension: wgpu::TextureViewDimension::D2,
-                multisampled: false,
-            },
-            count: None,
-        });
-        bind_group_layout_entries.push(wgpu::BindGroupLayoutEntry {
-            binding: 8 + MAX_MASK_BINDINGS,
-            visibility: wgpu::ShaderStages::COMPUTE,
-            ty: wgpu::BindingType::Texture {
-                sample_type: wgpu::TextureSampleType::Float { filterable: false },
-                view_dimension: wgpu::TextureViewDimension::D2,
-                multisampled: false,
-            },
-            count: None,
+        // Per-pass IO bind group layouts (group 0 in WGSL).
+        let pre_tone_io_bgl = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("Pre-tone IO BGL"),
+            entries: &[
+                wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::COMPUTE,
+                    ty: wgpu::BindingType::Texture {
+                        sample_type: wgpu::TextureSampleType::Float { filterable: false },
+                        view_dimension: wgpu::TextureViewDimension::D2,
+                        multisampled: false,
+                    },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 1,
+                    visibility: wgpu::ShaderStages::COMPUTE,
+                    ty: wgpu::BindingType::StorageTexture {
+                        access: wgpu::StorageTextureAccess::WriteOnly,
+                        format: wgpu::TextureFormat::Rgba16Float,
+                        view_dimension: wgpu::TextureViewDimension::D2,
+                    },
+                    count: None,
+                },
+            ],
         });
 
-        bind_group_layout_entries.push(wgpu::BindGroupLayoutEntry {
-            binding: 9 + MAX_MASK_BINDINGS,
-            visibility: wgpu::ShaderStages::COMPUTE,
-            ty: wgpu::BindingType::Texture {
-                sample_type: wgpu::TextureSampleType::Float { filterable: true },
-                view_dimension: wgpu::TextureViewDimension::D2,
-                multisampled: false,
-            },
-            count: None,
-        });
-        bind_group_layout_entries.push(wgpu::BindGroupLayoutEntry {
-            binding: 10 + MAX_MASK_BINDINGS,
-            visibility: wgpu::ShaderStages::COMPUTE,
-            ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
-            count: None,
+        let post_tone_io_bgl = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("Post-tone IO BGL"),
+            entries: &[
+                wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::COMPUTE,
+                    ty: wgpu::BindingType::Texture {
+                        sample_type: wgpu::TextureSampleType::Float { filterable: false },
+                        view_dimension: wgpu::TextureViewDimension::D2,
+                        multisampled: false,
+                    },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 1,
+                    visibility: wgpu::ShaderStages::COMPUTE,
+                    ty: wgpu::BindingType::StorageTexture {
+                        access: wgpu::StorageTextureAccess::WriteOnly,
+                        format: wgpu::TextureFormat::Rgba8Unorm,
+                        view_dimension: wgpu::TextureViewDimension::D2,
+                    },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 2,
+                    visibility: wgpu::ShaderStages::COMPUTE,
+                    ty: wgpu::BindingType::Texture {
+                        sample_type: wgpu::TextureSampleType::Float { filterable: false },
+                        view_dimension: wgpu::TextureViewDimension::D2,
+                        multisampled: false,
+                    },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 3,
+                    visibility: wgpu::ShaderStages::COMPUTE,
+                    ty: wgpu::BindingType::Texture {
+                        sample_type: wgpu::TextureSampleType::Float { filterable: false },
+                        view_dimension: wgpu::TextureViewDimension::D2,
+                        multisampled: false,
+                    },
+                    count: None,
+                },
+            ],
         });
 
-        let main_bgl = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label: Some("Main BGL"),
-            entries: &bind_group_layout_entries,
+        let pre_tone_pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: Some("Pre-tone Pipeline Layout"),
+            bind_group_layouts: &[Some(&pre_tone_io_bgl), Some(&common_bgl)],
+            immediate_size: 0,
         });
-
-        let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-            label: Some("Pipeline Layout"),
-            bind_group_layouts: &[Some(&main_bgl)],
+        let post_tone_pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: Some("Post-tone Pipeline Layout"),
+            bind_group_layouts: &[Some(&post_tone_io_bgl), Some(&common_bgl)],
             immediate_size: 0,
         });
 
-        let main_pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
-            label: Some("Compute Pipeline"),
-            layout: Some(&pipeline_layout),
-            module: &shader_module,
+        let pre_tone_pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+            label: Some("Pre-tone Pipeline"),
+            layout: Some(&pre_tone_pipeline_layout),
+            module: &pre_tone_shader_module,
+            entry_point: Some("pre_tone"),
+            compilation_options: Default::default(),
+            cache: None,
+        });
+        let post_tone_pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+            label: Some("Post-tone Pipeline"),
+            layout: Some(&post_tone_pipeline_layout),
+            module: &post_tone_shader_module,
             entry_point: Some("main"),
             compilation_options: Default::default(),
             cache: None,
@@ -1172,6 +1255,24 @@ impl GpuProcessor {
             ..reusable_texture_desc
         });
         let film_blur_view = film_blur_texture.create_view(&Default::default());
+
+        let pre_tone_linear_texture = device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("Pre-tone Linear Texture"),
+            ..reusable_texture_desc
+        });
+        let pre_tone_linear_view = pre_tone_linear_texture.create_view(&Default::default());
+
+        let pre_blur_texture = device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("Pre-tone Blur Texture"),
+            ..reusable_texture_desc
+        });
+        let pre_blur_view = pre_blur_texture.create_view(&Default::default());
+
+        let pre_soft_blur_texture = device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("Pre-tone Soft Blur Texture"),
+            ..reusable_texture_desc
+        });
+        let pre_soft_blur_view = pre_soft_blur_texture.create_view(&Default::default());
 
         let film_post_texture = device.create_texture(&wgpu::TextureDescriptor {
             label: Some("Film Post Texture"),
@@ -1298,8 +1399,11 @@ impl GpuProcessor {
             flare_ghosts_view,
             flare_final_view,
             flare_sampler,
-            main_bgl,
-            main_pipeline,
+            common_bgl,
+            pre_tone_io_bgl,
+            post_tone_io_bgl,
+            pre_tone_pipeline,
+            post_tone_pipeline,
             adjustments_buffer,
             dummy_blur_view,
             dummy_lut_view,
@@ -1313,6 +1417,9 @@ impl GpuProcessor {
             film_post_pipeline,
             film_post_params_buffer,
             film_blur_view,
+            pre_tone_linear_view,
+            pre_blur_view,
+            pre_soft_blur_view,
             film_post_texture,
             film_post_view,
             dummy_grain_view,
@@ -1338,8 +1445,6 @@ impl GpuProcessor {
         let device = &self.context.device;
         let queue = &self.context.queue;
         let scale = (width.min(height) as f32) / 1080.0;
-        const MAX_MASK_BINDINGS: u32 = 1;
-
         let bounds = request.roi.unwrap_or(Roi {
             x: 0,
             y: 0,
@@ -1669,93 +1774,285 @@ impl GpuProcessor {
                     bytemuck::bytes_of(&tile_adjustments),
                 );
 
-                let mut bind_group_entries = vec![
-                    wgpu::BindGroupEntry {
-                        binding: 0,
-                        resource: wgpu::BindingResource::TextureView(input_texture_view),
-                    },
-                    wgpu::BindGroupEntry {
-                        binding: 1,
-                        resource: wgpu::BindingResource::TextureView(
-                            &self.tile_output_texture_view,
-                        ),
-                    },
-                    wgpu::BindGroupEntry {
-                        binding: 2,
-                        resource: self.adjustments_buffer.as_entire_binding(),
-                    },
-                ];
-                bind_group_entries.push(wgpu::BindGroupEntry {
-                    binding: 3,
-                    resource: wgpu::BindingResource::TextureView(&mask_texture_view),
-                });
-                bind_group_entries.push(wgpu::BindGroupEntry {
-                    binding: 3 + MAX_MASK_BINDINGS,
-                    resource: wgpu::BindingResource::TextureView(&lut_texture_view),
-                });
-                bind_group_entries.push(wgpu::BindGroupEntry {
-                    binding: 4 + MAX_MASK_BINDINGS,
-                    resource: wgpu::BindingResource::Sampler(&lut_sampler),
-                });
-
-                bind_group_entries.push(wgpu::BindGroupEntry {
-                    binding: 5 + MAX_MASK_BINDINGS,
-                    resource: wgpu::BindingResource::TextureView(if did_create_sharpness_blur {
-                        &self.sharpness_blur_view
-                    } else {
-                        &self.dummy_blur_view
-                    }),
-                });
-                bind_group_entries.push(wgpu::BindGroupEntry {
-                    binding: 6 + MAX_MASK_BINDINGS,
-                    resource: wgpu::BindingResource::TextureView(if did_create_tonal_blur {
-                        &self.tonal_blur_view
-                    } else {
-                        &self.dummy_blur_view
-                    }),
-                });
-                bind_group_entries.push(wgpu::BindGroupEntry {
-                    binding: 7 + MAX_MASK_BINDINGS,
-                    resource: wgpu::BindingResource::TextureView(if did_create_clarity_blur {
-                        &self.clarity_blur_view
-                    } else {
-                        &self.dummy_blur_view
-                    }),
-                });
-                bind_group_entries.push(wgpu::BindGroupEntry {
-                    binding: 8 + MAX_MASK_BINDINGS,
-                    resource: wgpu::BindingResource::TextureView(if did_create_structure_blur {
-                        &self.structure_blur_view
-                    } else {
-                        &self.dummy_blur_view
-                    }),
-                });
-
                 let use_flare = adjustments.global.flare_amount > 0.0;
-                bind_group_entries.push(wgpu::BindGroupEntry {
-                    binding: 9 + MAX_MASK_BINDINGS,
-                    resource: wgpu::BindingResource::TextureView(if use_flare {
-                        &self.flare_ghosts_view
-                    } else {
-                        &self.dummy_blur_view
-                    }),
-                });
-                bind_group_entries.push(wgpu::BindGroupEntry {
-                    binding: 10 + MAX_MASK_BINDINGS,
-                    resource: wgpu::BindingResource::Sampler(&self.flare_sampler),
+
+                // Common bind group (group 1): shared between pre-tone and post-tone.
+                let common_bg = device.create_bind_group(&wgpu::BindGroupDescriptor {
+                    label: Some("Common BG"),
+                    layout: &self.common_bgl,
+                    entries: &[
+                        wgpu::BindGroupEntry {
+                            binding: 0,
+                            resource: self.adjustments_buffer.as_entire_binding(),
+                        },
+                        wgpu::BindGroupEntry {
+                            binding: 1,
+                            resource: wgpu::BindingResource::TextureView(&mask_texture_view),
+                        },
+                        wgpu::BindGroupEntry {
+                            binding: 2,
+                            resource: wgpu::BindingResource::TextureView(&lut_texture_view),
+                        },
+                        wgpu::BindGroupEntry {
+                            binding: 3,
+                            resource: wgpu::BindingResource::Sampler(&lut_sampler),
+                        },
+                        wgpu::BindGroupEntry {
+                            binding: 4,
+                            resource: wgpu::BindingResource::TextureView(if did_create_sharpness_blur {
+                                &self.sharpness_blur_view
+                            } else {
+                                &self.dummy_blur_view
+                            }),
+                        },
+                        wgpu::BindGroupEntry {
+                            binding: 5,
+                            resource: wgpu::BindingResource::TextureView(if did_create_tonal_blur {
+                                &self.tonal_blur_view
+                            } else {
+                                &self.dummy_blur_view
+                            }),
+                        },
+                        wgpu::BindGroupEntry {
+                            binding: 6,
+                            resource: wgpu::BindingResource::TextureView(if did_create_clarity_blur {
+                                &self.clarity_blur_view
+                            } else {
+                                &self.dummy_blur_view
+                            }),
+                        },
+                        wgpu::BindGroupEntry {
+                            binding: 7,
+                            resource: wgpu::BindingResource::TextureView(if did_create_structure_blur {
+                                &self.structure_blur_view
+                            } else {
+                                &self.dummy_blur_view
+                            }),
+                        },
+                        wgpu::BindGroupEntry {
+                            binding: 8,
+                            resource: wgpu::BindingResource::TextureView(if use_flare {
+                                &self.flare_ghosts_view
+                            } else {
+                                &self.dummy_blur_view
+                            }),
+                        },
+                        wgpu::BindGroupEntry {
+                            binding: 9,
+                            resource: wgpu::BindingResource::Sampler(&self.flare_sampler),
+                        },
+                    ],
                 });
 
-                let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-                    label: Some("Tile Bind Group"),
-                    layout: &self.main_bgl,
-                    entries: &bind_group_entries,
+                // Pre-tone pass: grades the input tile into a linear RGB texture.
+                let pre_tone_io_bg = device.create_bind_group(&wgpu::BindGroupDescriptor {
+                    label: Some("Pre-tone IO BG"),
+                    layout: &self.pre_tone_io_bgl,
+                    entries: &[
+                        wgpu::BindGroupEntry {
+                            binding: 0,
+                            resource: wgpu::BindingResource::TextureView(input_texture_view),
+                        },
+                        wgpu::BindGroupEntry {
+                            binding: 1,
+                            resource: wgpu::BindingResource::TextureView(&self.pre_tone_linear_view),
+                        },
+                    ],
                 });
 
                 {
-                    let mut compute_pass = main_encoder.begin_compute_pass(&Default::default());
-                    compute_pass.set_pipeline(&self.main_pipeline);
-                    compute_pass.set_bind_group(0, &bind_group, &[]);
-                    compute_pass.dispatch_workgroups(
+                    let mut cpass = main_encoder.begin_compute_pass(&Default::default());
+                    cpass.set_pipeline(&self.pre_tone_pipeline);
+                    cpass.set_bind_group(0, &pre_tone_io_bg, &[]);
+                    cpass.set_bind_group(1, &common_bg, &[]);
+                    cpass.dispatch_workgroups(
+                        input_width.div_ceil(8),
+                        input_height.div_ceil(8),
+                        1,
+                    );
+                }
+
+                // Optional pre-tone diffusion blur.
+                let film_blur_pre_amount = adjustments.global.film_blur_pre_amount;
+                let post_tone_input_view: &wgpu::TextureView = if film_blur_pre_amount > 0.0 {
+                    let radius_px = adjustments.global.film_blur_pre_radius.max(0.5);
+                    let sigma = radius_px * scale;
+                    let radius = (sigma * 2.0).ceil().clamp(1.0, 96.0) as u32;
+                    let params = BlurParams {
+                        radius,
+                        tile_offset_x: 0,
+                        tile_offset_y: 0,
+                        input_width,
+                        input_height,
+                        clamp_x_max: input_width - 1,
+                        _pad2: 0,
+                        _pad3: 0,
+                    };
+                    queue.write_buffer(&self.blur_params_buffer, 0, bytemuck::bytes_of(&params));
+
+                    let h_blur_bg = device.create_bind_group(&wgpu::BindGroupDescriptor {
+                        label: Some("Pre-tone H-Blur BG"),
+                        layout: &self.blur_bgl,
+                        entries: &[
+                            wgpu::BindGroupEntry {
+                                binding: 0,
+                                resource: wgpu::BindingResource::TextureView(&self.pre_tone_linear_view),
+                            },
+                            wgpu::BindGroupEntry {
+                                binding: 1,
+                                resource: wgpu::BindingResource::TextureView(&self.ping_pong_view),
+                            },
+                            wgpu::BindGroupEntry {
+                                binding: 2,
+                                resource: self.blur_params_buffer.as_entire_binding(),
+                            },
+                        ],
+                    });
+
+                    let v_blur_bg = device.create_bind_group(&wgpu::BindGroupDescriptor {
+                        label: Some("Pre-tone V-Blur BG"),
+                        layout: &self.blur_bgl,
+                        entries: &[
+                            wgpu::BindGroupEntry {
+                                binding: 0,
+                                resource: wgpu::BindingResource::TextureView(&self.ping_pong_view),
+                            },
+                            wgpu::BindGroupEntry {
+                                binding: 1,
+                                resource: wgpu::BindingResource::TextureView(&self.pre_blur_view),
+                            },
+                            wgpu::BindGroupEntry {
+                                binding: 2,
+                                resource: self.blur_params_buffer.as_entire_binding(),
+                            },
+                        ],
+                    });
+
+                    {
+                        let mut cpass = main_encoder.begin_compute_pass(&Default::default());
+                        cpass.set_pipeline(&self.h_blur_pipeline);
+                        cpass.set_bind_group(0, &h_blur_bg, &[]);
+                        cpass.dispatch_workgroups(input_width.div_ceil(256), input_height, 1);
+                    }
+                    {
+                        let mut cpass = main_encoder.begin_compute_pass(&Default::default());
+                        cpass.set_pipeline(&self.v_blur_pipeline);
+                        cpass.set_bind_group(0, &v_blur_bg, &[]);
+                        cpass.dispatch_workgroups(input_width, input_height.div_ceil(256), 1);
+                    }
+
+                    &self.pre_blur_view
+                } else {
+                    &self.pre_tone_linear_view
+                };
+
+                // Optional pre-tone soft blur: a separate Gaussian blur of the
+                // sharp linear image, mixed in shader.wgsl before tonemapping.
+                let film_blur_pre_soft_amount = adjustments.global.film_blur_pre_soft_amount;
+                if film_blur_pre_soft_amount > 0.0 {
+                    let radius_px = adjustments.global.film_blur_pre_soft_radius.max(0.5);
+                    let sigma = radius_px * scale;
+                    let radius = (sigma * 2.0).ceil().clamp(1.0, 96.0) as u32;
+                    let params = BlurParams {
+                        radius,
+                        tile_offset_x: 0,
+                        tile_offset_y: 0,
+                        input_width,
+                        input_height,
+                        clamp_x_max: input_width - 1,
+                        _pad2: 0,
+                        _pad3: 0,
+                    };
+                    queue.write_buffer(&self.blur_params_buffer, 0, bytemuck::bytes_of(&params));
+
+                    let h_blur_bg = device.create_bind_group(&wgpu::BindGroupDescriptor {
+                        label: Some("Pre-tone Soft H-Blur BG"),
+                        layout: &self.blur_bgl,
+                        entries: &[
+                            wgpu::BindGroupEntry {
+                                binding: 0,
+                                resource: wgpu::BindingResource::TextureView(&self.pre_tone_linear_view),
+                            },
+                            wgpu::BindGroupEntry {
+                                binding: 1,
+                                resource: wgpu::BindingResource::TextureView(&self.ping_pong_view),
+                            },
+                            wgpu::BindGroupEntry {
+                                binding: 2,
+                                resource: self.blur_params_buffer.as_entire_binding(),
+                            },
+                        ],
+                    });
+
+                    let v_blur_bg = device.create_bind_group(&wgpu::BindGroupDescriptor {
+                        label: Some("Pre-tone Soft V-Blur BG"),
+                        layout: &self.blur_bgl,
+                        entries: &[
+                            wgpu::BindGroupEntry {
+                                binding: 0,
+                                resource: wgpu::BindingResource::TextureView(&self.ping_pong_view),
+                            },
+                            wgpu::BindGroupEntry {
+                                binding: 1,
+                                resource: wgpu::BindingResource::TextureView(&self.pre_soft_blur_view),
+                            },
+                            wgpu::BindGroupEntry {
+                                binding: 2,
+                                resource: self.blur_params_buffer.as_entire_binding(),
+                            },
+                        ],
+                    });
+
+                    {
+                        let mut cpass = main_encoder.begin_compute_pass(&Default::default());
+                        cpass.set_pipeline(&self.h_blur_pipeline);
+                        cpass.set_bind_group(0, &h_blur_bg, &[]);
+                        cpass.dispatch_workgroups(input_width.div_ceil(256), input_height, 1);
+                    }
+                    {
+                        let mut cpass = main_encoder.begin_compute_pass(&Default::default());
+                        cpass.set_pipeline(&self.v_blur_pipeline);
+                        cpass.set_bind_group(0, &v_blur_bg, &[]);
+                        cpass.dispatch_workgroups(input_width, input_height.div_ceil(256), 1);
+                    }
+                }
+
+                // Post-tone pass: tonemapping, curves, LUT, grain, etc.
+                let post_tone_io_bg = device.create_bind_group(&wgpu::BindGroupDescriptor {
+                    label: Some("Post-tone IO BG"),
+                    layout: &self.post_tone_io_bgl,
+                    entries: &[
+                        wgpu::BindGroupEntry {
+                            binding: 0,
+                            resource: wgpu::BindingResource::TextureView(post_tone_input_view),
+                        },
+                        wgpu::BindGroupEntry {
+                            binding: 1,
+                            resource: wgpu::BindingResource::TextureView(&self.tile_output_texture_view),
+                        },
+                        wgpu::BindGroupEntry {
+                            binding: 2,
+                            resource: wgpu::BindingResource::TextureView(&self.pre_tone_linear_view),
+                        },
+                        wgpu::BindGroupEntry {
+                            binding: 3,
+                            resource: wgpu::BindingResource::TextureView(
+                                if film_blur_pre_soft_amount > 0.0 {
+                                    &self.pre_soft_blur_view
+                                } else {
+                                    &self.pre_tone_linear_view
+                                },
+                            ),
+                        },
+                    ],
+                });
+
+                {
+                    let mut cpass = main_encoder.begin_compute_pass(&Default::default());
+                    cpass.set_pipeline(&self.post_tone_pipeline);
+                    cpass.set_bind_group(0, &post_tone_io_bg, &[]);
+                    cpass.set_bind_group(1, &common_bg, &[]);
+                    cpass.dispatch_workgroups(
                         input_width.div_ceil(8),
                         input_height.div_ceil(8),
                         1,
@@ -1872,6 +2169,7 @@ impl GpuProcessor {
                         grain_mono: adjustments.global.crystal_grain_mono,
                         grain_level: request.grain_mip_level,
                         grain_coord_scale: request.grain_coord_scale,
+                        blur_amount: film_blur,
                         _pad3: 0.0,
                         _pad4: 0.0,
                         _pad5: 0.0,
@@ -1907,26 +2205,30 @@ impl GpuProcessor {
                         entries: &[
                             wgpu::BindGroupEntry {
                                 binding: 0,
-                                resource: wgpu::BindingResource::TextureView(if film_blur > 0.0 {
-                                    &self.film_blur_view
-                                } else {
-                                    &self.tile_output_texture_view
-                                }),
+                                resource: wgpu::BindingResource::TextureView(&self.tile_output_texture_view),
                             },
                             wgpu::BindGroupEntry {
                                 binding: 1,
-                                resource: wgpu::BindingResource::TextureView(&self.film_post_view),
+                                resource: wgpu::BindingResource::TextureView(if film_blur > 0.0 {
+                                    &self.film_blur_view
+                                } else {
+                                    &self.dummy_blur_view
+                                }),
                             },
                             wgpu::BindGroupEntry {
                                 binding: 2,
-                                resource: self.film_post_params_buffer.as_entire_binding(),
+                                resource: wgpu::BindingResource::TextureView(&self.film_post_view),
                             },
                             wgpu::BindGroupEntry {
                                 binding: 3,
-                                resource: wgpu::BindingResource::TextureView(grain_view),
+                                resource: self.film_post_params_buffer.as_entire_binding(),
                             },
                             wgpu::BindGroupEntry {
                                 binding: 4,
+                                resource: wgpu::BindingResource::TextureView(grain_view),
+                            },
+                            wgpu::BindGroupEntry {
+                                binding: 5,
                                 resource: wgpu::BindingResource::Sampler(&self.grain_sampler),
                             },
                         ],

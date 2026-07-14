@@ -16,16 +16,18 @@ struct FilmPostParams {
     grain_mono: f32,   // 1 = single shared field (B&W), 0 = per-channel
     grain_level: f32,  // mip level matching the render downscale (log2(full/processed))
     grain_coord_scale: f32, // full-res px per processed px (grain sampled in full-image coords)
+    blur_amount: f32,  // post-tone emulsion diffusion strength 0..1
     _pad3: f32,
     _pad4: f32,
     _pad5: f32,
 }
 
-@group(0) @binding(0) var input_texture: texture_2d<f32>;
-@group(0) @binding(1) var output_texture: texture_storage_2d<rgba8unorm, write>;
-@group(0) @binding(2) var<uniform> params: FilmPostParams;
-@group(0) @binding(3) var grain_texture: texture_2d<f32>;
-@group(0) @binding(4) var grain_sampler: sampler;
+@group(0) @binding(0) var sharp_texture: texture_2d<f32>;
+@group(0) @binding(1) var blur_texture: texture_2d<f32>;
+@group(0) @binding(2) var output_texture: texture_storage_2d<rgba8unorm, write>;
+@group(0) @binding(3) var<uniform> params: FilmPostParams;
+@group(0) @binding(4) var grain_texture: texture_2d<f32>;
+@group(0) @binding(5) var grain_sampler: sampler;
 
 @compute @workgroup_size(8, 8, 1)
 fn film_post(@builtin(global_invocation_id) id: vec3<u32>) {
@@ -38,11 +40,23 @@ fn film_post(@builtin(global_invocation_id) id: vec3<u32>) {
     let max_c = vec2<f32>(params.clamp_w, params.clamp_h);
     let px = vec2<u32>(clamp(coord, vec2<f32>(0.0), max_c));
 
-    let src = textureLoad(input_texture, px, 0);
-    var r = src.r;
-    var g = src.g;
-    var b = src.b;
-    let a = src.a;
+    let sharp = textureLoad(sharp_texture, px, 0);
+    var r = sharp.r;
+    var g = sharp.g;
+    var b = sharp.b;
+    let a = sharp.a;
+
+    // Post-tone emulsion diffusion: screen-blend the sharp graded tile with a
+    // pre-blurred copy. Mid-tones stay sharp, highlights bloom, shadows are
+    // mostly untouched.
+    if (params.blur_amount > 0.0) {
+        let blurred = textureLoad(blur_texture, px, 0);
+        let amount = params.blur_amount;
+        let blended = 1.0 - (1.0 - sharp.rgb) * (1.0 - blurred.rgb * amount);
+        r = blended.r;
+        g = blended.g;
+        b = blended.b;
+    }
 
     // Crystal grain (Pierre): the baked field G is the mean-normalized
     // coverage fraction of the crystal-stack model rendered on a flat

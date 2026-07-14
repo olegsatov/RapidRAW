@@ -149,6 +149,10 @@ export enum FilmAdjustment {
   FlimAdvPaletteRotate = 'flimAdvPaletteRotate',
   FlimAdvPushR = 'flimAdvPushR',
   FlimAdvPushB = 'flimAdvPushB',
+  FilmBlurPreAmount = 'filmBlurPreAmount',
+  FilmBlurPreRadius = 'filmBlurPreRadius',
+  FilmBlurPreSoftAmount = 'filmBlurPreSoftAmount',
+  FilmBlurPreSoftRadius = 'filmBlurPreSoftRadius',
 }
 
 export enum BwAdjustment {
@@ -291,6 +295,10 @@ export interface Adjustments {
   flimAdvPaletteRotate: number;
   flimAdvPushR: number;
   flimAdvPushB: number;
+  filmBlurPreAmount: number;
+  filmBlurPreRadius: number;
+  filmBlurPreSoftAmount: number;
+  filmBlurPreSoftRadius: number;
   flipHorizontal: boolean;
   flipVertical: boolean;
   flareAmount: number;
@@ -478,6 +486,7 @@ export interface SectionVisibility {
   effects: boolean;
   blackAndWhite: boolean;
   film: boolean;
+  filmEffects: boolean;
   grain: boolean;
 }
 
@@ -586,6 +595,7 @@ export const INITIAL_MASK_ADJUSTMENTS: MaskAdjustments = {
     effects: true,
     blackAndWhite: false,
     film: true,
+    filmEffects: true,
     grain: true,
   },
   shadows: 0,
@@ -770,6 +780,10 @@ export const INITIAL_ADJUSTMENTS: Adjustments = {
   filmBaseColor: [255, 255, 255],
   filmBleed: 0,
   filmBlur: 0,
+  filmBlurPreAmount: 0,
+  filmBlurPreRadius: 0.5,
+  filmBlurPreSoftAmount: 0,
+  filmBlurPreSoftRadius: 0.5,
   filmContrast: 100,
   filmCross: false,
   filmCurves: buildIdentityFilmCurves(),
@@ -851,6 +865,7 @@ export const INITIAL_ADJUSTMENTS: Adjustments = {
     effects: true,
     blackAndWhite: false,
     film: false,
+    filmEffects: true,
     grain: false,
   },
   shadows: 0,
@@ -993,6 +1008,10 @@ export const normalizeLoadedAdjustments = (loadedAdjustments: Adjustments): any 
     filmShadows: loadedAdjustments.filmShadows ?? INITIAL_ADJUSTMENTS.filmShadows,
     filmHighlights: loadedAdjustments.filmHighlights ?? INITIAL_ADJUSTMENTS.filmHighlights,
     filmBlur: loadedAdjustments.filmBlur ?? INITIAL_ADJUSTMENTS.filmBlur,
+    filmBlurPreAmount: loadedAdjustments.filmBlurPreAmount ?? INITIAL_ADJUSTMENTS.filmBlurPreAmount,
+    filmBlurPreRadius: loadedAdjustments.filmBlurPreRadius ?? INITIAL_ADJUSTMENTS.filmBlurPreRadius,
+    filmBlurPreSoftAmount: loadedAdjustments.filmBlurPreSoftAmount ?? INITIAL_ADJUSTMENTS.filmBlurPreSoftAmount,
+    filmBlurPreSoftRadius: loadedAdjustments.filmBlurPreSoftRadius ?? INITIAL_ADJUSTMENTS.filmBlurPreSoftRadius,
     crystalGrainFilling: loadedAdjustments.crystalGrainFilling ?? INITIAL_ADJUSTMENTS.crystalGrainFilling,
     crystalGrainSize: loadedAdjustments.crystalGrainSize ?? INITIAL_ADJUSTMENTS.crystalGrainSize,
     crystalGrainLayers: loadedAdjustments.crystalGrainLayers ?? INITIAL_ADJUSTMENTS.crystalGrainLayers,
@@ -1025,9 +1044,7 @@ export const normalizeLoadedAdjustments = (loadedAdjustments: Adjustments): any 
         ? loadedAdjustments.filmShadowTint
         : INITIAL_ADJUSTMENTS.filmShadowTint,
     filmCurves:
-      loadedAdjustments.filmCurves?.length === 768
-        ? loadedAdjustments.filmCurves
-        : INITIAL_ADJUSTMENTS.filmCurves,
+      loadedAdjustments.filmCurves?.length === 768 ? loadedAdjustments.filmCurves : INITIAL_ADJUSTMENTS.filmCurves,
     toneMapper: loadedAdjustments.toneMapper ?? INITIAL_ADJUSTMENTS.toneMapper,
     lensCorrectionMode: loadedAdjustments.lensCorrectionMode || 'manual',
     lensMaker: loadedAdjustments.lensMaker ?? INITIAL_ADJUSTMENTS.lensMaker,
@@ -1169,6 +1186,10 @@ export const ADJUSTMENT_GROUPS: Record<string, AdjustmentGroup[]> = {
         FilmAdjustment.FilmShadows,
         FilmAdjustment.FilmHighlights,
         FilmAdjustment.FilmBlur,
+        FilmAdjustment.FilmBlurPreAmount,
+        FilmAdjustment.FilmBlurPreRadius,
+        FilmAdjustment.FilmBlurPreSoftAmount,
+        FilmAdjustment.FilmBlurPreSoftRadius,
         FilmAdjustment.GrainEngine,
         FilmAdjustment.CrystalGrainAmount,
         FilmAdjustment.CrystalGrainMono,
@@ -1320,6 +1341,10 @@ export const ADJUSTMENT_SECTIONS: Sections = {
     FilmAdjustment.FilmShadows,
     FilmAdjustment.FilmHighlights,
     FilmAdjustment.FilmBlur,
+    FilmAdjustment.FilmBlurPreAmount,
+    FilmAdjustment.FilmBlurPreRadius,
+    FilmAdjustment.FilmBlurPreSoftAmount,
+    FilmAdjustment.FilmBlurPreSoftRadius,
     FilmAdjustment.FlimPreset,
     FilmAdjustment.FlimEv,
     FilmAdjustment.FlimStrength,
