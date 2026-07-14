@@ -475,7 +475,7 @@ export default function FilmPanel() {
             onDragStateChange={onDragStateChange}
           />
           <div className="flex gap-2">
-            <div className="w-2/3">
+            <div className="w-[30%]">
               <Slider
                 defaultValue={0}
                 label={t('editor.film.preToneDiffusionAmount')}
@@ -487,7 +487,19 @@ export default function FilmPanel() {
                 onDragStateChange={onDragStateChange}
               />
             </div>
-            <div className="w-1/3">
+            <div className="w-[30%]">
+              <Slider
+                defaultValue={0}
+                label={t('editor.film.preToneDiffusionCompensation')}
+                max={100}
+                min={0}
+                onChange={(e: any) => handleAdjustmentChange(FilmAdjustment.FilmBlurPreCompensation, e.target.value)}
+                step={1}
+                value={adjustments.filmBlurPreCompensation ?? 0}
+                onDragStateChange={onDragStateChange}
+              />
+            </div>
+            <div className="w-[30%]">
               <Slider
                 defaultValue={0.5}
                 label={t('editor.film.preToneDiffusionRadius')}

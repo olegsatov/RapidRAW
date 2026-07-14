@@ -1527,13 +1527,12 @@ pub struct GlobalAdjustments {
     pub film_blur: f32,
     pub film_blur_pre_amount: f32,
     pub film_blur_pre_radius: f32,
+    pub film_blur_pre_compensation: f32,
     pub film_blur_pre_soft_amount: f32,
     pub film_blur_pre_soft_radius: f32,
 
-    // Alignment padding: the next member (bw_weights: vec4<f32>) must start at
-    // a 16-byte boundary. We now have 7 f32s here, so 1 explicit pad keeps the
-    // WGSL/Rust layouts identical.
-    pub _pad_bw_align: [f32; 1],
+    // No explicit padding needed: 8 f32s (32 bytes) already place bw_weights
+    // on a 16-byte boundary, matching WGSL vec3<f32> alignment.
 
     // Black & white conversion — layout MUST match shader.wgsl.
     // xyz = channel weights (0..1, normalized in the shader), w = enabled flag.
@@ -2950,6 +2949,11 @@ fn get_global_adjustments_from_json(
         } else {
             0.5
         },
+        film_blur_pre_compensation: if tone_mapper == "flim" && film_effects_on {
+            js_adjustments["filmBlurPreCompensation"].as_f64().unwrap_or(0.0) as f32 / 100.0
+        } else {
+            0.0
+        },
         film_blur_pre_soft_amount: if tone_mapper == "flim" && film_effects_on {
             js_adjustments["filmBlurPreSoftAmount"].as_f64().unwrap_or(0.0) as f32 / 100.0
         } else {
@@ -2960,7 +2964,6 @@ fn get_global_adjustments_from_json(
         } else {
             0.5
         },
-        _pad_bw_align: [0.0; 1],
 
         // Black & white channel weights (frontend 0..100 -> 0..1, normalized
         // in the shader) with the section-enabled flag packed into w.

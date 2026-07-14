@@ -140,6 +140,7 @@ struct GlobalAdjustments {
     film_blur: f32,                      // 0..1 (emulsion blur, sigma = film_blur * 3 px)
     film_blur_pre_amount: f32,            // 0..1 pre-tone diffusion strength
     film_blur_pre_radius: f32,            // 0.5..4 px (pre-tone blur radius)
+    film_blur_pre_compensation: f32,      // 0..1 luma-preservation for diffusion
     film_blur_pre_soft_amount: f32,       // 0..1 pre-tone soft blur mix
     film_blur_pre_soft_radius: f32,       // 0.5..4 px (pre-tone soft blur radius)
 
@@ -1510,10 +1511,20 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
     // blurred copy. Amount is 0..1; radius was baked into the pre-blur pass.
     // Applied after soft blur so both effects remain visible.
     let pre_amount = adjustments.global.film_blur_pre_amount;
+    let pre_compensation = adjustments.global.film_blur_pre_compensation;
     if (pre_amount > 0.0) {
         let blurred = clamp(pre_blur_sample.rgb, vec3<f32>(0.0), vec3<f32>(1.0));
         let s = clamp(sharp, vec3<f32>(0.0), vec3<f32>(1.0));
-        composite_rgb_linear = 1.0 - (1.0 - s) * (1.0 - blurred * pre_amount);
+        let screen = 1.0 - (1.0 - s) * (1.0 - blurred * pre_amount);
+        if (pre_compensation > 0.0) {
+            let luma_in = dot(s, FLIM_LUMA);
+            let luma_screen = dot(screen, FLIM_LUMA);
+            let target_luma = mix(luma_screen, luma_in, pre_compensation);
+            let scale = target_luma / max(luma_screen, 1e-6);
+            composite_rgb_linear = screen * scale;
+        } else {
+            composite_rgb_linear = screen;
+        }
     }
 
     var base_srgb: vec3<f32>;

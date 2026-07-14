@@ -581,6 +581,7 @@
       "adjacency": "Микроконтраст",
       "preToneDiffusionAmount": "Диффузия",
       "preToneDiffusionRadius": "Радиус",
+      "preToneDiffusionCompensation": "Компенс",
       "preToneSoftBlurAmount": "Размытие",
       "preToneSoftBlurRadius": "Радиус размытия",
       "hiTint": "Оттенок светов",

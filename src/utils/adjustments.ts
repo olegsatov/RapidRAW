@@ -151,6 +151,7 @@ export enum FilmAdjustment {
   FlimAdvPushB = 'flimAdvPushB',
   FilmBlurPreAmount = 'filmBlurPreAmount',
   FilmBlurPreRadius = 'filmBlurPreRadius',
+  FilmBlurPreCompensation = 'filmBlurPreCompensation',
   FilmBlurPreSoftAmount = 'filmBlurPreSoftAmount',
   FilmBlurPreSoftRadius = 'filmBlurPreSoftRadius',
 }
@@ -297,6 +298,7 @@ export interface Adjustments {
   flimAdvPushB: number;
   filmBlurPreAmount: number;
   filmBlurPreRadius: number;
+  filmBlurPreCompensation: number;
   filmBlurPreSoftAmount: number;
   filmBlurPreSoftRadius: number;
   flipHorizontal: boolean;
@@ -782,6 +784,7 @@ export const INITIAL_ADJUSTMENTS: Adjustments = {
   filmBlur: 0,
   filmBlurPreAmount: 0,
   filmBlurPreRadius: 0.5,
+  filmBlurPreCompensation: 0,
   filmBlurPreSoftAmount: 0,
   filmBlurPreSoftRadius: 0.5,
   filmContrast: 100,
@@ -1010,6 +1013,7 @@ export const normalizeLoadedAdjustments = (loadedAdjustments: Adjustments): any 
     filmBlur: loadedAdjustments.filmBlur ?? INITIAL_ADJUSTMENTS.filmBlur,
     filmBlurPreAmount: loadedAdjustments.filmBlurPreAmount ?? INITIAL_ADJUSTMENTS.filmBlurPreAmount,
     filmBlurPreRadius: loadedAdjustments.filmBlurPreRadius ?? INITIAL_ADJUSTMENTS.filmBlurPreRadius,
+    filmBlurPreCompensation: loadedAdjustments.filmBlurPreCompensation ?? INITIAL_ADJUSTMENTS.filmBlurPreCompensation,
     filmBlurPreSoftAmount: loadedAdjustments.filmBlurPreSoftAmount ?? INITIAL_ADJUSTMENTS.filmBlurPreSoftAmount,
     filmBlurPreSoftRadius: loadedAdjustments.filmBlurPreSoftRadius ?? INITIAL_ADJUSTMENTS.filmBlurPreSoftRadius,
     crystalGrainFilling: loadedAdjustments.crystalGrainFilling ?? INITIAL_ADJUSTMENTS.crystalGrainFilling,
@@ -1188,6 +1192,7 @@ export const ADJUSTMENT_GROUPS: Record<string, AdjustmentGroup[]> = {
         FilmAdjustment.FilmBlur,
         FilmAdjustment.FilmBlurPreAmount,
         FilmAdjustment.FilmBlurPreRadius,
+        FilmAdjustment.FilmBlurPreCompensation,
         FilmAdjustment.FilmBlurPreSoftAmount,
         FilmAdjustment.FilmBlurPreSoftRadius,
         FilmAdjustment.GrainEngine,
@@ -1343,6 +1348,7 @@ export const ADJUSTMENT_SECTIONS: Sections = {
     FilmAdjustment.FilmBlur,
     FilmAdjustment.FilmBlurPreAmount,
     FilmAdjustment.FilmBlurPreRadius,
+    FilmAdjustment.FilmBlurPreCompensation,
     FilmAdjustment.FilmBlurPreSoftAmount,
     FilmAdjustment.FilmBlurPreSoftRadius,
     FilmAdjustment.FlimPreset,

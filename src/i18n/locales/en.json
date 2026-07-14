@@ -581,6 +581,7 @@
       "adjacency": "Adjacency",
       "preToneDiffusionAmount": "Diffusion",
       "preToneDiffusionRadius": "Radius",
+      "preToneDiffusionCompensation": "Comp",
       "preToneSoftBlurAmount": "Soft Blur",
       "preToneSoftBlurRadius": "Radius",
       "hiTint": "Highlight tint",
