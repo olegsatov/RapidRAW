@@ -13,6 +13,8 @@ import GrainPanel from '../../adjustments/Grain';
 import { TextVariants } from '../../../types/typography';
 import {
   Adjustments,
+  BasicAdjustment,
+  ColorAdjustment,
   CreativeAdjustment,
   FilmAdjustment,
   FLIM_ADV_KEYS,
@@ -247,6 +249,86 @@ export default function FilmPanel() {
           !flimEnabled && 'opacity-40 pointer-events-none select-none',
         )}
       >
+        <div className="p-2 bg-bg-tertiary rounded-md">
+          <Text variant={TextVariants.heading} className="mb-2">
+            {t('editor.adjustments.sections.basic')}
+          </Text>
+          <Slider
+            label={t('adjustments.basic.exposure')}
+            max={5}
+            min={-5}
+            onChange={(e: any) => handleAdjustmentChange(BasicAdjustment.Brightness, e.target.value)}
+            step={0.01}
+            value={adjustments.brightness ?? 0}
+            onDragStateChange={onDragStateChange}
+          />
+          <Slider
+            label={t('adjustments.basic.contrast')}
+            max={100}
+            min={-100}
+            onChange={(e: any) => handleAdjustmentChange(BasicAdjustment.Contrast, e.target.value)}
+            step={1}
+            value={adjustments.contrast ?? 0}
+            onDragStateChange={onDragStateChange}
+          />
+          <Slider
+            label={t('adjustments.basic.highlights')}
+            max={100}
+            min={-100}
+            onChange={(e: any) => handleAdjustmentChange(BasicAdjustment.Highlights, e.target.value)}
+            step={1}
+            value={adjustments.highlights ?? 0}
+            onDragStateChange={onDragStateChange}
+          />
+          <Slider
+            label={t('adjustments.basic.shadows')}
+            max={100}
+            min={-100}
+            onChange={(e: any) => handleAdjustmentChange(BasicAdjustment.Shadows, e.target.value)}
+            step={1}
+            value={adjustments.shadows ?? 0}
+            onDragStateChange={onDragStateChange}
+          />
+          <Slider
+            label={t('adjustments.basic.whites')}
+            max={100}
+            min={-100}
+            onChange={(e: any) => handleAdjustmentChange(BasicAdjustment.Whites, e.target.value)}
+            step={1}
+            value={adjustments.whites ?? 0}
+            onDragStateChange={onDragStateChange}
+          />
+          <Slider
+            label={t('adjustments.basic.blacks')}
+            max={100}
+            min={-100}
+            onChange={(e: any) => handleAdjustmentChange(BasicAdjustment.Blacks, e.target.value)}
+            step={1}
+            value={adjustments.blacks ?? 0}
+            onDragStateChange={onDragStateChange}
+          />
+          <Slider
+            label={t('adjustments.color.temperature')}
+            max={100}
+            min={-100}
+            onChange={(e: any) => handleAdjustmentChange(ColorAdjustment.Temperature, e.target.value)}
+            step={1}
+            value={adjustments.temperature ?? 0}
+            trackClassName="temperature-gradient-track"
+            onDragStateChange={onDragStateChange}
+          />
+          <Slider
+            label={t('adjustments.color.tint')}
+            max={100}
+            min={-100}
+            onChange={(e: any) => handleAdjustmentChange(ColorAdjustment.Tint, e.target.value)}
+            step={1}
+            value={adjustments.tint ?? 0}
+            trackClassName="tint-gradient-track"
+            onDragStateChange={onDragStateChange}
+          />
+        </div>
+
         <div className="p-2 bg-bg-tertiary rounded-md">
           <Text variant={TextVariants.heading} className="mb-2">
             {t('editor.film.preset')}
