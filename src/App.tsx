@@ -404,10 +404,15 @@ function App() {
 
   useAndroidBackHandler();
 
+  const instantTransitionTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   const handleToggleFullScreen = useCallback(() => {
-    const { zoom, selectedImage } = useEditorStore.getState();
-    const currentlyZoomed = zoom > 1.01;
-    setUI({ isInstantTransition: currentlyZoomed });
+    const { selectedImage } = useEditorStore.getState();
+
+    if (instantTransitionTimeoutRef.current) {
+      clearTimeout(instantTransitionTimeoutRef.current);
+    }
+    setUI({ isInstantTransition: true });
 
     if (isFullScreen) {
       setUI({ isFullScreen: false });
@@ -416,9 +421,10 @@ function App() {
       setUI({ isFullScreen: true });
     }
 
-    if (currentlyZoomed) {
-      setTimeout(() => setUI({ isInstantTransition: false }), 100);
-    }
+    instantTransitionTimeoutRef.current = setTimeout(() => {
+      setUI({ isInstantTransition: false });
+      instantTransitionTimeoutRef.current = null;
+    }, 300);
   }, [isFullScreen, setUI]);
 
   useKeyboardShortcuts({

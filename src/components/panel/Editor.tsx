@@ -191,9 +191,13 @@ export default function Editor({ onBackToLibrary, onContextMenu, transformWrappe
     [setEditor],
   );
 
+  const instantTransitionTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   const handleToggleFullScreen = useCallback(() => {
-    const currentlyZoomed = targetZoom > 1.01;
-    setUI({ isInstantTransition: currentlyZoomed });
+    if (instantTransitionTimeoutRef.current) {
+      clearTimeout(instantTransitionTimeoutRef.current);
+    }
+    setUI({ isInstantTransition: true });
 
     if (isFullScreen) {
       setUI({ isFullScreen: false });
@@ -201,10 +205,11 @@ export default function Editor({ onBackToLibrary, onContextMenu, transformWrappe
       if (selectedImage) setUI({ isFullScreen: true });
     }
 
-    if (currentlyZoomed) {
-      setTimeout(() => setUI({ isInstantTransition: false }), 100);
-    }
-  }, [isFullScreen, selectedImage, targetZoom, setUI]);
+    instantTransitionTimeoutRef.current = setTimeout(() => {
+      setUI({ isInstantTransition: false });
+      instantTransitionTimeoutRef.current = null;
+    }, 300);
+  }, [isFullScreen, selectedImage, setUI]);
 
   const handleDisplaySizeChange = useCallback(
     (size: any) => {
