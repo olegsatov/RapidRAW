@@ -2512,14 +2512,12 @@ fn compute_flim_uniforms(
         }
         Some(bp) => (bp / 1000.0).max(0.0),
     };
-    // Apply toe exponentially so the slider feels smooth across the full -100..100
-    // range: positive toe deepens blacks, negative toe lifts/fades them, and small
-    // values no longer cause a huge relative jump from a tiny base black cap.
-    // Negative toe needs a steeper scale to produce a visible fade.
+    // Apply toe as an absolute offset to the black cap. Positive toe raises the
+    // black point and crushes shadows; negative toe lowers it below zero and
+    // lifts/fades shadows. The base is usually tiny, so a relative multiplier made
+    // both directions almost invisible; an additive offset keeps the slider usable.
     let toe_value = toe.clamp(-1.0, 1.0);
-    let effective_base = base_black_cap.max(1e-5);
-    let toe_scale = if toe_value >= 0.0 { 2.0 } else { 4.5 };
-    let black_cap_luma = (effective_base * (toe_value * toe_scale).exp()).clamp(0.0, 0.95);
+    let black_cap_luma = (base_black_cap + toe_value * 0.1).clamp(-0.3, 0.95);
     FlimUniforms {
         extend_mat: gpu_mat3_from_rows(rows),
         extend_mat_inv: gpu_mat3_from_rows(flim_mat3_inv(rows)),
