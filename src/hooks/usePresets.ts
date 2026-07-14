@@ -1,4 +1,4 @@
-import { useEffect, useCallback } from 'react';
+import { useCallback } from 'react';
 import { Adjustments, PasteMode } from '../utils/adjustments';
 import { Preset } from '../components/ui/AppProperties';
 import { usePresetStore } from '../store/usePresetStore';
@@ -8,10 +8,6 @@ export type { UserPreset } from '../store/usePresetStore';
 
 export function usePresets(currentAdjustments: Adjustments) {
   const store = usePresetStore();
-
-  useEffect(() => {
-    store.loadPresets();
-  }, [store]);
 
   const addPreset = useCallback(
     (
