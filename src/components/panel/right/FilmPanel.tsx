@@ -10,6 +10,7 @@ import CollapsibleSection from '../../ui/CollapsibleSection';
 import FilmLookPanel from '../../adjustments/Film';
 import BlackAndWhitePanel from '../../adjustments/BlackAndWhite';
 import GrainPanel from '../../adjustments/Grain';
+import CurveGraph from '../../adjustments/Curves';
 import { TextVariants } from '../../../types/typography';
 import {
   Adjustments,
@@ -24,6 +25,7 @@ import {
   SectionVisibility,
 } from '../../../utils/adjustments';
 import { useEditorStore } from '../../../store/useEditorStore';
+import { useSettingsStore } from '../../../store/useSettingsStore';
 import { useUIStore } from '../../../store/useUIStore';
 import { useEditorActions } from '../../../hooks/useEditorActions';
 import { Invokes } from '../../ui/AppProperties';
@@ -86,13 +88,16 @@ const ADV_SLIDERS: Array<{
 export default function FilmPanel() {
   const { t } = useTranslation();
   const adjustments = useEditorStore((s) => s.adjustments);
+  const histogram = useEditorStore((s) => s.histogram);
   const setEditor = useEditorStore((s) => s.setEditor);
   const { setAdjustments } = useEditorActions();
+  const { theme } = useSettingsStore((s) => ({ theme: s.theme }));
   const collapsibleSectionsState = useUIStore((s) => s.collapsibleSectionsState);
   const setUI = useUIStore((s) => s.setUI);
 
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [basicOpen, setBasicOpen] = useState(false);
+  const [curvesOpen, setCurvesOpen] = useState(false);
   const [filmEffectsOpen, setFilmEffectsOpen] = useState(false);
   const [grainOpen, setGrainOpen] = useState(false);
   const [userPresets, setUserPresets] = useState<Array<FlimUserPreset>>([]);
@@ -250,89 +255,6 @@ export default function FilmPanel() {
           !flimEnabled && 'opacity-40 pointer-events-none select-none',
         )}
       >
-        <CollapsibleSection
-          canToggleVisibility={false}
-          isContentVisible={true}
-          isOpen={basicOpen}
-          onToggle={() => setBasicOpen((v) => !v)}
-          title={t('editor.adjustments.sections.basic')}
-        >
-          <Slider
-            label={t('adjustments.color.temperature')}
-            max={100}
-            min={-100}
-            onChange={(e: any) => handleAdjustmentChange(ColorAdjustment.Temperature, e.target.value)}
-            step={1}
-            value={adjustments.temperature ?? 0}
-            trackClassName="temperature-gradient-track"
-            onDragStateChange={onDragStateChange}
-          />
-          <Slider
-            label={t('adjustments.color.tint')}
-            max={100}
-            min={-100}
-            onChange={(e: any) => handleAdjustmentChange(ColorAdjustment.Tint, e.target.value)}
-            step={1}
-            value={adjustments.tint ?? 0}
-            trackClassName="tint-gradient-track"
-            onDragStateChange={onDragStateChange}
-          />
-          <Slider
-            label={t('adjustments.basic.exposure')}
-            max={5}
-            min={-5}
-            onChange={(e: any) => handleAdjustmentChange(BasicAdjustment.Brightness, e.target.value)}
-            step={0.01}
-            value={adjustments.brightness ?? 0}
-            onDragStateChange={onDragStateChange}
-          />
-          <Slider
-            label={t('adjustments.basic.contrast')}
-            max={100}
-            min={-100}
-            onChange={(e: any) => handleAdjustmentChange(BasicAdjustment.Contrast, e.target.value)}
-            step={1}
-            value={adjustments.contrast ?? 0}
-            onDragStateChange={onDragStateChange}
-          />
-          <Slider
-            label={t('adjustments.basic.highlights')}
-            max={100}
-            min={-100}
-            onChange={(e: any) => handleAdjustmentChange(BasicAdjustment.Highlights, e.target.value)}
-            step={1}
-            value={adjustments.highlights ?? 0}
-            onDragStateChange={onDragStateChange}
-          />
-          <Slider
-            label={t('adjustments.basic.shadows')}
-            max={100}
-            min={-100}
-            onChange={(e: any) => handleAdjustmentChange(BasicAdjustment.Shadows, e.target.value)}
-            step={1}
-            value={adjustments.shadows ?? 0}
-            onDragStateChange={onDragStateChange}
-          />
-          <Slider
-            label={t('adjustments.basic.whites')}
-            max={100}
-            min={-100}
-            onChange={(e: any) => handleAdjustmentChange(BasicAdjustment.Whites, e.target.value)}
-            step={1}
-            value={adjustments.whites ?? 0}
-            onDragStateChange={onDragStateChange}
-          />
-          <Slider
-            label={t('adjustments.basic.blacks')}
-            max={100}
-            min={-100}
-            onChange={(e: any) => handleAdjustmentChange(BasicAdjustment.Blacks, e.target.value)}
-            step={1}
-            value={adjustments.blacks ?? 0}
-            onDragStateChange={onDragStateChange}
-          />
-        </CollapsibleSection>
-
         <div className="p-2 bg-bg-tertiary rounded-md">
           <Text variant={TextVariants.heading} className="mb-2">
             {t('editor.film.preset')}
@@ -420,6 +342,105 @@ export default function FilmPanel() {
             onDragStateChange={onDragStateChange}
           />
         </div>
+
+        <CollapsibleSection
+          canToggleVisibility={false}
+          isContentVisible={true}
+          isOpen={basicOpen}
+          onToggle={() => setBasicOpen((v) => !v)}
+          title={t('editor.adjustments.sections.basic')}
+        >
+          <Slider
+            label={t('adjustments.color.temperature')}
+            max={100}
+            min={-100}
+            onChange={(e: any) => handleAdjustmentChange(ColorAdjustment.Temperature, e.target.value)}
+            step={1}
+            value={adjustments.temperature ?? 0}
+            trackClassName="temperature-gradient-track"
+            onDragStateChange={onDragStateChange}
+          />
+          <Slider
+            label={t('adjustments.color.tint')}
+            max={100}
+            min={-100}
+            onChange={(e: any) => handleAdjustmentChange(ColorAdjustment.Tint, e.target.value)}
+            step={1}
+            value={adjustments.tint ?? 0}
+            trackClassName="tint-gradient-track"
+            onDragStateChange={onDragStateChange}
+          />
+          <Slider
+            label={t('adjustments.basic.exposure')}
+            max={5}
+            min={-5}
+            onChange={(e: any) => handleAdjustmentChange(BasicAdjustment.Brightness, e.target.value)}
+            step={0.01}
+            value={adjustments.brightness ?? 0}
+            onDragStateChange={onDragStateChange}
+          />
+          <Slider
+            label={t('adjustments.basic.contrast')}
+            max={100}
+            min={-100}
+            onChange={(e: any) => handleAdjustmentChange(BasicAdjustment.Contrast, e.target.value)}
+            step={1}
+            value={adjustments.contrast ?? 0}
+            onDragStateChange={onDragStateChange}
+          />
+          <Slider
+            label={t('adjustments.basic.highlights')}
+            max={100}
+            min={-100}
+            onChange={(e: any) => handleAdjustmentChange(BasicAdjustment.Highlights, e.target.value)}
+            step={1}
+            value={adjustments.highlights ?? 0}
+            onDragStateChange={onDragStateChange}
+          />
+          <Slider
+            label={t('adjustments.basic.shadows')}
+            max={100}
+            min={-100}
+            onChange={(e: any) => handleAdjustmentChange(BasicAdjustment.Shadows, e.target.value)}
+            step={1}
+            value={adjustments.shadows ?? 0}
+            onDragStateChange={onDragStateChange}
+          />
+          <Slider
+            label={t('adjustments.basic.whites')}
+            max={100}
+            min={-100}
+            onChange={(e: any) => handleAdjustmentChange(BasicAdjustment.Whites, e.target.value)}
+            step={1}
+            value={adjustments.whites ?? 0}
+            onDragStateChange={onDragStateChange}
+          />
+          <Slider
+            label={t('adjustments.basic.blacks')}
+            max={100}
+            min={-100}
+            onChange={(e: any) => handleAdjustmentChange(BasicAdjustment.Blacks, e.target.value)}
+            step={1}
+            value={adjustments.blacks ?? 0}
+            onDragStateChange={onDragStateChange}
+          />
+        </CollapsibleSection>
+
+        <CollapsibleSection
+          canToggleVisibility={false}
+          isContentVisible={true}
+          isOpen={curvesOpen}
+          onToggle={() => setCurvesOpen((v) => !v)}
+          title={t('editor.adjustments.sections.curves')}
+        >
+          <CurveGraph
+            adjustments={adjustments}
+            setAdjustments={setAdjustments}
+            histogram={histogram}
+            theme={theme}
+            onDragStateChange={onDragStateChange}
+          />
+        </CollapsibleSection>
 
         <CollapsibleSection
           isContentVisible={sectionVisibility.filmEffects}
