@@ -23,6 +23,8 @@ export const THEMES: Array<ThemeProps> = [
       '--app-accent': 'rgb(255, 255, 255)',
       '--app-border-color': 'rgb(45, 45, 45)',
       '--app-hover-color': 'rgb(255, 255, 255)',
+      '--app-scrollbar-thumb': 'rgb(70, 70, 70)',
+      '--app-scrollbar-thumb-hover': 'rgb(100, 100, 100)',
     },
   },
   {
@@ -40,6 +42,8 @@ export const THEMES: Array<ThemeProps> = [
       '--app-accent': 'rgb(255, 255, 255)',
       '--app-border-color': 'rgb(45, 45, 45)',
       '--app-hover-color': 'rgb(255, 255, 255)',
+      '--app-scrollbar-thumb': 'rgb(55, 55, 55)',
+      '--app-scrollbar-thumb-hover': 'rgb(80, 80, 80)',
       '--radius-md': '0px',
       '--radius-lg': '0px',
     },
@@ -59,6 +63,8 @@ export const THEMES: Array<ThemeProps> = [
       '--app-accent': 'rgb(198, 142, 110)',
       '--app-border-color': 'rgb(224, 224, 224)',
       '--app-hover-color': 'rgb(198, 142, 110)',
+      '--app-scrollbar-thumb': 'rgb(160, 160, 160)',
+      '--app-scrollbar-thumb-hover': 'rgb(130, 130, 130)',
     },
   },
   {
@@ -76,6 +82,8 @@ export const THEMES: Array<ThemeProps> = [
       '--app-accent': 'rgb(220, 220, 220)',
       '--app-border-color': 'rgb(138, 138, 138)',
       '--app-hover-color': 'rgb(220, 220, 220)',
+      '--app-scrollbar-thumb': 'rgb(90, 90, 90)',
+      '--app-scrollbar-thumb-hover': 'rgb(120, 120, 120)',
     },
   },
 ];
