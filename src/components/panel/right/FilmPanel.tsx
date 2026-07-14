@@ -441,7 +441,7 @@ export default function FilmPanel() {
           isOpen={!!collapsibleSectionsState.film}
           onToggle={() => handleToggleSection('film')}
           onToggleVisibility={() => handleToggleVisibility('film')}
-          title={t('editor.adjustments.sections.film')}
+          title={t('editor.film.looks')}
         >
           <FilmLookPanel
             adjustments={adjustments}
