@@ -91,7 +91,7 @@ export default function FilmPanel() {
   const histogram = useEditorStore((s) => s.histogram);
   const setEditor = useEditorStore((s) => s.setEditor);
   const { setAdjustments } = useEditorActions();
-  const { theme } = useSettingsStore((s) => ({ theme: s.theme }));
+  const theme = useSettingsStore((s) => s.theme);
   const collapsibleSectionsState = useUIStore((s) => s.collapsibleSectionsState);
   const setUI = useUIStore((s) => s.setUI);
 
