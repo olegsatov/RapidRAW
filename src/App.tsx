@@ -635,12 +635,7 @@ function App() {
                 className="shrink-0 overflow-hidden"
                 style={{ height: leftBottomPanelHeight > 0 ? `${leftBottomPanelHeight}px` : '50%' }}
               >
-                <LeftBottomPanel
-                  onNavigateToCommunity={() => {
-                    handleBackToLibrary();
-                    setUI({ activeView: 'community' });
-                  }}
-                />
+                <LeftBottomPanel />
               </div>
             </>
           )}
