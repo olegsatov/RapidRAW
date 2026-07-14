@@ -165,7 +165,9 @@
       "roughness": "Roughness",
       "roundness": "Roundness",
       "size": "Size",
-      "vignette": "Vignette"
+      "vignette": "Vignette",
+      "grainMode": "Mode",
+      "grainParameters": "Parameters"
     }
   },
   "contextMenus": {

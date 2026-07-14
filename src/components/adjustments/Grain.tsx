@@ -173,6 +173,9 @@ export default function GrainPanel({ adjustments, setAdjustments, onDragStateCha
   return (
     <div className="space-y-4">
       <div className="p-2 bg-bg-tertiary rounded-md">
+        <Text variant={TextVariants.heading} className="mb-2">
+          {t('adjustments.effects.grainMode')}
+        </Text>
         <div className="flex gap-1 mb-2">
           {(['pierre', 'ipol'] as const).map((mode) => (
             <button
@@ -189,6 +192,9 @@ export default function GrainPanel({ adjustments, setAdjustments, onDragStateCha
             </button>
           ))}
         </div>
+        <Text variant={TextVariants.heading} className="mb-2 mt-3">
+          {t('adjustments.effects.grainParameters')}
+        </Text>
         <Slider
           label={t('adjustments.effects.amount')}
           max={100}

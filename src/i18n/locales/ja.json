@@ -123,7 +123,9 @@
       "roughness": "粗さ",
       "roundness": "丸み",
       "size": "サイズ",
-      "vignette": "周辺光量補正"
+      "vignette": "周辺光量補正",
+      "grainMode": "モード",
+      "grainParameters": "パラメータ"
     }
   },
   "contextMenus": {

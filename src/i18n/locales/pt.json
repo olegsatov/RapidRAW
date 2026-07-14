@@ -123,7 +123,9 @@
       "roughness": "Rugosidade",
       "roundness": "Arredondamento",
       "size": "Tamanho",
-      "vignette": "Vinheta"
+      "vignette": "Vinheta",
+      "grainMode": "Modo",
+      "grainParameters": "Parâmetros"
     }
   },
   "contextMenus": {

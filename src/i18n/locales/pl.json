@@ -123,7 +123,9 @@
       "roughness": "Szorstkość",
       "roundness": "Zaokrąglenie",
       "size": "Rozmiar",
-      "vignette": "Winieta"
+      "vignette": "Winieta",
+      "grainMode": "Tryb",
+      "grainParameters": "Parametry"
     }
   },
   "contextMenus": {

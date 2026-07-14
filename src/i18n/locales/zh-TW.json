@@ -123,7 +123,9 @@
       "roughness": "粗糙度",
       "roundness": "圓度",
       "size": "大小",
-      "vignette": "暗角"
+      "vignette": "暗角",
+      "grainMode": "模式",
+      "grainParameters": "參數"
     }
   },
   "contextMenus": {

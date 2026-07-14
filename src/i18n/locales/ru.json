@@ -165,7 +165,9 @@
       "roughness": "Шероховатость",
       "roundness": "Округлость",
       "size": "Размер",
-      "vignette": "Виньетирование"
+      "vignette": "Виньетирование",
+      "grainMode": "Режим",
+      "grainParameters": "Параметры"
     }
   },
   "contextMenus": {

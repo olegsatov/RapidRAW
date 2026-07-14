@@ -123,7 +123,9 @@
       "roughness": "거칠기",
       "roundness": "둥글기",
       "size": "크기",
-      "vignette": "비네트"
+      "vignette": "비네트",
+      "grainMode": "모드",
+      "grainParameters": "매개변수"
     }
   },
   "contextMenus": {
