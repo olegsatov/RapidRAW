@@ -13,8 +13,8 @@ import {
 import { useTranslation } from 'react-i18next';
 import { PresetListType, usePresets, UserPreset } from '../../hooks/usePresets';
 import { usePresetStore } from '../../store/usePresetStore';
-import { useSettingsStore } from '../../store/useSettingsStore';
 import { useContextMenu } from '../../context/ContextMenuContext';
+import { useOsPlatform } from '../../hooks/useOsPlatform';
 import {
   CopyPlus,
   Edit,
@@ -43,6 +43,7 @@ import Slider from '../ui/Slider';
 import { TextColors, TextVariants, TextWeights } from '../../types/typography';
 import { Adjustments, INITIAL_ADJUSTMENTS, ADJUSTMENT_GROUPS, PasteMode } from '../../utils/adjustments';
 import { getEffectivePresetAdjustments, getPresetIncludedAdjustments } from '../../utils/presetUtils';
+import { formatKeyCode } from '../../utils/keyboardUtils';
 import { Invokes, OPTION_SEPARATOR, Preset } from '../ui/AppProperties';
 import { useEditorStore } from '../../store/useEditorStore';
 import { useEditorActions } from '../../hooks/useEditorActions';
@@ -59,6 +60,7 @@ interface DraggablePresetItemProps {
   isGeneratingPreviews: boolean;
   onApply(preset: any): void;
   onContextMenu(event: any, preset: any): void;
+  osPlatform: string;
   preset: any;
   previewUrl: string;
   isActive?: boolean;
@@ -83,6 +85,7 @@ interface ModalState {
 
 interface PresetItemDisplayProps {
   isGeneratingPreviews: boolean;
+  osPlatform: string;
   preset: Preset;
   previewUrl: string;
   isActive?: boolean;
@@ -203,6 +206,7 @@ function PresetItemDisplay({
   preset,
   previewUrl,
   isGeneratingPreviews,
+  osPlatform,
   isActive,
   intensity,
   onIntensityChange,
@@ -255,9 +259,21 @@ function PresetItemDisplay({
         </div>
 
         <div className="grow min-w-0 flex flex-col justify-center">
-          <Text color={TextColors.primary} weight={TextWeights.medium} className="truncate">
-            {preset.name}
-          </Text>
+          <div className="flex items-center gap-2">
+            <Text color={TextColors.primary} weight={TextWeights.medium} className="truncate">
+              {preset.name}
+            </Text>
+            {preset.hotkey && preset.hotkey.length > 0 && (
+              <Text
+                as="kbd"
+                variant={TextVariants.small}
+                color={TextColors.secondary}
+                className="px-1.5 py-0.5 bg-bg-primary border border-border-color rounded text-[10px] shrink-0"
+              >
+                {preset.hotkey.map((k) => formatKeyCode(k, osPlatform)).join('')}
+              </Text>
+            )}
+          </div>
         </div>
       </div>
 
@@ -311,6 +327,7 @@ function DraggablePresetItem({
   preset,
   onApply,
   onContextMenu,
+  osPlatform,
   previewUrl,
   isGeneratingPreviews,
   isActive,
@@ -367,6 +384,7 @@ function DraggablePresetItem({
           preset={preset}
           previewUrl={previewUrl}
           isGeneratingPreviews={isGeneratingPreviews}
+          osPlatform={osPlatform}
           isActive={isActive}
           intensity={intensity}
           onIntensityChange={onIntensityChange}
@@ -464,7 +482,7 @@ export default function PresetsBrowser({ isVisible, onNavigateToCommunity }: Pre
   const selectedImage = useEditorStore((s) => s.selectedImage);
   const adjustments = useEditorStore((s) => s.adjustments);
   const setEditor = useEditorStore((s) => s.setEditor);
-  const osPlatform = useSettingsStore((s) => s.osPlatform);
+  const osPlatform = useOsPlatform();
   const { setAdjustments } = useEditorActions();
 
   const {
@@ -1214,6 +1232,7 @@ export default function PresetsBrowser({ isVisible, onNavigateToCommunity }: Pre
                                   isGeneratingPreviews={isGeneratingPreviews}
                                   onApply={handleApplyPreset}
                                   onContextMenu={(e: any) => handleContextMenu(e, { preset })}
+                                  osPlatform={osPlatform}
                                   preset={preset}
                                   previewUrl={previews[preset.id] || ''}
                                   isActive={preset.id === activePresetId}
@@ -1245,6 +1264,7 @@ export default function PresetsBrowser({ isVisible, onNavigateToCommunity }: Pre
                         isGeneratingPreviews={isGeneratingPreviews}
                         onApply={handleApplyPreset}
                         onContextMenu={(e: any) => handleContextMenu(e, item)}
+                        osPlatform={osPlatform}
                         preset={item.preset}
                         previewUrl={(item.preset?.id ? previews[item.preset.id] : '') || ''}
                         isActive={item.preset?.id === activePresetId}
@@ -1282,6 +1302,7 @@ export default function PresetsBrowser({ isVisible, onNavigateToCommunity }: Pre
           activeItem.type === 'preset' ? (
             <PresetItemDisplay
               isGeneratingPreviews={false}
+              osPlatform={osPlatform}
               preset={activeItem.data}
               previewUrl={previews[activeItem.data.id] || ''}
             />
