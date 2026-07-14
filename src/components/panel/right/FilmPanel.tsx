@@ -297,6 +297,32 @@ export default function FilmPanel() {
               onDragStateChange={onDragStateChange}
             />
           </div>
+          <div className="flex gap-2 mt-2">
+            <div className="w-1/2">
+              <Slider
+                label={t('adjustments.color.temperature')}
+                max={100}
+                min={-100}
+                onChange={(e: any) => handleAdjustmentChange(ColorAdjustment.Temperature, e.target.value)}
+                step={1}
+                value={adjustments.temperature ?? 0}
+                trackClassName="temperature-gradient-track"
+                onDragStateChange={onDragStateChange}
+              />
+            </div>
+            <div className="w-1/2">
+              <Slider
+                label={t('adjustments.color.tint')}
+                max={100}
+                min={-100}
+                onChange={(e: any) => handleAdjustmentChange(ColorAdjustment.Tint, e.target.value)}
+                step={1}
+                value={adjustments.tint ?? 0}
+                trackClassName="tint-gradient-track"
+                onDragStateChange={onDragStateChange}
+              />
+            </div>
+          </div>
         </div>
 
         <div className="p-2 bg-bg-tertiary rounded-md">
@@ -362,26 +388,6 @@ export default function FilmPanel() {
           onToggle={() => setBasicOpen((v) => !v)}
           title={t('editor.adjustments.sections.basic')}
         >
-          <Slider
-            label={t('adjustments.color.temperature')}
-            max={100}
-            min={-100}
-            onChange={(e: any) => handleAdjustmentChange(ColorAdjustment.Temperature, e.target.value)}
-            step={1}
-            value={adjustments.temperature ?? 0}
-            trackClassName="temperature-gradient-track"
-            onDragStateChange={onDragStateChange}
-          />
-          <Slider
-            label={t('adjustments.color.tint')}
-            max={100}
-            min={-100}
-            onChange={(e: any) => handleAdjustmentChange(ColorAdjustment.Tint, e.target.value)}
-            step={1}
-            value={adjustments.tint ?? 0}
-            trackClassName="tint-gradient-track"
-            onDragStateChange={onDragStateChange}
-          />
           <Slider
             label={t('adjustments.basic.exposure')}
             max={5}
