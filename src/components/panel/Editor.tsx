@@ -152,11 +152,8 @@ export default function Editor({ onBackToLibrary, onContextMenu, transformWrappe
   const transformStateRef = useRef<TransformState>(transformState);
   transformStateRef.current = transformState;
   const [isPanningState, setIsPanningState] = useState(false);
-  const isClickAnimating = useRef(false);
-  const clickAnimationTime = 250;
   const zoomDebounceTimeoutRef = useRef<number | null>(null);
   const mouseDownPos = useRef<{ x: number; y: number } | null>(null);
-  const savedZoomState = useRef<{ scale: number; positionX: number; positionY: number } | null>(null);
   const focalPointRef = useRef({ x: 0.5, y: 0.5 });
   const isTransitioningRef = useRef(false);
   const [toolbarOverflowVisible, setToolbarOverflowVisible] = useState(!isFullScreen);
@@ -873,44 +870,32 @@ export default function Editor({ onBackToLibrary, onContextMenu, transformWrappe
 
       const currentScale = transformStateRef.current.scale;
 
-      if (isClickAnimating.current || currentScale > 1.01) {
-        if (!isClickAnimating.current && currentScale > 1.01) {
-          savedZoomState.current = {
-            scale: currentScale,
-            positionX: transformStateRef.current.positionX,
-            positionY: transformStateRef.current.positionY,
-          };
-        }
-        animateTransform(0, 0, 1, clickAnimationTime);
-        isClickAnimating.current = false;
+      // Toggle between fit-to-screen and 100% zoom instantly, centered on the click point.
+      if (currentScale > 1.01) {
+        applyTransform(0, 0, 1);
       } else {
-        isClickAnimating.current = true;
-        setTimeout(() => {
-          isClickAnimating.current = false;
-        }, clickAnimationTime + 50);
-
         const container = imageContainerRef.current;
         if (!container) return;
 
-        const currentPositionX = transformStateRef.current.positionX;
-        const currentPositionY = transformStateRef.current.positionY;
+        const dpr = typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1;
+        const targetScale = 1 / (imageRenderSizeRef.current.scale * dpr);
 
         const rect = container.getBoundingClientRect();
         const mouseX = e.clientX - rect.left;
         const mouseY = e.clientY - rect.top;
 
-        let zoomTarget = savedZoomState.current
-          ? savedZoomState.current.scale
-          : Math.min(currentScale * 2, maxScaleRef.current);
-        const ratio = zoomTarget / currentScale;
+        const currentPositionX = transformStateRef.current.positionX;
+        const currentPositionY = transformStateRef.current.positionY;
 
+        const ratio = targetScale / currentScale;
         const newPositionX = mouseX - (mouseX - currentPositionX) * ratio;
         const newPositionY = mouseY - (mouseY - currentPositionY) * ratio;
 
-        animateTransform(newPositionX, newPositionY, zoomTarget, clickAnimationTime);
+        const bounded = clampToBounds(newPositionX, newPositionY, targetScale);
+        applyTransform(bounded.x, bounded.y, bounded.scale);
       }
     },
-    [isCropping, isMasking, isAiEditing, isWbPickerActive, animateTransform],
+    [isPanningDisabled, isCropping, isMasking, isAiEditing, isWbPickerActive, applyTransform, clampToBounds],
   );
 
   useEffect(() => {
