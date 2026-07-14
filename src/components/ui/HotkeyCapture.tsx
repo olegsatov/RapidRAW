@@ -79,6 +79,21 @@ export default function HotkeyCapture({ combo, onChange, osPlatform, conflict, o
             >
               {t('settings.controls.pressKey')}
             </Text>
+          ) : displayCombo ? (
+            displayCombo.map((k, index) => (
+              <span key={k + index} className="flex items-center gap-1">
+                <Text
+                  as="kbd"
+                  variant={TextVariants.small}
+                  color={TextColors.primary}
+                  weight={TextWeights.semibold}
+                  className="px-2 py-1 font-sans bg-bg-primary border border-border-color rounded-md cursor-pointer hover:border-accent transition-colors"
+                >
+                  {formatKeyCode(k, osPlatform)}
+                </Text>
+                {index < displayCombo.length - 1 && <span className="text-text-secondary">+</span>}
+              </span>
+            ))
           ) : (
             <Text
               as="kbd"
@@ -87,11 +102,7 @@ export default function HotkeyCapture({ combo, onChange, osPlatform, conflict, o
               weight={TextWeights.semibold}
               className="px-2 py-1 font-sans bg-bg-primary border border-border-color rounded-md cursor-pointer hover:border-accent transition-colors"
             >
-              {displayCombo ? (
-                displayCombo.map((k) => formatKeyCode(k, osPlatform)).join(' + ')
-              ) : (
-                <span className="text-text-secondary italic">{t('settings.controls.notAssigned')}</span>
-              )}
+              <span className="text-text-secondary italic">{t('settings.controls.notAssigned')}</span>
             </Text>
           )}
         </button>
