@@ -1,12 +1,14 @@
 import { useEffect, useRef } from 'react';
-import { ImageFile, Panel, ExifOverlay, LeftPanelTab } from '../components/ui/AppProperties';
+import { ImageFile, Panel, ExifOverlay, LeftPanelTab, Preset } from '../components/ui/AppProperties';
 import { KEYBIND_DEFINITIONS, normalizeCombo } from '../utils/keyboardUtils';
 import { useEditorStore } from '../store/useEditorStore';
 import { useLibraryStore } from '../store/useLibraryStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useUIStore } from '../store/useUIStore';
 import { useProcessStore } from '../store/useProcessStore';
-import { useEditorActions } from './useEditorActions';
+import { usePresetStore } from '../store/usePresetStore';
+import { getEffectivePresetAdjustments } from '../utils/presetUtils';
+import { useEditorActions, debouncedSetHistory } from './useEditorActions';
 import { useLibraryActions } from './useLibraryActions';
 
 interface KeyboardShortcutsProps {
@@ -53,6 +55,15 @@ export const useKeyboardShortcuts = ({
       const effective = userCombo && userCombo.length > 0 ? userCombo : def.defaultCombo;
       if (effective) {
         comboMap.set(effective.join('+'), def.action);
+      }
+    }
+
+    const presetComboMap = new Map<string, Preset>();
+    const presets = usePresetStore.getState().flattenPresets();
+    for (const preset of presets) {
+      if (preset.hotkey && preset.hotkey.length > 0) {
+        const key = preset.hotkey.join('+');
+        presetComboMap.set(key, preset);
       }
     }
 
@@ -558,6 +569,16 @@ export const useKeyboardShortcuts = ({
           handler.execute(event, state);
           return;
         }
+      }
+
+      const preset = presetComboMap.get(normalized.join('+'));
+      if (preset && state.editor.selectedImage) {
+        event.preventDefault();
+        const effective = getEffectivePresetAdjustments(preset);
+        const newAdjustments = { ...state.editor.adjustments, ...effective };
+        state.editor.setEditor({ adjustments: newAdjustments });
+        debouncedSetHistory(newAdjustments);
+        return;
       }
     };
 
