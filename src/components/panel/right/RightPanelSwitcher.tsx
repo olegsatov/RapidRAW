@@ -1,15 +1,5 @@
 import { motion } from 'framer-motion';
-import {
-  SlidersHorizontal,
-  Info,
-  Crop,
-  Film,
-  Layers,
-  Paintbrush,
-  SwatchBook,
-  FileInput,
-  type LucideIcon,
-} from 'lucide-react';
+import { SlidersHorizontal, Info, Crop, Film, Layers, Paintbrush, FileInput, type LucideIcon } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { Panel } from '../../ui/AppProperties';
 
@@ -35,10 +25,7 @@ const panelGroups: Array<Array<PanelOptions>> = [
     { id: Panel.Masks, icon: Layers, title: 'editor.switcher.tooltips.masks' },
     { id: Panel.Ai, icon: Paintbrush, title: 'editor.switcher.tooltips.inpaint' },
   ],
-  [
-    { id: Panel.Presets, icon: SwatchBook, title: 'editor.switcher.tooltips.presets' },
-    { id: Panel.Export, icon: FileInput, title: 'editor.switcher.tooltips.export' },
-  ],
+  [{ id: Panel.Export, icon: FileInput, title: 'editor.switcher.tooltips.export' }],
 ];
 
 export default function RightPanelSwitcher({

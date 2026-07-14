@@ -81,10 +81,11 @@ export const useAppInitialization = ({
     })),
   );
 
-  const { uiVisibility, activeRightPanel, setUI } = useUIStore(
+  const { uiVisibility, activeRightPanel, leftBottomPanelHeight, setUI } = useUIStore(
     useShallow((state) => ({
       uiVisibility: state.uiVisibility,
       activeRightPanel: state.activeRightPanel,
+      leftBottomPanelHeight: state.leftBottomPanelHeight,
       setUI: state.setUI,
     })),
   );
@@ -171,8 +172,15 @@ export const useAppInitialization = ({
         if (settings?.uiVisibility)
           setUI((state) => ({ uiVisibility: { ...state.uiVisibility, ...settings.uiVisibility } }));
 
+        if (typeof settings?.leftBottomPanelHeight === 'number') {
+          setUI({ leftBottomPanelHeight: settings.leftBottomPanelHeight });
+        }
+
         if (settings?.activeRightPanel && Object.values(Panel).includes(settings.activeRightPanel)) {
-          setUI({ activeRightPanel: settings.activeRightPanel });
+          // Set both: the tab highlight follows activeRightPanel, but the panel
+          // content is rendered from renderedRightPanel (see EditorView).
+          const panel = settings.activeRightPanel === Panel.Presets ? Panel.Adjustments : settings.activeRightPanel;
+          setUI({ activeRightPanel: panel, renderedRightPanel: panel });
         }
 
         if (settings?.isWaveformVisible !== undefined) setEditor({ isWaveformVisible: settings.isWaveformVisible });
@@ -389,6 +397,13 @@ export const useAppInitialization = ({
 
     handleSettingsChange({ ...appSettings, activeRightPanel });
   }, [activeRightPanel, appSettings, handleSettingsChange]);
+
+  useEffect(() => {
+    if (isInitialMount.current || !appSettings) return;
+    if ((appSettings.leftBottomPanelHeight ?? null) !== leftBottomPanelHeight) {
+      handleSettingsChange({ ...appSettings, leftBottomPanelHeight });
+    }
+  }, [leftBottomPanelHeight, appSettings, handleSettingsChange]);
 
   useEffect(() => {
     if (!appSettings) return;

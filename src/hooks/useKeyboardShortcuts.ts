@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { ImageFile, Panel, ExifOverlay } from '../components/ui/AppProperties';
+import { ImageFile, Panel, ExifOverlay, LeftPanelTab } from '../components/ui/AppProperties';
 import { KEYBIND_DEFINITIONS, normalizeCombo } from '../utils/keyboardUtils';
 import { useEditorStore } from '../store/useEditorStore';
 import { useLibraryStore } from '../store/useLibraryStore';
@@ -296,7 +296,13 @@ export const useKeyboardShortcuts = ({
         shouldFire: (s: any) => !!s.editor.selectedImage,
         execute: (e: any, s: any) => {
           e.preventDefault();
-          s.ui.setRightPanel(Panel.Presets);
+          s.ui.setUI({
+            uiVisibility: {
+              ...s.ui.uiVisibility,
+              leftBottomPanel: !s.ui.uiVisibility.leftBottomPanel,
+            },
+            activeLeftBottomTab: LeftPanelTab.Presets,
+          });
         },
       },
       toggle_metadata: {

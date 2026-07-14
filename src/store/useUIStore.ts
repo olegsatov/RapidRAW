@@ -1,5 +1,12 @@
 import { create } from 'zustand';
-import { ImageFile, LibraryViewMode, Panel, UiVisibility, CullingSuggestions } from '../components/ui/AppProperties';
+import {
+  ImageFile,
+  LibraryViewMode,
+  Panel,
+  UiVisibility,
+  CullingSuggestions,
+  LeftPanelTab,
+} from '../components/ui/AppProperties';
 
 const RIGHT_PANEL_ORDER = [
   Panel.Metadata,
@@ -8,7 +15,6 @@ const RIGHT_PANEL_ORDER = [
   Panel.Film,
   Panel.Masks,
   Panel.Ai,
-  Panel.Presets,
   Panel.Export,
 ];
 
@@ -92,6 +98,7 @@ interface UIState {
   leftPanelWidth: number;
   rightPanelWidth: number;
   bottomPanelHeight: number;
+  leftBottomPanelHeight: number;
   compactEditorPanelHeightOverride: number | null;
 
   // Right Panel
@@ -99,6 +106,9 @@ interface UIState {
   renderedRightPanel: Panel | null;
   slideDirection: number;
   collapsibleSectionsState: CollapsibleSectionsState;
+
+  // Left Bottom Panel
+  activeLeftBottomTab: LeftPanelTab;
 
   // Modals & Dialogs
   isCreateFolderModalOpen: boolean;
@@ -139,12 +149,13 @@ export const useUIStore = create<UIState>((set, get) => ({
   isWindowFullScreen: false,
   isInstantTransition: false,
   isLayoutReady: false,
-  uiVisibility: { folderTree: true, filmstrip: true },
+  uiVisibility: { folderTree: true, filmstrip: true, leftBottomPanel: true },
   isLibraryExportPanelVisible: false,
 
   leftPanelWidth: 256,
   rightPanelWidth: 320,
   bottomPanelHeight: 144,
+  leftBottomPanelHeight: 0,
   compactEditorPanelHeightOverride: null,
 
   activeRightPanel: Panel.Adjustments,
@@ -159,6 +170,7 @@ export const useUIStore = create<UIState>((set, get) => ({
     effects: false,
     film: false,
   },
+  activeLeftBottomTab: LeftPanelTab.Presets,
 
   isCreateFolderModalOpen: false,
   isRenameFolderModalOpen: false,
@@ -208,6 +220,7 @@ export const useUIStore = create<UIState>((set, get) => ({
   setUI: (updater) => set((state) => (typeof updater === 'function' ? updater(state) : updater)),
 
   setRightPanel: (panelId) => {
+    if (panelId && !RIGHT_PANEL_ORDER.includes(panelId)) return;
     const current = get().activeRightPanel;
     if (panelId === current) {
       set({ activeRightPanel: null });

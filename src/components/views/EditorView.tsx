@@ -12,7 +12,6 @@ import MetadataPanel from '../panel/right/MetadataPanel';
 import CropPanel from '../panel/right/CropPanel';
 import MasksPanel from '../panel/right/MasksPanel';
 import AIPanel from '../panel/right/AIPanel';
-import PresetsPanel from '../panel/right/PresetsPanel';
 import ExportPanel from '../panel/right/ExportPanel';
 import FilmPanel from '../panel/right/FilmPanel';
 
@@ -219,14 +218,6 @@ export default function EditorView({
           {renderedRightPanel === Panel.Crop && <CropPanel />}
           {renderedRightPanel === Panel.Film && <FilmPanel />}
           {renderedRightPanel === Panel.Masks && <MasksPanel />}
-          {renderedRightPanel === Panel.Presets && (
-            <PresetsPanel
-              onNavigateToCommunity={() => {
-                handleBackToLibrary();
-                setUI({ activeView: 'community' });
-              }}
-            />
-          )}
           {renderedRightPanel === Panel.Export && (
             <ExportPanel
               exportState={exportState}

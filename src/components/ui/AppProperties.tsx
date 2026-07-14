@@ -130,6 +130,10 @@ export enum Panel {
   Presets = 'presets',
 }
 
+export enum LeftPanelTab {
+  Presets = 'presets',
+}
+
 export enum RawStatus {
   All = 'all',
   NonRawOnly = 'nonRawOnly',
@@ -187,6 +191,7 @@ export interface AppSettings {
   filterCriteria?: FilterCriteria;
   lastFolderState?: LastFolderState | null;
   activeRightPanel?: Panel | null;
+  leftBottomPanelHeight?: number;
   pinnedFolders?: any;
   lastRootPath: string | null;
   libraryViewMode?: LibraryViewMode;
@@ -343,6 +348,7 @@ export interface TransformState {
 export interface UiVisibility {
   folderTree: boolean;
   filmstrip: boolean;
+  leftBottomPanel: boolean;
 }
 
 export interface WaveformData {

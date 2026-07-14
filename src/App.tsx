@@ -8,6 +8,7 @@ import clsx from 'clsx';
 
 import TitleBar from './window/TitleBar';
 import FolderTree from './components/panel/FolderTree';
+import LeftBottomPanel from './components/panel/left/LeftBottomPanel';
 import ExportPanel from './components/panel/right/ExportPanel';
 import Resizer from './components/ui/Resizer';
 import GlobalTooltip from './components/ui/GlobalTooltip';
@@ -106,6 +107,7 @@ function App() {
     leftPanelWidth,
     rightPanelWidth,
     compactEditorPanelHeightOverride,
+    leftBottomPanelHeight,
     activeRightPanel,
     setUI,
     setRightPanel,
@@ -120,6 +122,7 @@ function App() {
       leftPanelWidth: state.leftPanelWidth,
       rightPanelWidth: state.rightPanelWidth,
       compactEditorPanelHeightOverride: state.compactEditorPanelHeightOverride,
+      leftBottomPanelHeight: state.leftBottomPanelHeight,
       activeRightPanel: state.activeRightPanel,
       setUI: state.setUI,
       setRightPanel: state.setRightPanel,
@@ -489,6 +492,16 @@ function App() {
         setUI({
           bottomPanelHeight: Math.round(Math.max(100, Math.min(startSize - (moveEvent.clientY - startY), 400))),
         });
+      } else if (stateKey === 'leftBottom') {
+        const container = (e.target as HTMLDivElement).parentElement?.parentElement;
+        const bottomPanel = (e.target as HTMLDivElement).nextElementSibling as HTMLDivElement | null;
+        const actualStartSize = startSize > 0 ? startSize : (bottomPanel?.clientHeight ?? 300);
+        const maxHeight = container ? container.clientHeight - 120 : 800;
+        setUI({
+          leftBottomPanelHeight: Math.round(
+            Math.max(120, Math.min(actualStartSize - (moveEvent.clientY - startY), maxHeight)),
+          ),
+        });
       } else if (stateKey === 'compact') {
         setUI({
           compactEditorPanelHeightOverride: Math.round(
@@ -515,7 +528,7 @@ function App() {
       setIsResizing(false);
     };
     document.documentElement.style.cursor =
-      stateKey === 'bottom' || stateKey === 'compact' ? 'row-resize' : 'col-resize';
+      stateKey === 'bottom' || stateKey === 'compact' || stateKey === 'leftBottom' ? 'row-resize' : 'col-resize';
 
     window.addEventListener('pointermove', doDrag, { passive: false });
     window.addEventListener('pointerup', stopDrag);
@@ -591,21 +604,47 @@ function App() {
           opacity: isFullScreen ? 0 : 1,
         }}
       >
-        <FolderTree
-          isResizing={isResizing}
-          isVisible={uiVisibility.folderTree}
-          onContextMenu={handleFolderTreeContextMenu}
-          onAlbumContextMenu={handleAlbumTreeContextMenu}
-          onSelectAlbum={handleSelectAlbum}
-          onFolderSelect={(path) => handleSelectSubfolder(path, false)}
-          onToggleFolder={handleToggleFolder}
-          onOpenFolder={handleOpenFolder}
-          setIsVisible={(value: boolean) =>
-            setUI((state) => ({ uiVisibility: { ...state.uiVisibility, folderTree: value } }))
-          }
+        <div
+          className="flex flex-col h-full"
           style={{ width: uiVisibility.folderTree ? `${leftPanelWidth}px` : '32px' }}
-          isInstantTransition={isInstantTransition}
-        />
+        >
+          <div className="flex-1 min-h-0 overflow-hidden">
+            <FolderTree
+              isResizing={isResizing}
+              isVisible={uiVisibility.folderTree}
+              onContextMenu={handleFolderTreeContextMenu}
+              onAlbumContextMenu={handleAlbumTreeContextMenu}
+              onSelectAlbum={handleSelectAlbum}
+              onFolderSelect={(path) => handleSelectSubfolder(path, false)}
+              onToggleFolder={handleToggleFolder}
+              onOpenFolder={handleOpenFolder}
+              setIsVisible={(value: boolean) =>
+                setUI((state) => ({ uiVisibility: { ...state.uiVisibility, folderTree: value } }))
+              }
+              style={{ width: '100%', height: '100%' }}
+              isInstantTransition={isInstantTransition}
+            />
+          </div>
+          {uiVisibility.folderTree && uiVisibility.leftBottomPanel && (
+            <>
+              <Resizer
+                direction={Orientation.Horizontal}
+                onMouseDown={createResizeHandler('leftBottom', leftBottomPanelHeight)}
+              />
+              <div
+                className="shrink-0 overflow-hidden"
+                style={{ height: leftBottomPanelHeight > 0 ? `${leftBottomPanelHeight}px` : '50%' }}
+              >
+                <LeftBottomPanel
+                  onNavigateToCommunity={() => {
+                    handleBackToLibrary();
+                    setUI({ activeView: 'community' });
+                  }}
+                />
+              </div>
+            </>
+          )}
+        </div>
         <Resizer direction={Orientation.Vertical} onMouseDown={createResizeHandler('left', leftPanelWidth)} />
       </div>
     );
