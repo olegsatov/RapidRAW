@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import debounce from 'lodash.debounce';
-import { Adjustments, COPYABLE_ADJUSTMENT_KEYS, ADJUSTMENT_GROUPS, INITIAL_ADJUSTMENTS } from '../utils/adjustments';
+import { Adjustments, COPYABLE_ADJUSTMENT_KEYS, INITIAL_ADJUSTMENTS, PasteMode } from '../utils/adjustments';
+import { normalizePreset, getPresetMode, getPresetIncludedAdjustments } from '../utils/presetUtils';
 import { Folder, Invokes, Preset } from '../components/ui/AppProperties';
 
 export enum PresetListType {
@@ -27,19 +28,6 @@ export function usePresets(currentAdjustments: Adjustments) {
   const [presets, setPresets] = useState<Array<UserPreset>>([]);
   const [isLoading, setIsLoading] = useState(true);
 
-  const loadPresets = useCallback(async () => {
-    setIsLoading(true);
-    try {
-      const loadedPresets: Array<UserPreset> = await invoke(Invokes.LoadPresets);
-      setPresets(loadedPresets);
-    } catch (error) {
-      console.error('Failed to load presets:', error);
-      setPresets([]);
-    } finally {
-      setIsLoading(false);
-    }
-  }, []);
-
   const savePresetsToBackend = useCallback(
     debounce((presetsToSave: Array<UserPreset>) => {
       invoke(Invokes.SavePresets, { presets: presetsToSave }).catch((err) =>
@@ -49,6 +37,46 @@ export function usePresets(currentAdjustments: Adjustments) {
     [],
   );
 
+  const normalizeUserPresetItem = (item: UserPreset): UserPreset => {
+    if (!item || typeof item !== 'object') {
+      return item;
+    }
+    if (item.preset && typeof item.preset === 'object') {
+      return { preset: normalizePreset(item.preset) };
+    }
+    if (item.folder && typeof item.folder === 'object') {
+      return {
+        folder: {
+          ...item.folder,
+          children: Array.isArray(item.folder.children)
+            ? item.folder.children
+                .filter((child): child is Preset => child && typeof child === 'object')
+                .map((child) => normalizePreset(child))
+            : [],
+        },
+      };
+    }
+    return item;
+  };
+
+  const loadPresets = useCallback(async () => {
+    setIsLoading(true);
+    try {
+      const loadedPresets: Array<UserPreset> = await invoke(Invokes.LoadPresets);
+      const normalized = loadedPresets.map(normalizeUserPresetItem);
+      const changed = JSON.stringify(normalized) !== JSON.stringify(loadedPresets);
+      setPresets(normalized);
+      if (changed) {
+        savePresetsToBackend(normalized);
+      }
+    } catch (error) {
+      console.error('Failed to load presets:', error);
+      setPresets([]);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [savePresetsToBackend]);
+
   useEffect(() => {
     loadPresets();
   }, [loadPresets]);
@@ -56,24 +84,16 @@ export function usePresets(currentAdjustments: Adjustments) {
   const addPreset = (
     name: string,
     folderId: string | null = null,
-    includeMasks: boolean = false,
-    includeCropTransform: boolean = false,
-    presetType: 'tool' | 'style' = 'style',
+    mode: PasteMode = PasteMode.Replace,
+    includedAdjustments: string[] = COPYABLE_ADJUSTMENT_KEYS,
   ) => {
-    const GEOMETRY_KEYS = ADJUSTMENT_GROUPS.geometry.flatMap((group) => group.keys);
-    const MASK_KEYS = ADJUSTMENT_GROUPS.masks.flatMap((group) => group.keys);
-
     const presetAdjustments: Record<string, any> = {};
 
-    for (const key of COPYABLE_ADJUSTMENT_KEYS) {
-      if (!includeMasks && MASK_KEYS.includes(key)) continue;
-      if (!includeCropTransform && GEOMETRY_KEYS.includes(key)) continue;
-
+    for (const key of includedAdjustments) {
       if (Object.prototype.hasOwnProperty.call(currentAdjustments, key)) {
         const currentValue = currentAdjustments[key as keyof Adjustments];
-        const defaultValue = INITIAL_ADJUSTMENTS[key as keyof Adjustments];
-
-        if (presetType === 'tool') {
+        if (mode === PasteMode.Merge) {
+          const defaultValue = INITIAL_ADJUSTMENTS[key as keyof Adjustments];
           if (JSON.stringify(currentValue) !== JSON.stringify(defaultValue)) {
             presetAdjustments[key] = currentValue;
           }
@@ -87,9 +107,8 @@ export function usePresets(currentAdjustments: Adjustments) {
       adjustments: presetAdjustments,
       id: crypto.randomUUID(),
       name,
-      includeMasks,
-      includeCropTransform,
-      presetType,
+      mode,
+      includedAdjustments,
     };
 
     let updatedPresets: Array<UserPreset>;
@@ -177,72 +196,16 @@ export function usePresets(currentAdjustments: Adjustments) {
     savePresetsToBackend(updatedPresets);
   };
 
-  const configurePreset = (
-    id: string | null,
-    name: string,
-    includeMasks: boolean,
-    includeCropTransform: boolean,
-    presetType: 'tool' | 'style',
-  ) => {
-    let existingPreset: Preset | null = null;
-
-    for (const item of presets) {
-      if (item.preset?.id === id) {
-        existingPreset = item.preset;
-        break;
-      }
-      if (item.folder) {
-        const found = item.folder.children.find((p: Preset) => p.id === id);
-        if (found) {
-          existingPreset = found;
-          break;
-        }
-      }
-    }
-
-    if (!existingPreset) return null;
-
-    let newAdjustments: Record<string, any> = { ...existingPreset.adjustments };
-    const oldType = existingPreset.presetType || 'style';
-
-    const GEOMETRY_KEYS = ADJUSTMENT_GROUPS.geometry.flatMap((group) => group.keys);
-    const MASK_KEYS = ADJUSTMENT_GROUPS.masks.flatMap((group) => group.keys);
-
-    if (oldType !== presetType) {
-      if (presetType === 'tool') {
-        for (const key of Object.keys(newAdjustments)) {
-          if (JSON.stringify(newAdjustments[key]) === JSON.stringify(INITIAL_ADJUSTMENTS[key as keyof Adjustments])) {
-            delete newAdjustments[key];
-          }
-        }
-      } else {
-        for (const key of COPYABLE_ADJUSTMENT_KEYS) {
-          if (!includeMasks && MASK_KEYS.includes(key)) continue;
-          if (!includeCropTransform && GEOMETRY_KEYS.includes(key)) continue;
-          if (newAdjustments[key] === undefined) {
-            newAdjustments[key] = INITIAL_ADJUSTMENTS[key as keyof Adjustments];
-          }
-        }
-      }
-    }
-
-    if (!includeMasks) {
-      for (const k of MASK_KEYS) delete newAdjustments[k];
-    }
-    if (!includeCropTransform) {
-      for (const k of GEOMETRY_KEYS) delete newAdjustments[k];
-    }
-
+  const configurePreset = (id: string | null, name: string, mode: PasteMode, includedAdjustments: string[]) => {
     let updatedPreset: Preset | null = null;
+
     const updatedPresets = presets.map((item: UserPreset) => {
       if (item.preset?.id === id) {
         updatedPreset = {
-          ...item.preset,
+          ...normalizePreset(item.preset),
           name,
-          adjustments: newAdjustments,
-          includeMasks,
-          includeCropTransform,
-          presetType,
+          mode,
+          includedAdjustments,
         };
         return { preset: updatedPreset };
       }
@@ -252,12 +215,10 @@ export function usePresets(currentAdjustments: Adjustments) {
           if (child.id === id) {
             found = true;
             updatedPreset = {
-              ...child,
+              ...normalizePreset(child),
               name,
-              adjustments: newAdjustments,
-              includeMasks,
-              includeCropTransform,
-              presetType,
+              mode,
+              includedAdjustments,
             };
             return updatedPreset;
           }
@@ -294,29 +255,15 @@ export function usePresets(currentAdjustments: Adjustments) {
 
     if (!existingPreset) return null;
 
-    const GEOMETRY_KEYS = ADJUSTMENT_GROUPS.geometry.flatMap((group) => group.keys);
-    const MASK_KEYS = ADJUSTMENT_GROUPS.masks.flatMap((group) => group.keys);
-
-    const includeMasks =
-      existingPreset.includeMasks ??
-      (existingPreset.adjustments?.masks && existingPreset.adjustments.masks.length > 0) ??
-      false;
-    const includeCropTransform =
-      existingPreset.includeCropTransform ??
-      GEOMETRY_KEYS.some((key) => existingPreset.adjustments?.[key] !== undefined) ??
-      false;
-    const presetType = existingPreset.presetType || 'style';
+    const mode = getPresetMode(existingPreset);
+    const includedAdjustments = getPresetIncludedAdjustments(existingPreset);
 
     const presetAdjustments: Record<string, any> = {};
 
-    for (const key of COPYABLE_ADJUSTMENT_KEYS) {
-      if (!includeMasks && MASK_KEYS.includes(key)) continue;
-      if (!includeCropTransform && GEOMETRY_KEYS.includes(key)) continue;
-
+    for (const key of includedAdjustments) {
       if (Object.prototype.hasOwnProperty.call(currentAdjustments, key)) {
         const currentValue = currentAdjustments[key as keyof Adjustments];
-
-        if (presetType === 'tool') {
+        if (mode === PasteMode.Merge) {
           const defaultValue = INITIAL_ADJUSTMENTS[key as keyof Adjustments];
           if (JSON.stringify(currentValue) !== JSON.stringify(defaultValue)) {
             presetAdjustments[key] = currentValue;
@@ -331,11 +278,8 @@ export function usePresets(currentAdjustments: Adjustments) {
     const updatedPresets = presets.map((item: UserPreset) => {
       if (item.preset?.id === id) {
         updatedPreset = {
-          ...item.preset,
+          ...normalizePreset(item.preset),
           adjustments: presetAdjustments,
-          includeMasks,
-          includeCropTransform,
-          presetType,
         };
         return { preset: updatedPreset };
       }
@@ -345,11 +289,8 @@ export function usePresets(currentAdjustments: Adjustments) {
           if (child.id === id) {
             found = true;
             updatedPreset = {
-              ...child,
+              ...normalizePreset(child),
               adjustments: presetAdjustments,
-              includeMasks,
-              includeCropTransform,
-              presetType,
             };
             return updatedPreset;
           }
@@ -395,9 +336,8 @@ export function usePresets(currentAdjustments: Adjustments) {
         adjustments: JSON.parse(JSON.stringify(presetToDuplicate.adjustments)),
         id: crypto.randomUUID(),
         name: `${presetToDuplicate.name} Copy`,
-        includeMasks: presetToDuplicate.includeMasks,
-        includeCropTransform: presetToDuplicate.includeCropTransform,
-        presetType: presetToDuplicate.presetType || 'style',
+        mode: getPresetMode(presetToDuplicate),
+        includedAdjustments: getPresetIncludedAdjustments(presetToDuplicate),
       };
 
       let updatedPresets;
@@ -572,7 +512,8 @@ export function usePresets(currentAdjustments: Adjustments) {
       setIsLoading(true);
       try {
         const updatedPresetList: Array<any> = await invoke(Invokes.HandleImportPresetsFromFile, { filePath });
-        setPresets(updatedPresetList);
+        const normalized = updatedPresetList.map(normalizeUserPresetItem);
+        setPresets(normalized);
       } catch (error) {
         console.error('Failed to import presets from file:', error);
         throw error;
@@ -590,7 +531,8 @@ export function usePresets(currentAdjustments: Adjustments) {
         const updatedPresetList: Array<UserPreset> = await invoke(Invokes.HandleImportLegacyPresetsFromFile, {
           filePath,
         });
-        setPresets(updatedPresetList);
+        const normalized = updatedPresetList.map(normalizeUserPresetItem);
+        setPresets(normalized);
       } catch (error) {
         console.error('Failed to import legacy presets from file:', error);
         throw error;

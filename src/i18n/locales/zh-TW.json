@@ -291,7 +291,9 @@
         "color": "顏色",
         "curves": "曲線",
         "details": "細節",
-        "effects": "效果"
+        "effects": "效果",
+        "geometry": "Geometry",
+        "masks": "Masks"
       },
       "title": "調整",
       "tooltips": {

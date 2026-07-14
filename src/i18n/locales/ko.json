@@ -291,7 +291,9 @@
         "color": "색상",
         "curves": "커브",
         "details": "디테일",
-        "effects": "효과"
+        "effects": "효과",
+        "geometry": "Geometry",
+        "masks": "Masks"
       },
       "title": "조정",
       "tooltips": {

@@ -291,7 +291,9 @@
         "color": "カラー",
         "curves": "トーンカーブ",
         "details": "ディテール",
-        "effects": "効果"
+        "effects": "効果",
+        "geometry": "Geometry",
+        "masks": "Masks"
       },
       "title": "補正",
       "tooltips": {

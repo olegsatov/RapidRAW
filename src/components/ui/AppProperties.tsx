@@ -1,5 +1,5 @@
 import { ExportPreset } from './ExportImportProperties';
-import { Adjustments, CopyPasteSettings } from '../../utils/adjustments';
+import { Adjustments, CopyPasteSettings, PasteMode } from '../../utils/adjustments';
 import { ToolType } from '../panel/right/Masks';
 
 export const GLOBAL_KEYS = [
@@ -300,6 +300,9 @@ export interface Preset {
   includeMasks?: boolean;
   includeCropTransform?: boolean;
   presetType?: 'tool' | 'style';
+  mode?: PasteMode;
+  includedAdjustments?: string[];
+  hotkey?: string[] | null;
 }
 
 export interface Progress {

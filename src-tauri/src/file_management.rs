@@ -203,6 +203,15 @@ pub struct Preset {
     pub include_crop_transform: Option<bool>,
     #[serde(rename = "presetType", skip_serializing_if = "Option::is_none")]
     pub preset_type: Option<String>,
+    #[serde(rename = "mode", skip_serializing_if = "Option::is_none")]
+    pub mode: Option<String>,
+    #[serde(
+        rename = "includedAdjustments",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub included_adjustments: Option<Vec<String>>,
+    #[serde(rename = "hotkey", skip_serializing_if = "Option::is_none")]
+    pub hotkey: Option<Vec<String>>,
 }
 
 #[derive(Serialize)]
@@ -2935,6 +2944,9 @@ pub fn save_community_preset(
         include_masks,
         include_crop_transform,
         preset_type: preset_type.or(Some("style".to_string())),
+        mode: None,
+        included_adjustments: None,
+        hotkey: None,
     };
 
     if let Some(PresetItem::Folder(folder)) = current_presets.iter_mut().find(|item| {

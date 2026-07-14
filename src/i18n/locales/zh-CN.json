@@ -291,7 +291,9 @@
         "color": "颜色",
         "curves": "曲线",
         "details": "细节",
-        "effects": "效果"
+        "effects": "效果",
+        "geometry": "Geometry",
+        "masks": "Masks"
       },
       "title": "调整",
       "tooltips": {

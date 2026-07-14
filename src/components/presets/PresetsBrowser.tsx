@@ -29,8 +29,6 @@ import {
   Layers,
   Crop,
   Save,
-  Wrench,
-  Palette,
   Settings2,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -41,7 +39,8 @@ import Button from '../ui/Button';
 import Text from '../ui/Text';
 import Slider from '../ui/Slider';
 import { TextColors, TextVariants, TextWeights } from '../../types/typography';
-import { Adjustments, INITIAL_ADJUSTMENTS, ADJUSTMENT_GROUPS } from '../../utils/adjustments';
+import { Adjustments, INITIAL_ADJUSTMENTS, ADJUSTMENT_GROUPS, PasteMode } from '../../utils/adjustments';
+import { getEffectivePresetAdjustments, getPresetIncludedAdjustments } from '../../utils/presetUtils';
 import { Invokes, OPTION_SEPARATOR, Preset } from '../ui/AppProperties';
 import { useEditorStore } from '../../store/useEditorStore';
 import { useEditorActions } from '../../hooks/useEditorActions';
@@ -209,11 +208,10 @@ function PresetItemDisplay({
 }: PresetItemDisplayProps) {
   const { t } = useTranslation();
   const geometryKeys = ADJUSTMENT_GROUPS.geometry.flatMap((g) => g.keys);
+  const includedAdjustments = getPresetIncludedAdjustments(preset);
 
-  const supportsMasks = preset.includeMasks ?? (preset.adjustments?.masks && preset.adjustments.masks.length > 0);
-  const supportsGeometry =
-    preset.includeCropTransform ?? geometryKeys.some((key) => preset.adjustments?.[key] !== undefined);
-  const isTool = preset.presetType === 'tool';
+  const supportsMasks = includedAdjustments.includes('masks');
+  const supportsGeometry = geometryKeys.some((key) => includedAdjustments.includes(key));
   const tooltipContent = useMemo(() => {
     const features = [];
     if (supportsMasks) features.push(t('editor.presets.supports.masks'));
@@ -258,20 +256,6 @@ function PresetItemDisplay({
           <Text color={TextColors.primary} weight={TextWeights.medium} className="truncate">
             {preset.name}
           </Text>
-          <div className="flex items-center gap-1.5 mt-0.5">
-            {isTool ? (
-              <Wrench size={12} className="text-text-secondary" />
-            ) : (
-              <Palette size={12} className="text-text-secondary" />
-            )}
-            <Text
-              variant={TextVariants.small}
-              color={TextColors.secondary}
-              className="text-[10px] uppercase tracking-wider"
-            >
-              {isTool ? t('editor.presets.types.tool') : t('editor.presets.types.style')}
-            </Text>
-          </div>
         </div>
       </div>
 
@@ -824,16 +808,18 @@ export default function PresetsBrowser({ isVisible, onNavigateToCommunity }: Pre
     setActivePresetId(preset.id);
     setPresetIntensity(100);
 
+    const effective = getEffectivePresetAdjustments(preset);
     setAdjustments((prevAdjustments: Adjustments) => ({
       ...prevAdjustments,
-      ...preset.adjustments,
+      ...effective,
     }));
   };
 
   const handleIntensityChange = useCallback(
     (preset: Preset, intensity: number) => {
       setPresetIntensity(intensity);
-      const mixed = mixAdjustments(preset.adjustments, intensity);
+      const effective = getEffectivePresetAdjustments(preset);
+      const mixed = mixAdjustments(effective, intensity);
       setAdjustments((prev: Adjustments) => ({
         ...prev,
         ...mixed,
@@ -842,25 +828,14 @@ export default function PresetsBrowser({ isVisible, onNavigateToCommunity }: Pre
     [setAdjustments],
   );
 
-  const handleSaveConfiguredPreset = async (
-    name: string,
-    includeMasks: boolean,
-    includeCropTransform: boolean,
-    presetType: 'tool' | 'style',
-  ) => {
+  const handleSaveConfiguredPreset = async (name: string, mode: PasteMode, includedAdjustments: string[]) => {
     if (configureModalState.preset) {
-      const updated = configurePreset(
-        configureModalState.preset.id,
-        name,
-        includeMasks,
-        includeCropTransform,
-        presetType,
-      );
+      const updated = configurePreset(configureModalState.preset.id, name, mode, includedAdjustments);
       if (updated) {
         await generateSinglePreview(updated);
       }
     } else {
-      const newPreset = addPreset(name, null, includeMasks, includeCropTransform, presetType);
+      const newPreset = addPreset(name, null, mode, includedAdjustments);
       if (newPreset) {
         await generateSinglePreview(newPreset);
       }

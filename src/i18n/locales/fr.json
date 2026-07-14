@@ -291,7 +291,9 @@
         "color": "Couleur",
         "curves": "Courbes",
         "details": "Détails",
-        "effects": "Effets"
+        "effects": "Effets",
+        "geometry": "Geometry",
+        "masks": "Masks"
       },
       "title": "Ajustements",
       "tooltips": {

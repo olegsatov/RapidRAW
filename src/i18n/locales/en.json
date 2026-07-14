@@ -335,7 +335,9 @@
         "curves": "Curves",
         "details": "Details",
         "effects": "Effects",
-        "film": "Film"
+        "film": "Film",
+        "geometry": "Geometry",
+        "masks": "Masks"
       },
       "title": "Adjustments",
       "tooltips": {
@@ -796,9 +798,7 @@
       },
       "types": {
         "folder": "Folder",
-        "preset": "Preset",
-        "style": "Style",
-        "tool": "Tool"
+        "preset": "Preset"
       }
     },
     "switcher": {
@@ -1181,16 +1181,11 @@
     },
     "configurePreset": {
       "cancel": "Cancel",
-      "includeCropTransform": "Include Crop & Transform",
-      "includeMasks": "Include Masks",
+      "pasteMode": "Apply Mode",
       "placeholder": "Enter preset name...",
       "save": "Save",
       "titleConfigure": "Configure Preset",
-      "titleSave": "Save New Preset",
-      "typeStyleDesc": "Applies the complete look. This will override all your current settings to match the preset exactly.",
-      "typeStyleLabel": "Style",
-      "typeToolDesc": "Only applies specific changes without touching your other settings.",
-      "typeToolLabel": "Tool"
+      "titleSave": "Save New Preset"
     },
     "confirm": {
       "cancel": "Cancel",

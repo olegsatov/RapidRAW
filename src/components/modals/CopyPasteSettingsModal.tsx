@@ -1,10 +1,9 @@
-import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import { motion } from 'framer-motion';
+import { useState, useEffect, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
-import clsx from 'clsx';
-import { ADJUSTMENT_GROUPS, COPYABLE_ADJUSTMENT_KEYS, CopyPasteSettings, PasteMode } from '../../utils/adjustments';
+import { COPYABLE_ADJUSTMENT_KEYS, CopyPasteSettings, PasteMode } from '../../utils/adjustments';
+import PasteModeSwitch from '../ui/PasteModeSwitch';
+import AdjustmentKeyPicker from '../ui/AdjustmentKeyPicker';
 import Button from '../ui/Button';
-import Switch from '../ui/Switch';
 import Text from '../ui/Text';
 import { TextVariants } from '../../types/typography';
 
@@ -15,106 +14,10 @@ interface CopyPasteSettingsModalProps {
   settings: CopyPasteSettings;
 }
 
-const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
-
-const DEFAULT_SETTINGS: CopyPasteSettings = {
+export const DEFAULT_SETTINGS: CopyPasteSettings = {
   mode: PasteMode.Merge,
   includedAdjustments: COPYABLE_ADJUSTMENT_KEYS,
   knownAdjustments: [],
-};
-
-interface PasteModeSwitchProps {
-  selectedMode: PasteMode;
-  onModeChange: (mode: PasteMode) => void;
-  isVisible: boolean;
-}
-
-const PasteModeSwitch = ({ selectedMode, onModeChange, isVisible }: PasteModeSwitchProps) => {
-  const { t } = useTranslation();
-  const [buttonRefs, setButtonRefs] = useState<Map<string, HTMLButtonElement>>(new Map());
-  const [bubbleStyle, setBubbleStyle] = useState({});
-  const containerRef = useRef<HTMLDivElement>(null);
-  const isInitialAnimation = useRef(true);
-
-  const pasteModeOptions = useMemo(
-    () => [
-      { id: PasteMode.Merge, label: t('modals.copyPaste.modeMerge') },
-      { id: PasteMode.Replace, label: t('modals.copyPaste.modeReplace') },
-    ],
-    [t],
-  );
-
-  useEffect(() => {
-    const selectedButton = buttonRefs.get(selectedMode);
-
-    if (!isVisible || !selectedButton || !containerRef.current) {
-      return;
-    }
-
-    const targetStyle = {
-      x: selectedButton.offsetLeft,
-      width: selectedButton.offsetWidth,
-    };
-
-    if (isInitialAnimation.current && containerRef.current.offsetWidth > 0) {
-      let initialX;
-      if (selectedMode === PasteMode.Replace) {
-        initialX = containerRef.current.offsetWidth;
-      } else {
-        initialX = -targetStyle.width;
-      }
-
-      setBubbleStyle({
-        x: [initialX, targetStyle.x],
-        width: targetStyle.width,
-      });
-      isInitialAnimation.current = false;
-    } else {
-      setBubbleStyle(targetStyle);
-    }
-  }, [selectedMode, buttonRefs, isVisible]);
-
-  useEffect(() => {
-    if (!isVisible) {
-      isInitialAnimation.current = true;
-    }
-  }, [isVisible]);
-
-  return (
-    <div ref={containerRef} className="relative flex w-full gap-1 bg-bg-primary p-1 rounded-md">
-      <motion.div
-        className="absolute top-1 bottom-1 z-0 bg-accent shadow-xs"
-        style={{ borderRadius: 6 }}
-        animate={bubbleStyle}
-        transition={{ type: 'spring', bounce: 0.2, duration: 0.6 }}
-      />
-      {pasteModeOptions.map((option) => (
-        <button
-          key={option.id}
-          ref={(el) => {
-            if (el) {
-              const newRefs = new Map(buttonRefs);
-              if (newRefs.get(option.id) !== el) {
-                newRefs.set(option.id, el);
-                setButtonRefs(newRefs);
-              }
-            }
-          }}
-          onClick={() => onModeChange(option.id)}
-          className={clsx(
-            'relative flex-1 flex items-center justify-center gap-2 py-1.5 text-sm rounded-md transition-colors',
-            {
-              'text-text-primary hover:bg-surface': selectedMode !== option.id,
-              'text-button-text': selectedMode === option.id,
-            },
-          )}
-          style={{ WebkitTapHighlightColor: 'transparent' }}
-        >
-          <span className="relative z-10 flex items-center">{option.label}</span>
-        </button>
-      ))}
-    </div>
-  );
 };
 
 export default function CopyPasteSettingsModal({ isOpen, onClose, onSave, settings }: CopyPasteSettingsModalProps) {
@@ -157,25 +60,6 @@ export default function CopyPasteSettingsModal({ isOpen, onClose, onSave, settin
     };
   }, [isOpen, handleKeyDown]);
 
-  const handleSelectAll = () => {
-    setLocalSettings((prev) => ({ ...prev, includedAdjustments: [...COPYABLE_ADJUSTMENT_KEYS] }));
-  };
-
-  const handleSelectNone = () => {
-    setLocalSettings((prev) => ({ ...prev, includedAdjustments: [] }));
-  };
-
-  const handleGroupToggle = (keys: string[], checked: boolean) => {
-    setLocalSettings((prev) => {
-      const newSet = new Set(prev.includedAdjustments);
-      keys.forEach((key) => {
-        if (checked) newSet.add(key);
-        else newSet.delete(key);
-      });
-      return { ...prev, includedAdjustments: Array.from(newSet) };
-    });
-  };
-
   if (!isMounted) return null;
 
   return (
@@ -195,6 +79,7 @@ export default function CopyPasteSettingsModal({ isOpen, onClose, onSave, settin
         <Text variant={TextVariants.title} className="mb-4">
           {t('modals.copyPaste.title')}
         </Text>
+
         <div className="grow overflow-y-auto pr-2 -mr-2 space-y-6">
           <div>
             <Text variant={TextVariants.heading} className="block mb-2">
@@ -212,51 +97,10 @@ export default function CopyPasteSettingsModal({ isOpen, onClose, onSave, settin
             </Text>
           </div>
 
-          <div>
-            <div className="flex justify-between items-center mb-2">
-              <Text variant={TextVariants.heading}>{t('modals.copyPaste.includedAdjustments')}</Text>
-              <div className="flex gap-2">
-                <Button
-                  className="px-4 py-2 rounded-md text-text-secondary hover:bg-surface transition-colors"
-                  size="sm"
-                  onClick={handleSelectAll}
-                >
-                  {t('modals.copyPaste.selectAll')}
-                </Button>
-                <Button
-                  className="px-4 py-2 rounded-md text-text-secondary hover:bg-surface transition-colors"
-                  size="sm"
-                  onClick={handleSelectNone}
-                >
-                  {t('modals.copyPaste.selectNone')}
-                </Button>
-              </div>
-            </div>
-            <div className="bg-bg-primary p-4 rounded-md max-h-64 overflow-y-auto">
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-x-4 gap-y-6">
-                {Object.entries(ADJUSTMENT_GROUPS).map(([section, groups]) => (
-                  <div key={section}>
-                    <Text variant={TextVariants.heading} className="mb-2">
-                      {t(`editor.adjustments.sections.${section}`, { defaultValue: capitalize(section) })}
-                    </Text>
-                    {groups.map((group) => {
-                      const isFullyChecked = group.keys.every((key) => localSettings.includedAdjustments.includes(key));
-
-                      return (
-                        <div key={group.label} className="mb-1.5 last:mb-0">
-                          <Switch
-                            label={t(group.label)}
-                            checked={isFullyChecked}
-                            onChange={(checked) => handleGroupToggle(group.keys, checked)}
-                          />
-                        </div>
-                      );
-                    })}
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
+          <AdjustmentKeyPicker
+            includedAdjustments={localSettings.includedAdjustments}
+            onChange={(includedAdjustments) => setLocalSettings((p) => ({ ...p, includedAdjustments }))}
+          />
         </div>
 
         <div className="flex justify-end gap-3 mt-6 pt-4 border-t border-surface">

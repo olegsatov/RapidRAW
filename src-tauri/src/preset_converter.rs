@@ -347,5 +347,8 @@ pub fn convert_xmp_to_preset(xmp_content: &str) -> Result<Preset, String> {
         include_masks: Some(false),
         include_crop_transform: Some(false),
         preset_type: Some("style".to_string()),
+        mode: None,
+        included_adjustments: None,
+        hotkey: None,
     })
 }

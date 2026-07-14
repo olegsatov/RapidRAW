@@ -323,7 +323,9 @@
         "color": "Kolor",
         "curves": "Krzywe",
         "details": "Detale",
-        "effects": "Efekty"
+        "effects": "Efekty",
+        "geometry": "Geometry",
+        "masks": "Masks"
       },
       "title": "Ustawienia",
       "tooltips": {
