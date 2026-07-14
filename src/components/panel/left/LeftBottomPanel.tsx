@@ -2,6 +2,7 @@ import { useCallback } from 'react';
 import { MotionConfig } from 'framer-motion';
 import { LeftPanelTab } from '../../ui/AppProperties';
 import { useUIStore } from '../../../store/useUIStore';
+import { useEditorStore } from '../../../store/useEditorStore';
 import LeftPanelTabs from './LeftPanelTabs';
 import PresetsBrowser from '../../presets/PresetsBrowser';
 
@@ -10,6 +11,7 @@ export default function LeftBottomPanel() {
   const isInstantTransition = useUIStore((state) => state.isInstantTransition);
   const activeLeftBottomTab = useUIStore((state) => state.activeLeftBottomTab);
   const setUI = useUIStore((state) => state.setUI);
+  const selectedImage = useEditorStore((state) => state.selectedImage);
 
   const handleTabSelect = useCallback(
     (tab: LeftPanelTab) => {
@@ -17,6 +19,10 @@ export default function LeftBottomPanel() {
     },
     [setUI],
   );
+
+  if (!selectedImage) {
+    return <div className="flex flex-col h-full overflow-hidden bg-bg-secondary rounded-lg" />;
+  }
 
   return (
     <div className="flex flex-col h-full overflow-hidden bg-bg-secondary rounded-lg">
