@@ -2517,7 +2517,7 @@ fn compute_flim_uniforms(
     // lifts/fades shadows. The base is usually tiny, so a relative multiplier made
     // both directions almost invisible; an additive offset keeps the slider usable.
     let toe_value = toe.clamp(-1.0, 1.0);
-    let black_cap_luma = (base_black_cap + toe_value * 0.1).clamp(-0.3, 0.95);
+    let black_cap_luma = (base_black_cap + toe_value * 0.01).clamp(-0.03, 0.95);
     FlimUniforms {
         extend_mat: gpu_mat3_from_rows(rows),
         extend_mat_inv: gpu_mat3_from_rows(flim_mat3_inv(rows)),
