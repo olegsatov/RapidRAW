@@ -92,6 +92,7 @@ export default function FilmPanel() {
   const setUI = useUIStore((s) => s.setUI);
 
   const [advancedOpen, setAdvancedOpen] = useState(false);
+  const [basicOpen, setBasicOpen] = useState(false);
   const [filmEffectsOpen, setFilmEffectsOpen] = useState(false);
   const [grainOpen, setGrainOpen] = useState(false);
   const [userPresets, setUserPresets] = useState<Array<FlimUserPreset>>([]);
@@ -249,10 +250,33 @@ export default function FilmPanel() {
           !flimEnabled && 'opacity-40 pointer-events-none select-none',
         )}
       >
-        <div className="p-2 bg-bg-tertiary rounded-md">
-          <Text variant={TextVariants.heading} className="mb-2">
-            {t('editor.adjustments.sections.basic')}
-          </Text>
+        <CollapsibleSection
+          canToggleVisibility={false}
+          isContentVisible={true}
+          isOpen={basicOpen}
+          onToggle={() => setBasicOpen((v) => !v)}
+          title={t('editor.adjustments.sections.basic')}
+        >
+          <Slider
+            label={t('adjustments.color.temperature')}
+            max={100}
+            min={-100}
+            onChange={(e: any) => handleAdjustmentChange(ColorAdjustment.Temperature, e.target.value)}
+            step={1}
+            value={adjustments.temperature ?? 0}
+            trackClassName="temperature-gradient-track"
+            onDragStateChange={onDragStateChange}
+          />
+          <Slider
+            label={t('adjustments.color.tint')}
+            max={100}
+            min={-100}
+            onChange={(e: any) => handleAdjustmentChange(ColorAdjustment.Tint, e.target.value)}
+            step={1}
+            value={adjustments.tint ?? 0}
+            trackClassName="tint-gradient-track"
+            onDragStateChange={onDragStateChange}
+          />
           <Slider
             label={t('adjustments.basic.exposure')}
             max={5}
@@ -307,27 +331,7 @@ export default function FilmPanel() {
             value={adjustments.blacks ?? 0}
             onDragStateChange={onDragStateChange}
           />
-          <Slider
-            label={t('adjustments.color.temperature')}
-            max={100}
-            min={-100}
-            onChange={(e: any) => handleAdjustmentChange(ColorAdjustment.Temperature, e.target.value)}
-            step={1}
-            value={adjustments.temperature ?? 0}
-            trackClassName="temperature-gradient-track"
-            onDragStateChange={onDragStateChange}
-          />
-          <Slider
-            label={t('adjustments.color.tint')}
-            max={100}
-            min={-100}
-            onChange={(e: any) => handleAdjustmentChange(ColorAdjustment.Tint, e.target.value)}
-            step={1}
-            value={adjustments.tint ?? 0}
-            trackClassName="tint-gradient-track"
-            onDragStateChange={onDragStateChange}
-          />
-        </div>
+        </CollapsibleSection>
 
         <div className="p-2 bg-bg-tertiary rounded-md">
           <Text variant={TextVariants.heading} className="mb-2">
