@@ -230,6 +230,9 @@ export interface AppSettings {
   language?: string;
   uiScale?: number;
   folderTreeSort?: FolderTreeSort;
+  proofMarginLevel1?: number;
+  proofMarginLevel2?: number;
+  proofMarginLevel?: 1 | 2;
 }
 
 export interface BrushSettings {

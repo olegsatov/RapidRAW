@@ -442,6 +442,12 @@ pub struct AppSettings {
     pub ui_scale: Option<f32>,
     #[serde(default)]
     pub folder_tree_sort: Option<FolderTreeSort>,
+    #[serde(default)]
+    pub proof_margin_level_1: Option<u32>,
+    #[serde(default)]
+    pub proof_margin_level_2: Option<u32>,
+    #[serde(default)]
+    pub proof_margin_level: Option<u8>,
 }
 
 impl Default for AppSettings {
@@ -531,6 +537,9 @@ impl Default for AppSettings {
             language: Some("en".to_string()),
             ui_scale: Some(1.0),
             folder_tree_sort: Some(FolderTreeSort::default()),
+            proof_margin_level_1: Some(60),
+            proof_margin_level_2: Some(120),
+            proof_margin_level: Some(1),
         }
     }
 }

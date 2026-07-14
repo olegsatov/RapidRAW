@@ -294,7 +294,13 @@ export default function Editor({ onBackToLibrary, onContextMenu, transformWrappe
     return null;
   }, [selectedImage, adjustments.crop, adjustments.orientationSteps]);
 
-  const imageRenderSize = useImageRenderSize(imageContainerRef, croppedDimensions);
+  const proofMargin = useMemo(() => {
+    if (!appSettings) return 0;
+    const isLevel2 = appSettings.proofMarginLevel === 2;
+    return (isLevel2 ? appSettings.proofMarginLevel2 : appSettings.proofMarginLevel1) ?? (isLevel2 ? 120 : 60);
+  }, [appSettings?.proofMarginLevel, appSettings?.proofMarginLevel1, appSettings?.proofMarginLevel2]);
+
+  const imageRenderSize = useImageRenderSize(imageContainerRef, croppedDimensions, proofMargin);
   const imageRenderSizeRef = useRef(imageRenderSize);
   imageRenderSizeRef.current = imageRenderSize;
 
@@ -2003,6 +2009,7 @@ export default function Editor({ onBackToLibrary, onContextMenu, transformWrappe
             finalPreviewUrl={finalPreviewUrl}
             handleCropComplete={handleCropComplete}
             imageRenderSize={imageRenderSize}
+            proofMargin={proofMargin}
             interactivePatch={interactivePatch}
             isAiEditing={isAiEditing}
             isCropping={isCropping}

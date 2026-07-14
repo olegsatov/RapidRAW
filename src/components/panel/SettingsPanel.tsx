@@ -1251,6 +1251,46 @@ export default function SettingsPanel({
                       />
                     </SettingItem>
 
+                    <SettingItem
+                      label={t('settings.general.proofMarginLevel1')}
+                      description={t('settings.general.proofMarginLevel1Desc')}
+                    >
+                      <Input
+                        type="number"
+                        min={0}
+                        max={500}
+                        step={1}
+                        value={String(appSettings?.proofMarginLevel1 ?? 60)}
+                        onChange={(e) =>
+                          onSettingsChange({
+                            ...appSettings,
+                            proofMarginLevel1: Math.min(500, Math.max(0, parseInt(e.target.value, 10) || 0)),
+                          })
+                        }
+                        bgClassName="bg-bg-primary"
+                      />
+                    </SettingItem>
+
+                    <SettingItem
+                      label={t('settings.general.proofMarginLevel2')}
+                      description={t('settings.general.proofMarginLevel2Desc')}
+                    >
+                      <Input
+                        type="number"
+                        min={0}
+                        max={500}
+                        step={1}
+                        value={String(appSettings?.proofMarginLevel2 ?? 120)}
+                        onChange={(e) =>
+                          onSettingsChange({
+                            ...appSettings,
+                            proofMarginLevel2: Math.min(500, Math.max(0, parseInt(e.target.value, 10) || 0)),
+                          })
+                        }
+                        bgClassName="bg-bg-primary"
+                      />
+                    </SettingItem>
+
                     <SettingItem label={t('settings.general.font')} description={t('settings.general.fontDesc')}>
                       <Dropdown
                         onChange={(value: any) => onSettingsChange({ ...appSettings, fontFamily: value })}

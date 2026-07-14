@@ -39,6 +39,7 @@ interface ImageCanvasProps {
   finalPreviewUrl: string | null;
   handleCropComplete(c: Crop, cp: PercentCrop): void;
   imageRenderSize: RenderSize;
+  proofMargin?: number;
   isAiEditing: boolean;
   isCropping: boolean;
   isMaskControlHovered: boolean;
@@ -1148,6 +1149,7 @@ const ImageCanvas = memo(
     finalPreviewUrl,
     handleCropComplete,
     imageRenderSize,
+    proofMargin = 0,
     interactivePatch,
     isAiEditing,
     isCropping,
@@ -2666,9 +2668,10 @@ const ImageCanvas = memo(
                       }
                     : {
                         position: 'absolute',
-                        inset: '0px',
-                        width: '100%',
-                        height: '100%',
+                        left: `${proofMargin}px`,
+                        top: `${proofMargin}px`,
+                        width: `calc(100% - ${proofMargin * 2}px)`,
+                        height: `calc(100% - ${proofMargin * 2}px)`,
                         overflow: 'visible',
                       }
                 }
@@ -2716,11 +2719,7 @@ const ImageCanvas = memo(
               {originalSrc && (
                 <img
                   alt="Original"
-                  className={
-                    imageRenderSize.width > 0 && imageRenderSize.height > 0
-                      ? 'pointer-events-none'
-                      : 'absolute inset-0 w-full h-full object-contain pointer-events-none'
-                  }
+                  className="pointer-events-none"
                   src={originalSrc}
                   style={
                     imageRenderSize.width > 0 && imageRenderSize.height > 0
@@ -2736,6 +2735,12 @@ const ImageCanvas = memo(
                           zIndex: 2,
                         }
                       : {
+                          position: 'absolute',
+                          left: `${proofMargin}px`,
+                          top: `${proofMargin}px`,
+                          width: `calc(100% - ${proofMargin * 2}px)`,
+                          height: `calc(100% - ${proofMargin * 2}px)`,
+                          objectFit: 'contain',
                           imageRendering: isMaxZoom ? 'pixelated' : 'auto',
                           opacity: isShowingOriginal && originalLoaded ? 1 : 0,
                           transition: originalLoaded ? 'opacity 150ms ease-in-out' : 'none',

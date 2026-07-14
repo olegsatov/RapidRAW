@@ -15,13 +15,43 @@ export interface RenderSize {
 
 const DEFAULT_SIZE: RenderSize = { width: 0, height: 0, scale: 1, offsetX: 0, offsetY: 0 };
 
+const computeRenderSize = (container: HTMLElement, imgWidth: number, imgHeight: number, margin: number): RenderSize => {
+  const { clientWidth: rawWidth, clientHeight: rawHeight } = container;
+  const marginPx = Math.max(0, margin);
+  const availableWidth = Math.max(0, rawWidth - marginPx * 2);
+  const availableHeight = Math.max(0, rawHeight - marginPx * 2);
+  const imageAspectRatio = imgWidth / imgHeight;
+  const containerAspectRatio = availableWidth / availableHeight;
+
+  let width: number;
+  let height: number;
+  if (imageAspectRatio > containerAspectRatio) {
+    width = availableWidth;
+    height = availableWidth / imageAspectRatio;
+  } else {
+    height = availableHeight;
+    width = availableHeight * imageAspectRatio;
+  }
+
+  const offsetX = (rawWidth - width) / 2;
+  const offsetY = (rawHeight - height) / 2;
+
+  return { width, height, scale: width / imgWidth, offsetX, offsetY };
+};
+
 export const useImageRenderSize = (
   containerRef: React.RefObject<HTMLElement>,
   imageDimensions: ImageDimensions | null,
+  margin: number = 0,
 ) => {
-  const [renderSize, setRenderSize] = useState<RenderSize>(DEFAULT_SIZE);
   const imgWidth = imageDimensions?.width;
   const imgHeight = imageDimensions?.height;
+
+  const [renderSize, setRenderSize] = useState<RenderSize>(() => {
+    const container = containerRef.current;
+    if (!container || !imgWidth || !imgHeight) return DEFAULT_SIZE;
+    return computeRenderSize(container, imgWidth, imgHeight, margin);
+  });
 
   useLayoutEffect(() => {
     const container = containerRef.current;
@@ -31,25 +61,7 @@ export const useImageRenderSize = (
       return;
     }
 
-    const updateSize = () => {
-      const { clientWidth: containerWidth, clientHeight: containerHeight } = container;
-      const imageAspectRatio = imgWidth / imgHeight;
-      const containerAspectRatio = containerWidth / containerHeight;
-
-      let width, height;
-      if (imageAspectRatio > containerAspectRatio) {
-        width = containerWidth;
-        height = containerWidth / imageAspectRatio;
-      } else {
-        height = containerHeight;
-        width = containerHeight * imageAspectRatio;
-      }
-
-      const offsetX = (containerWidth - width) / 2;
-      const offsetY = (containerHeight - height) / 2;
-
-      setRenderSize({ width, height, scale: width / imgWidth, offsetX, offsetY });
-    };
+    const updateSize = () => setRenderSize(computeRenderSize(container, imgWidth, imgHeight, margin));
 
     updateSize();
 
@@ -60,7 +72,7 @@ export const useImageRenderSize = (
     resizeObserver.observe(container);
 
     return () => resizeObserver.disconnect();
-  }, [containerRef, imgWidth, imgHeight]);
+  }, [containerRef, imgWidth, imgHeight, margin]);
 
   return renderSize;
 };
