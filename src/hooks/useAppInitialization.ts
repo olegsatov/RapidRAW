@@ -5,7 +5,7 @@ import { useSettingsStore } from '../store/useSettingsStore';
 import { useUIStore } from '../store/useUIStore';
 import { useLibraryStore } from '../store/useLibraryStore';
 import { useEditorStore } from '../store/useEditorStore';
-import { useProcessStore } from '../store/useProcessStore';
+import { useProcessStore, type ExternalEditSession } from '../store/useProcessStore';
 import { usePresetStore } from '../store/usePresetStore';
 import { THEMES, DEFAULT_THEME_ID, ThemeProps } from '../utils/themes';
 import { COPYABLE_ADJUSTMENT_KEYS } from '../utils/adjustments';
@@ -22,6 +22,12 @@ import {
 } from '../components/ui/AppProperties';
 import { useTranslation } from 'react-i18next';
 
+export interface LaunchPayload {
+  editSession?: ExternalEditSession;
+  openWithFile?: string;
+  showStartScreen?: boolean;
+}
+
 interface UseAppInitializationProps {
   preloadedDataRef: React.RefObject<any>;
   thumbnailSize: ThumbnailSize;
@@ -30,6 +36,7 @@ interface UseAppInitializationProps {
   setThumbnailAspectRatio: (ratio: ThumbnailAspectRatio) => void;
   libraryViewMode: LibraryViewMode;
   setLibraryViewMode: (mode: LibraryViewMode) => void;
+  onFrontendReady?: (launch: LaunchPayload) => void;
 }
 
 const getDefaultLanguage = (i18nInstance: any): string => {
@@ -56,8 +63,15 @@ export const useAppInitialization = ({
   setThumbnailAspectRatio,
   libraryViewMode,
   setLibraryViewMode,
+  onFrontendReady,
 }: UseAppInitializationProps) => {
   const isInitialMount = useRef(true);
+  const onFrontendReadyRef = useRef(onFrontendReady);
+
+  useEffect(() => {
+    onFrontendReadyRef.current = onFrontendReady;
+  });
+
   const { i18n } = useTranslation();
 
   const {
@@ -239,13 +253,14 @@ export const useAppInitialization = ({
           });
         }
 
-        invoke('frontend_ready')
-          .then((launch: any) => {
+        invoke<LaunchPayload>('frontend_ready')
+          .then((launch) => {
             if (launch?.editSession) {
               useProcessStore.getState().setProcess({ externalEditSession: launch.editSession });
             } else if (launch?.openWithFile) {
               useProcessStore.getState().setProcess({ initialFileToOpen: launch.openWithFile });
             }
+            onFrontendReadyRef.current?.(launch);
           })
           .catch((e) => console.error('Failed to notify backend of readiness:', e));
       })

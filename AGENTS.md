@@ -56,9 +56,12 @@ with extra care, and keep this list current as features are added:
   `src-tauri/src/shaders/film_post.wgsl`, film/grain parts of
   `src-tauri/src/gpu_processing.rs` / `image_processing.rs` /
   `export_processing.rs` (`crystal_grain.rs`, `film_grain.rs`).
-- Session restore (Continue Session reopens last image + editor tab):
+- Session restore (Continue Session reopens last image + editor tab; now
+  auto-restores on launch unless a startup modifier key is held):
   `src/hooks/useAppInitialization.ts`, `src/hooks/useAppNavigation.ts`,
-  `src-tauri/src/app_settings.rs`.
+  `src/App.tsx`, `src-tauri/src/app_settings.rs`,
+  `src-tauri/src/startup_modifiers.rs`, and the `LaunchPayload` /
+  `frontend_ready` changes in `src-tauri/src/lib.rs`.
 - Preset adjustment selection (copy/paste-style merge/replace mode + per-key
   inclusion): `src/utils/presetUtils.ts`, `src/components/ui/PasteModeSwitch.tsx`,
   `src/components/ui/AdjustmentKeyPicker.tsx`, `src/hooks/usePresets.ts`,

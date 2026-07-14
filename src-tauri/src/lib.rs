@@ -35,6 +35,7 @@ mod panorama_stitching;
 mod panorama_utils;
 mod preset_converter;
 mod raw_processing;
+mod startup_modifiers;
 mod tagging;
 mod tagging_utils;
 mod window_customizer;
@@ -1921,6 +1922,7 @@ fn emit_launch_request(app_handle: &tauri::AppHandle, request: LaunchRequest) {
 struct LaunchPayload {
     open_with_file: Option<String>,
     edit_session: Option<ExternalEditSession>,
+    show_start_screen: bool,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -2071,9 +2073,28 @@ fn frontend_ready(
             &session.source
         );
     }
+
+    // Modifier-key detection calls AppKit/GDK/Win32 APIs that must run on the
+    // main GUI thread, so dispatch it there and wait for the result.
+    let show_start_screen = if is_first_run && open_with_file.is_none() && edit_session.is_none() {
+        let (tx, rx) = mpsc::channel::<bool>();
+        match app_handle.run_on_main_thread(move || {
+            let _ = tx.send(startup_modifiers::is_start_screen_modifier_pressed());
+        }) {
+            Ok(()) => rx.recv().unwrap_or(false),
+            Err(e) => {
+                log::warn!("Failed to run startup modifier check on main thread: {}", e);
+                false
+            }
+        }
+    } else {
+        false
+    };
+
     Ok(LaunchPayload {
         open_with_file,
         edit_session,
+        show_start_screen,
     })
 }
 

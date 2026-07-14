@@ -41,7 +41,7 @@ import { useEditorActions } from './hooks/useEditorActions';
 import { useLibraryActions } from './hooks/useLibraryActions';
 import { useProductivityActions } from './hooks/useProductivityActions';
 
-import { useAppInitialization } from './hooks/useAppInitialization';
+import { useAppInitialization, LaunchPayload } from './hooks/useAppInitialization';
 import { useAndroidBackHandler } from './hooks/useAndroidBackHandler';
 import './i18n';
 
@@ -179,6 +179,7 @@ function App() {
   });
 
   const isBackendReadyRef = useRef(true);
+  const autoRestoreAttemptedRef = useRef(false);
   const previewJobIdRef = useRef<number>(0);
   const latestRenderedJobIdRef = useRef<number>(0);
   const currentResRef = useRef<number>(1280);
@@ -198,16 +199,6 @@ function App() {
     rootPaths?: string[];
     currentPath?: string;
   }>({});
-
-  useAppInitialization({
-    preloadedDataRef,
-    thumbnailSize,
-    setThumbnailSize,
-    thumbnailAspectRatio,
-    setThumbnailAspectRatio,
-    libraryViewMode,
-    setLibraryViewMode,
-  });
 
   const isAndroid = osPlatform === 'android';
   const isPortraitViewport = viewportSize.width > 0 && viewportSize.height > viewportSize.width;
@@ -275,6 +266,41 @@ function App() {
   } = useAppNavigation({
     clearThumbnailQueue,
     refs: navigationRefs,
+  });
+
+  const handleFrontendReady = useCallback(
+    (launch: LaunchPayload) => {
+      if (autoRestoreAttemptedRef.current) {
+        return;
+      }
+      autoRestoreAttemptedRef.current = true;
+
+      if (isAndroid) {
+        return;
+      }
+
+      if (launch?.openWithFile || launch?.editSession) {
+        return;
+      }
+
+      if (launch?.showStartScreen) {
+        return;
+      }
+
+      handleContinueSession();
+    },
+    [handleContinueSession, isAndroid],
+  );
+
+  useAppInitialization({
+    preloadedDataRef,
+    thumbnailSize,
+    setThumbnailSize,
+    thumbnailAspectRatio,
+    setThumbnailAspectRatio,
+    libraryViewMode,
+    setLibraryViewMode,
+    onFrontendReady: handleFrontendReady,
   });
 
   const {
