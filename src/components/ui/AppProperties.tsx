@@ -156,6 +156,7 @@ export interface FolderTreeSort {
 export enum Theme {
   Arctic = 'arctic',
   Blue = 'blue',
+  Compact = 'compact',
   Dark = 'dark',
   Grey = 'grey',
   Light = 'light',
