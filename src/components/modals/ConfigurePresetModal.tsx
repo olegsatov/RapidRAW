@@ -79,7 +79,7 @@ export default function ConfigurePresetModal({
     for (const def of KEYBIND_DEFINITIONS) {
       const combo = userKb[def.action]?.length ? userKb[def.action] : def.defaultCombo;
       if (combo && combo.join('+') === key) {
-        return { type: 'app' as const, label: t(def.description) };
+        return { type: 'app' as const, label: t(def.description as string, def.description) };
       }
     }
     for (const preset of allPresets) {

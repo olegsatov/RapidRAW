@@ -46,6 +46,7 @@ import { getEffectivePresetAdjustments, getPresetIncludedAdjustments } from '../
 import { formatKeyCode } from '../../utils/keyboardUtils';
 import { Invokes, OPTION_SEPARATOR, Preset } from '../ui/AppProperties';
 import { useEditorStore } from '../../store/useEditorStore';
+import { useUIStore } from '../../store/useUIStore';
 import { useEditorActions } from '../../hooks/useEditorActions';
 
 interface DroppableFolderItemProps {
@@ -571,6 +572,10 @@ export default function PresetsBrowser({ isVisible, onNavigateToCommunity }: Pre
       isProcessingQueue.current = false;
     };
   }, []);
+
+  useEffect(() => {
+    useUIStore.getState().setUI({ isConfigurePresetModalOpen: configureModalState.isOpen });
+  }, [configureModalState.isOpen]);
 
   const sensors = useSensors(
     useSensor(PointerSensor, {

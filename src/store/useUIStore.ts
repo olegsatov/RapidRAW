@@ -117,6 +117,7 @@ interface UIState {
   renameTargetPaths: Array<string>;
   isImportModalOpen: boolean;
   isCopyPasteSettingsModalOpen: boolean;
+  isConfigurePresetModalOpen: boolean;
   importTargetFolder: string | null;
   importSourcePaths: Array<string>;
   folderActionTarget: string | null;
@@ -178,6 +179,7 @@ export const useUIStore = create<UIState>((set, get) => ({
   renameTargetPaths: [],
   isImportModalOpen: false,
   isCopyPasteSettingsModalOpen: false,
+  isConfigurePresetModalOpen: false,
   importTargetFolder: null,
   importSourcePaths: [],
   folderActionTarget: null,
