@@ -13,6 +13,7 @@ import {
   PasteMode,
   LensAdjustment,
   normalizeLoadedAdjustments,
+  SectionVisibility,
 } from '../utils/adjustments';
 import { calculateCenteredCrop } from '../utils/cropUtils';
 import { Invokes } from '../components/ui/AppProperties';
@@ -216,6 +217,7 @@ export function useEditorActions() {
       if (!copiedAdjustments || !appSettings) return;
 
       const { mode, includedAdjustments } = appSettings.copyPasteSettings;
+      const includedSet = new Set(includedAdjustments);
       const adjustmentsToApply: Partial<Adjustments> = {};
 
       for (const key of includedAdjustments) {
@@ -235,6 +237,21 @@ export function useEditorActions() {
         if (!adjustmentsToApply.lensMaker) {
           adjustmentsToApply.lensDistortionParams = null;
         }
+      }
+
+      // Apply Film-tab section visibility state when any of the section's keys
+      // are included, mirroring the preset handling in presetUtils.
+      const sectionVisibility: Partial<SectionVisibility> = {};
+      for (const [section, keys] of Object.entries(PRESET_SECTION_VISIBILITY_KEYS)) {
+        if (keys.some((key) => includedSet.has(key))) {
+          const copiedValue = copiedAdjustments.sectionVisibility?.[section as keyof SectionVisibility];
+          if (copiedValue !== undefined) {
+            sectionVisibility[section as keyof SectionVisibility] = copiedValue;
+          }
+        }
+      }
+      if (Object.keys(sectionVisibility).length > 0) {
+        adjustmentsToApply.sectionVisibility = sectionVisibility as SectionVisibility;
       }
 
       if (Object.keys(adjustmentsToApply).length === 0) {
