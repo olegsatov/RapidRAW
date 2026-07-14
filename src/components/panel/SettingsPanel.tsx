@@ -34,6 +34,7 @@ import Slider from '../ui/Slider';
 import { ThemeProps, THEMES, DEFAULT_THEME_ID } from '../../utils/themes';
 import { useTranslation } from 'react-i18next';
 import { Invokes } from '../ui/AppProperties';
+import type { Preset } from '../ui/AppProperties';
 import {
   formatKeyCode,
   KeybindDefinition,
@@ -520,7 +521,6 @@ export default function SettingsPanel({
   const [testStatus, setTestStatus] = useState<TestStatus>({ message: '', success: null, testing: false });
   const [hasInteractedWithLivePreview, setHasInteractedWithLivePreview] = useState(false);
   const [recordingAction, setRecordingAction] = useState<string | null>(null);
-  const [recordingPresetId, setRecordingPresetId] = useState<string | null>(null);
 
   const [aiProvider, setAiProvider] = useState(appSettings?.aiProvider || 'cpu');
   const [aiConnectorAddress, setAiConnectorAddress] = useState<string>(appSettings?.aiConnectorAddress || '');
@@ -988,35 +988,51 @@ export default function SettingsPanel({
     return keys;
   }, [appSettings?.keybinds]);
 
-  const presetStore = usePresetStore();
+  const presets = usePresetStore((s) => s.presets);
+  const updatePreset = usePresetStore((s) => s.updatePreset);
 
-  const handlePresetHotkeySave = (presetId: string, combo: string[] | null) => {
-    presetStore.updatePreset(presetId, (p) => ({ ...p, hotkey: combo }));
-  };
+  const allPresets = useMemo(() => {
+    const result: Preset[] = [];
+    for (const item of presets) {
+      if (item.preset) result.push(item.preset);
+      else if (item.folder) result.push(...item.folder.children);
+    }
+    return result;
+  }, [presets]);
 
-  const getPresetHotkeyConflict = (presetId: string, combo: string[] | null): HotkeyCaptureConflict | null => {
-    if (!combo || combo.length === 0) return null;
-    const key = combo.join('+');
+  const comboConflicts = useMemo(() => {
+    const map = new Map<string, { type: 'app' | 'preset'; label: string; presetId?: string }>();
     const userKb = appSettings?.keybinds || {};
     for (const def of KEYBIND_DEFINITIONS) {
       const effective = userKb[def.action]?.length ? userKb[def.action] : def.defaultCombo;
-      if (effective && effective.join('+') === key) {
-        return { type: 'app', label: t(def.description as any) as string };
-      }
+      if (!effective) continue;
+      const key = effective.join('+');
+      map.set(key, { type: 'app', label: t(def.description as string, def.description) });
     }
-    for (const preset of presetStore.flattenPresets()) {
-      if (preset.id === presetId) continue;
-      if (preset.hotkey && preset.hotkey.join('+') === key) {
-        return { type: 'preset', label: preset.name };
-      }
+    for (const preset of allPresets) {
+      if (!preset.hotkey?.length) continue;
+      const key = preset.hotkey.join('+');
+      map.set(key, { type: 'preset', label: preset.name, presetId: preset.id });
     }
-    return null;
+    return map;
+  }, [appSettings?.keybinds, allPresets, t]);
+
+  const handlePresetHotkeySave = (presetId: string, combo: string[] | null) => {
+    updatePreset(presetId, (p) => ({ ...p, hotkey: combo }));
+  };
+
+  const getPresetHotkeyConflict = (presetId: string, combo: string[] | null): HotkeyCaptureConflict | null => {
+    if (!combo?.length) return null;
+    const conflict = comboConflicts.get(combo.join('+'));
+    if (!conflict) return null;
+    if (conflict.type === 'preset' && conflict.presetId === presetId) return null;
+    return { type: conflict.type, label: conflict.label };
   };
 
   const handlePresetHotkeyOverwrite = (presetId: string, combo: string[] | null) => {
-    if (!combo || combo.length === 0) return;
+    if (!combo?.length) return;
     const key = combo.join('+');
-    const conflict = getPresetHotkeyConflict(presetId, combo);
+    const conflict = comboConflicts.get(key);
     if (!conflict) return;
 
     if (conflict.type === 'app') {
@@ -1029,13 +1045,8 @@ export default function SettingsPanel({
         }
       }
       onSettingsChange({ ...appSettings, keybinds: newKeybinds });
-    } else {
-      for (const preset of presetStore.flattenPresets()) {
-        if (preset.id !== presetId && preset.hotkey?.join('+') === key) {
-          presetStore.updatePreset(preset.id, (p) => ({ ...p, hotkey: null }));
-          break;
-        }
-      }
+    } else if (conflict.presetId && conflict.presetId !== presetId) {
+      updatePreset(conflict.presetId, (p) => ({ ...p, hotkey: null }));
     }
   };
 
@@ -2473,11 +2484,10 @@ export default function SettingsPanel({
                     })}
                     <div>
                       <Text variant={TextVariants.heading} className="mb-4">
-                        {t('settings.controls.presetHotkeys' as any) as string}
+                        {t('settings.controls.presetHotkeys')}
                       </Text>
                       <div className="divide-y divide-border-color">
-                        {presetStore
-                          .flattenPresets()
+                        {allPresets
                           .slice()
                           .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }))
                           .map((preset) => {
@@ -2488,11 +2498,6 @@ export default function SettingsPanel({
                                   <Text variant={TextVariants.label} className="truncate">
                                     {preset.name}
                                   </Text>
-                                  {preset.folder?.name && (
-                                    <Text variant={TextVariants.small} color={TextColors.secondary}>
-                                      {preset.folder.name}
-                                    </Text>
-                                  )}
                                 </div>
                                 <HotkeyCapture
                                   combo={preset.hotkey}
