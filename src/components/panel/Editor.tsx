@@ -20,6 +20,7 @@ import { useSettingsStore } from '../../store/useSettingsStore';
 import { useUIStore } from '../../store/useUIStore';
 import { useLibraryStore } from '../../store/useLibraryStore';
 import { useAiMasking } from '../../hooks/useAiMasking';
+import { getDefaultEditorBackground } from '../../utils/editorBackground';
 
 const parseRgb = (rgbStr: string): [number, number, number, number] => {
   const match = rgbStr.match(/[\d.]+/g);
@@ -1094,7 +1095,8 @@ export default function Editor({ onBackToLibrary, onContextMenu, transformWrappe
   useEffect(() => {
     const rootStyle = getComputedStyle(document.documentElement);
     const bgPrimaryStr = rootStyle.getPropertyValue('--app-bg-primary') || 'rgb(24, 24, 24)';
-    const bgSecondaryStr = rootStyle.getPropertyValue('--app-bg-secondary') || 'rgb(35, 35, 35)';
+    const bgSecondaryStr =
+      appSettings?.editorBackgroundColor || rootStyle.getPropertyValue('--app-bg-secondary') || 'rgb(35, 35, 35)';
 
     wgpuStateRef.current = {
       useWgpuRenderer: appSettings?.useWgpuRenderer,
@@ -1114,6 +1116,7 @@ export default function Editor({ onBackToLibrary, onContextMenu, transformWrappe
     uncroppedAdjustedPreviewUrl,
     showOriginal,
     appSettings?.theme,
+    appSettings?.editorBackgroundColor,
     finalPreviewUrl,
   ]);
 
@@ -1921,6 +1924,7 @@ export default function Editor({ onBackToLibrary, onContextMenu, transformWrappe
   }
 
   const isWgpuActive = appSettings?.useWgpuRenderer !== false && hasRenderedFirstFrame;
+  const editorBackgroundColor = appSettings?.editorBackgroundColor || getDefaultEditorBackground();
 
   return (
     <div
@@ -1967,10 +1971,17 @@ export default function Editor({ onBackToLibrary, onContextMenu, transformWrappe
         className={clsx(
           'flex-1 relative overflow-hidden touch-none',
           isFullScreen ? 'rounded-none' : 'rounded-lg',
-          appSettings?.useWgpuRenderer !== false && !isFullScreen && 'ring-[9999px] ring-bg-secondary',
+          appSettings?.useWgpuRenderer !== false && !isFullScreen && 'ring-[9999px]',
           !isWgpuActive && 'bg-bg-secondary',
         )}
-        style={{ cursor: cursorStyle }}
+        style={
+          {
+            cursor: cursorStyle,
+            backgroundColor: !isWgpuActive ? editorBackgroundColor : undefined,
+            '--tw-ring-color':
+              appSettings?.useWgpuRenderer !== false && !isFullScreen ? editorBackgroundColor : undefined,
+          } as React.CSSProperties
+        }
         onContextMenu={onContextMenu}
         ref={imageContainerRef}
         onPointerDown={handlePointerDown}

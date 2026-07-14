@@ -56,6 +56,7 @@ import TaggingSubMenu from '../context/TaggingSubMenu';
 import { useEditorActions } from './useEditorActions';
 import { useLibraryActions } from './useLibraryActions';
 import { globalImageCache } from '../utils/ImageLRUCache';
+import { EDITOR_BACKGROUND_OPTIONS } from '../utils/editorBackground';
 
 export interface UseAppContextMenusProps {
   handleImageSelect: (path: string) => void;
@@ -163,7 +164,7 @@ export function useAppContextMenus(props: UseAppContextMenusProps) {
 
       const { selectedImage, history, historyIndex, undo, redo, resetHistory, copiedAdjustments, setEditor } =
         useEditorStore.getState();
-      const { appSettings } = useSettingsStore.getState();
+      const { appSettings, handleSettingsChange } = useSettingsStore.getState();
       const { setRightPanel, setUI } = useUIStore.getState();
 
       if (!selectedImage) return;
@@ -172,11 +173,38 @@ export function useAppContextMenus(props: UseAppContextMenusProps) {
       const canRedo = historyIndex < history.length - 1;
       const commonTags = getCommonTags([selectedImage.path]);
 
+      const backgroundColorSubmenu: Option[] = [
+        ...EDITOR_BACKGROUND_OPTIONS.map(({ label, color }) => ({
+          label,
+          color,
+          onClick: () => {
+            if (!appSettings) return;
+            handleSettingsChange({ ...appSettings, editorBackgroundColor: color });
+          },
+        })),
+        { type: OPTION_SEPARATOR },
+        {
+          label: t('contextMenus.editor.resetBackgroundColor'),
+          icon: RotateCcw,
+          onClick: () => {
+            if (!appSettings) return;
+            const { editorBackgroundColor: _, ...rest } = appSettings;
+            handleSettingsChange(rest as AppSettings);
+          },
+        },
+      ];
+
       const options: Array<Option> = [
         {
           label: t('contextMenus.editor.exportImage'),
           icon: FileInput,
           onClick: () => setRightPanel(Panel.Export),
+        },
+        { type: OPTION_SEPARATOR },
+        {
+          label: t('contextMenus.editor.backgroundColor'),
+          icon: Palette,
+          submenu: backgroundColorSubmenu,
         },
         { type: OPTION_SEPARATOR },
         { label: t('contextMenus.editor.undo'), icon: Undo, onClick: undo, disabled: !canUndo },

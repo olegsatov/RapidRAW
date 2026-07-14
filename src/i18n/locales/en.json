@@ -215,6 +215,7 @@
     },
     "editor": {
       "autoAdjust": "Auto Adjust Image",
+      "backgroundColor": "Background color",
       "cancel": "Cancel",
       "colorLabel": "Color Label",
       "confirmReset": "Confirm Reset",
@@ -235,6 +236,7 @@
       "ratingLabel_other": "{{count}} Stars",
       "redo": "Redo",
       "resetAdjustments": "Reset Adjustments",
+      "resetBackgroundColor": "Reset background color",
       "stitchPanorama": "Stitch Panorama",
       "tagging": "Tagging",
       "undo": "Undo"

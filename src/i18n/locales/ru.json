@@ -215,6 +215,7 @@
     },
     "editor": {
       "autoAdjust": "Автонастройка изображения",
+      "backgroundColor": "Цвет фона",
       "cancel": "Отмена",
       "colorLabel": "Цветовая метка",
       "confirmReset": "Подтвердить сброс",
@@ -235,6 +236,7 @@
       "ratingLabel_other": "{{count}} звезд",
       "redo": "Повторить",
       "resetAdjustments": "Сбросить настройки",
+      "resetBackgroundColor": "Сбросить цвет фона",
       "stitchPanorama": "Сшить панораму",
       "tagging": "Теги",
       "undo": "Отменить"
