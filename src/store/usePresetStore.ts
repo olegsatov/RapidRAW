@@ -362,7 +362,7 @@ export const usePresetStore = create<PresetState>((set, get) => {
           const found = item.folder.children.find((p: any) => p.id === presetId);
           if (found) {
             presetToDuplicate = found;
-            sourceFolderId = item.folder.id;
+            sourceFolderId = item.folder.id ?? null;
             break;
           }
         }
@@ -417,7 +417,7 @@ export const usePresetStore = create<PresetState>((set, get) => {
           const found = item.folder.children.find((p: any) => p.id === presetId);
           if (found) {
             presetToMove = found;
-            sourceFolderId = item.folder.id;
+            sourceFolderId = item.folder.id ?? null;
             break;
           }
         }
