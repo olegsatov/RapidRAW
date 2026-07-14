@@ -1,28 +1,44 @@
-import { useState, useEffect, useCallback, KeyboardEvent } from 'react';
+import { useCallback, useEffect, useMemo, useState, KeyboardEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 import Text from '../ui/Text';
 import { TextVariants } from '../../types/typography';
 import Button from '../ui/Button';
 import PasteModeSwitch from '../ui/PasteModeSwitch';
 import AdjustmentKeyPicker from '../ui/AdjustmentKeyPicker';
-import { Preset } from '../ui/AppProperties';
+import HotkeyCapture from '../ui/HotkeyCapture';
+import { Preset, AppSettings } from '../ui/AppProperties';
 import { COPYABLE_ADJUSTMENT_KEYS, PasteMode } from '../../utils/adjustments';
 import { getPresetMode, getPresetIncludedAdjustments } from '../../utils/presetUtils';
+import { KEYBIND_DEFINITIONS } from '../../utils/keyboardUtils';
+import { usePresetStore } from '../../store/usePresetStore';
+import { useSettingsStore } from '../../store/useSettingsStore';
 
 interface ConfigurePresetModalProps {
   isOpen: boolean;
   onClose(): void;
-  onSave(name: string, mode: PasteMode, includedAdjustments: string[]): void;
+  onSave(name: string, mode: PasteMode, includedAdjustments: string[], hotkey: string[] | null): void;
   initialPreset?: Preset | null;
+  osPlatform: string;
 }
 
-export default function ConfigurePresetModal({ isOpen, onClose, onSave, initialPreset }: ConfigurePresetModalProps) {
+export default function ConfigurePresetModal({
+  isOpen,
+  onClose,
+  onSave,
+  initialPreset,
+  osPlatform,
+}: ConfigurePresetModalProps) {
   const { t } = useTranslation();
   const [name, setName] = useState('');
   const [mode, setMode] = useState<PasteMode>(PasteMode.Replace);
   const [includedAdjustments, setIncludedAdjustments] = useState<string[]>(COPYABLE_ADJUSTMENT_KEYS);
   const [isMounted, setIsMounted] = useState(false);
   const [show, setShow] = useState(false);
+  const [hotkey, setHotkey] = useState<string[] | null>(null);
+
+  const appSettings = useSettingsStore((s) => s.appSettings);
+  const updatePreset = usePresetStore((s) => s.updatePreset);
+  const allPresets = usePresetStore((s) => s.flattenPresets());
 
   useEffect(() => {
     if (isOpen) {
@@ -31,6 +47,7 @@ export default function ConfigurePresetModal({ isOpen, onClose, onSave, initialP
       setIncludedAdjustments(
         initialPreset ? getPresetIncludedAdjustments(initialPreset) : [...COPYABLE_ADJUSTMENT_KEYS],
       );
+      setHotkey(initialPreset?.hotkey ?? null);
       setIsMounted(true);
       const timer = setTimeout(() => setShow(true), 10);
       return () => clearTimeout(timer);
@@ -41,17 +58,61 @@ export default function ConfigurePresetModal({ isOpen, onClose, onSave, initialP
         setName('');
         setMode(PasteMode.Replace);
         setIncludedAdjustments([...COPYABLE_ADJUSTMENT_KEYS]);
+        setHotkey(null);
       }, 300);
       return () => clearTimeout(timer);
     }
   }, [isOpen, initialPreset]);
 
+  const conflict = useMemo(() => {
+    if (!hotkey || hotkey.length === 0) return null;
+    const key = hotkey.join('+');
+    const userKb = appSettings?.keybinds || {};
+    for (const def of KEYBIND_DEFINITIONS) {
+      const combo = userKb[def.action]?.length ? userKb[def.action] : def.defaultCombo;
+      if (combo && combo.join('+') === key) {
+        return { type: 'app' as const, label: t(def.description as any) as string };
+      }
+    }
+    for (const preset of allPresets) {
+      if (preset.id === initialPreset?.id) continue;
+      if (preset.hotkey && preset.hotkey.join('+') === key) {
+        return { type: 'preset' as const, label: preset.name };
+      }
+    }
+    return null;
+  }, [hotkey, appSettings?.keybinds, allPresets, initialPreset?.id, t]);
+
+  const handleOverwrite = useCallback(() => {
+    if (!hotkey || hotkey.length === 0 || !conflict) return;
+
+    if (conflict.type === 'app') {
+      const newKeybinds = { ...(appSettings?.keybinds || {}) };
+      for (const def of KEYBIND_DEFINITIONS) {
+        const combo = newKeybinds[def.action]?.length ? newKeybinds[def.action] : def.defaultCombo;
+        if (combo && combo.join('+') === hotkey.join('+')) {
+          newKeybinds[def.action] = [];
+          break;
+        }
+      }
+      useSettingsStore.getState().handleSettingsChange({ ...appSettings, keybinds: newKeybinds } as AppSettings);
+    } else {
+      const key = hotkey.join('+');
+      for (const preset of allPresets) {
+        if (preset.id !== initialPreset?.id && preset.hotkey?.join('+') === key) {
+          updatePreset(preset.id, (p) => ({ ...p, hotkey: null }));
+          break;
+        }
+      }
+    }
+  }, [hotkey, conflict, appSettings, allPresets, updatePreset, initialPreset?.id]);
+
   const handleSave = useCallback(() => {
     if (name.trim()) {
-      onSave(name.trim(), mode, includedAdjustments);
+      onSave(name.trim(), mode, includedAdjustments, hotkey);
       onClose();
     }
-  }, [name, mode, includedAdjustments, onSave, onClose]);
+  }, [name, mode, includedAdjustments, hotkey, onSave, onClose]);
 
   const handleKeyDown = useCallback(
     (e: KeyboardEvent<HTMLInputElement>) => {
@@ -116,6 +177,19 @@ export default function ConfigurePresetModal({ isOpen, onClose, onSave, initialP
           </div>
 
           <AdjustmentKeyPicker includedAdjustments={includedAdjustments} onChange={setIncludedAdjustments} />
+
+          <div>
+            <Text variant={TextVariants.heading} className="block mb-2">
+              {t('modals.configurePreset.hotkey')}
+            </Text>
+            <HotkeyCapture
+              combo={hotkey}
+              onChange={setHotkey}
+              osPlatform={osPlatform}
+              conflict={conflict}
+              onOverwrite={handleOverwrite}
+            />
+          </div>
         </div>
 
         <div className="flex justify-end gap-3 mt-6 pt-4 border-t border-surface">

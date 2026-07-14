@@ -12,6 +12,8 @@ import {
 } from '@dnd-kit/core';
 import { useTranslation } from 'react-i18next';
 import { PresetListType, usePresets, UserPreset } from '../../hooks/usePresets';
+import { usePresetStore } from '../../store/usePresetStore';
+import { useSettingsStore } from '../../store/useSettingsStore';
 import { useContextMenu } from '../../context/ContextMenuContext';
 import {
   CopyPlus,
@@ -462,6 +464,7 @@ export default function PresetsBrowser({ isVisible, onNavigateToCommunity }: Pre
   const selectedImage = useEditorStore((s) => s.selectedImage);
   const adjustments = useEditorStore((s) => s.adjustments);
   const setEditor = useEditorStore((s) => s.setEditor);
+  const osPlatform = useSettingsStore((s) => s.osPlatform);
   const { setAdjustments } = useEditorActions();
 
   const {
@@ -828,15 +831,22 @@ export default function PresetsBrowser({ isVisible, onNavigateToCommunity }: Pre
     [setAdjustments],
   );
 
-  const handleSaveConfiguredPreset = async (name: string, mode: PasteMode, includedAdjustments: string[]) => {
+  const handleSaveConfiguredPreset = async (
+    name: string,
+    mode: PasteMode,
+    includedAdjustments: string[],
+    hotkey: string[] | null,
+  ) => {
     if (configureModalState.preset) {
       const updated = configurePreset(configureModalState.preset.id, name, mode, includedAdjustments);
       if (updated) {
+        usePresetStore.getState().updatePreset(updated.id, (p) => ({ ...p, hotkey }));
         await generateSinglePreview(updated);
       }
     } else {
       const newPreset = addPreset(name, null, mode, includedAdjustments);
       if (newPreset) {
+        usePresetStore.getState().updatePreset(newPreset.id, (p) => ({ ...p, hotkey }));
         await generateSinglePreview(newPreset);
       }
     }
@@ -1255,6 +1265,7 @@ export default function PresetsBrowser({ isVisible, onNavigateToCommunity }: Pre
           initialPreset={configureModalState.preset}
           onClose={() => setConfigureModalState({ isOpen: false, preset: null })}
           onSave={handleSaveConfiguredPreset}
+          osPlatform={osPlatform}
         />
         <CreateFolderModal
           isOpen={isAddFolderModalOpen}
