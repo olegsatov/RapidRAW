@@ -9,7 +9,7 @@ interface ResizerProps {
 
 const Resizer = ({ direction, onMouseDown }: ResizerProps) => (
   <div
-    className={clsx('shrink-0 bg-transparent z-10 touch-none', {
+    className={clsx('shrink-0 z-10 touch-none flex items-center justify-center', {
       'w-2 cursor-col-resize': direction === Orientation.Vertical,
       'h-2 cursor-row-resize': direction === Orientation.Horizontal,
     })}
@@ -17,7 +17,14 @@ const Resizer = ({ direction, onMouseDown }: ResizerProps) => (
     aria-orientation={direction === Orientation.Vertical ? 'vertical' : 'horizontal'}
     onPointerDown={onMouseDown}
     style={{ touchAction: 'none' }}
-  />
+  >
+    <div
+      className={clsx('bg-border-color', {
+        'w-px h-full': direction === Orientation.Vertical,
+        'h-px w-full': direction === Orientation.Horizontal,
+      })}
+    />
+  </div>
 );
 
 export default Resizer;
