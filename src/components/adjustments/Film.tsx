@@ -1,7 +1,5 @@
 import { useTranslation } from 'react-i18next';
 import Slider from '../ui/Slider';
-import Text from '../ui/Text';
-import { TextVariants } from '../../types/typography';
 import { Adjustments, FilmAdjustment } from '../../utils/adjustments';
 import { FILM_PROFILE_NAMES, filmProfilePatch } from '../../utils/filmProfiles';
 import Dropdown from '../ui/Dropdown';
@@ -97,30 +95,6 @@ export default function FilmPanel({ adjustments, setAdjustments, onDragStateChan
           label={t('adjustments.effects.filmCross')}
           checked={!!adjustments.filmCross}
           onChange={(v: boolean) => setAdjustments((prev: Partial<Adjustments>) => ({ ...prev, filmCross: v }))}
-        />
-      </div>
-
-      <div className="p-2 bg-bg-tertiary rounded-md">
-        <Text variant={TextVariants.heading} className="mb-2">
-          {t('adjustments.effects.tone')}
-        </Text>
-        <Slider
-          label={t('adjustments.basic.shadows')}
-          max={100}
-          min={-100}
-          onChange={(e: any) => handleAdjustmentChange(FilmAdjustment.FilmShadows, e.target.value)}
-          step={1}
-          value={adjustments.filmShadows}
-          onDragStateChange={onDragStateChange}
-        />
-        <Slider
-          label={t('adjustments.basic.highlights')}
-          max={100}
-          min={-100}
-          onChange={(e: any) => handleAdjustmentChange(FilmAdjustment.FilmHighlights, e.target.value)}
-          step={1}
-          value={adjustments.filmHighlights}
-          onDragStateChange={onDragStateChange}
         />
       </div>
     </div>
