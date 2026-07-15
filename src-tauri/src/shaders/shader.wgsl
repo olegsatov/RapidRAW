@@ -1253,6 +1253,29 @@ fn sample_lut_tetrahedral(uv: vec3<f32>) -> vec3<f32> {
     return res;
 }
 
+fn prepare_lut_input(hdr: vec3<f32>) -> vec3<f32> {
+    if (adjustments.global.lut_normalize_mode == 0u) {
+        return clamp(hdr, vec3(0.0), vec3(1.0));
+    }
+
+    let offset_lin = pow(2.0, adjustments.global.lut_input_offset);
+    let range_lin  = pow(2.0, adjustments.global.lut_input_range);
+    var t = hdr * offset_lin / range_lin;
+
+    if (adjustments.global.lut_shoulder > 0.0) {
+        let s = adjustments.global.lut_shoulder;
+        t = t * (1.0 + s) / (1.0 + s * t);
+    }
+
+    if (adjustments.global.lut_normalize_mode == 1u) {
+        return clamp(t, vec3(0.0), vec3(1.0));
+    }
+
+    // log mode
+    return clamp(log2(max(t, vec3(1e-6))) / adjustments.global.lut_input_range + vec3(1.0),
+                 vec3(0.0), vec3(1.0));
+}
+
 fn apply_glow_bloom(
     color: vec3<f32>,
     blurred_color_input_space: vec3<f32>,
@@ -1533,6 +1556,13 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
         }
     }
 
+    if (adjustments.global.lut_timing == 1u && adjustments.global.has_lut == 1u) {
+        let lut_in = prepare_lut_input(composite_rgb_linear);
+        let lut_color = sample_lut_tetrahedral(lut_in);
+        composite_rgb_linear = mix(composite_rgb_linear, lut_color,
+                                   adjustments.global.lut_intensity);
+    }
+
     var base_srgb: vec3<f32>;
     if (adjustments.global.tonemapper_mode == 1u) {
         base_srgb = agx_full_transform(composite_rgb_linear);
@@ -1599,7 +1629,7 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
         }
     }
 
-    if (adjustments.global.has_lut == 1u) {
+    if (adjustments.global.lut_timing == 0u && adjustments.global.has_lut == 1u) {
         let lut_color = sample_lut_tetrahedral(final_rgb);
         final_rgb = mix(final_rgb, lut_color, adjustments.global.lut_intensity);
     }
