@@ -7,6 +7,7 @@ import { AnimatePresence, motion } from 'framer-motion';
 import { useContextMenu } from '../../context/ContextMenuContext';
 import { toast } from 'react-toastify';
 import Slider from './Slider';
+import Dropdown from './Dropdown';
 import { useEditorStore } from '../../store/useEditorStore';
 import { useSettingsStore } from '../../store/useSettingsStore';
 
@@ -24,9 +25,19 @@ interface LUTControlProps {
   lutPath: string | null;
   lutName: string | null;
   lutIntensity: number;
+  lutTiming?: 'after' | 'before';
+  lutNormalizeMode?: 'clamp' | 'linear' | 'log';
+  lutInputRange?: number;
+  lutInputOffset?: number;
+  lutShoulder?: number;
   onLutSelect: (path: string) => void;
   onLutHover?: (path: string | null) => void;
   onIntensityChange: (intensity: number) => void;
+  onTimingChange?: (timing: 'after' | 'before') => void;
+  onNormalizeModeChange?: (mode: 'clamp' | 'linear' | 'log') => void;
+  onInputRangeChange?: (range: number) => void;
+  onInputOffsetChange?: (offset: number) => void;
+  onShoulderChange?: (shoulder: number) => void;
   onClear: () => void;
   onDragStateChange?: (isDragging: boolean) => void;
 }
@@ -37,9 +48,19 @@ export default function LUTControl({
   lutPath,
   lutName,
   lutIntensity,
+  lutTiming = 'after',
+  lutNormalizeMode = 'clamp',
+  lutInputRange = 6,
+  lutInputOffset = 0,
+  lutShoulder = 0,
   onLutSelect,
   onLutHover,
   onIntensityChange,
+  onTimingChange,
+  onNormalizeModeChange,
+  onInputRangeChange,
+  onInputOffsetChange,
+  onShoulderChange,
   onClear,
   onDragStateChange,
 }: LUTControlProps) {
@@ -154,7 +175,7 @@ export default function LUTControl({
               console.error('Failed to resolve Android URI:', e);
               return path;
             }
-          })
+          }),
         );
         const allowedExtensions = new Set(['cube', '3dl']);
         validPaths = sourcePaths.filter((_, index) => {
@@ -297,10 +318,62 @@ export default function LUTControl({
                 step={1}
                 value={lutIntensity}
                 defaultValue={100}
-                onChange={(e) => onIntensityChange(parseInt(e.target.value, 10))}
+                onChange={(e) => onIntensityChange(parseInt(String(e.target.value), 10))}
                 onDragStateChange={onDragStateChange}
                 fillOrigin="min"
               />
+              <Dropdown
+                value={lutTiming}
+                options={[
+                  { value: 'after', label: t('ui.lut.timingAfter') },
+                  { value: 'before', label: t('ui.lut.timingBefore') },
+                ]}
+                onChange={(value) => onTimingChange?.(value as 'after' | 'before')}
+              />
+              <Dropdown
+                value={lutNormalizeMode}
+                options={[
+                  { value: 'clamp', label: t('ui.lut.normalizeClamp') },
+                  { value: 'linear', label: t('ui.lut.normalizeLinear') },
+                  { value: 'log', label: t('ui.lut.normalizeLog') },
+                ]}
+                onChange={(value) => onNormalizeModeChange?.(value as 'clamp' | 'linear' | 'log')}
+              />
+              <div className={lutNormalizeMode === 'clamp' ? 'opacity-50 pointer-events-none' : ''}>
+                <Slider
+                  label={t('ui.lut.inputRange')}
+                  min={0}
+                  max={8}
+                  step={0.5}
+                  value={lutInputRange}
+                  defaultValue={6}
+                  onChange={(e) => onInputRangeChange?.(parseFloat(String(e.target.value)))}
+                  onDragStateChange={onDragStateChange}
+                  fillOrigin="min"
+                />
+                <Slider
+                  label={t('ui.lut.inputOffset')}
+                  min={-4}
+                  max={4}
+                  step={0.5}
+                  value={lutInputOffset}
+                  defaultValue={0}
+                  onChange={(e) => onInputOffsetChange?.(parseFloat(String(e.target.value)))}
+                  onDragStateChange={onDragStateChange}
+                  fillOrigin="min"
+                />
+                <Slider
+                  label={t('ui.lut.shoulder')}
+                  min={0}
+                  max={100}
+                  step={1}
+                  value={lutShoulder}
+                  defaultValue={0}
+                  onChange={(e) => onShoulderChange?.(parseInt(String(e.target.value), 10))}
+                  onDragStateChange={onDragStateChange}
+                  fillOrigin="min"
+                />
+              </div>
             </div>
           </motion.div>
         )}
