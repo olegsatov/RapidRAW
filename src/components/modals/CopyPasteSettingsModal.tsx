@@ -71,7 +71,7 @@ export default function CopyPasteSettingsModal({ isOpen, onClose, onSave, settin
       role="dialog"
     >
       <div
-        className={`bg-surface rounded-lg shadow-xl p-6 w-full max-w-2xl flex flex-col transform transition-all duration-300 ease-out ${
+        className={`bg-surface rounded-lg shadow-xl p-6 w-full max-w-md max-h-[90vh] flex flex-col transform transition-all duration-300 ease-out ${
           show ? 'scale-100 opacity-100 translate-y-0' : 'scale-95 opacity-0 -translate-y-4'
         }`}
         onClick={(e) => e.stopPropagation()}

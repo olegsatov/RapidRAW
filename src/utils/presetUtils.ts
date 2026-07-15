@@ -5,6 +5,7 @@ import {
   BwAdjustment,
   COPYABLE_ADJUSTMENT_KEYS,
   CreativeAdjustment,
+  Effect,
   FilmAdjustment,
   INITIAL_ADJUSTMENTS,
   LensAdjustment,
@@ -13,22 +14,6 @@ import {
 
 const MASK_KEYS = ADJUSTMENT_GROUPS.masks.flatMap((group) => group.keys);
 const GEOMETRY_KEYS = ADJUSTMENT_GROUPS.geometry.flatMap((group) => group.keys);
-
-const FILM_LOOK_KEYS = [
-  FilmAdjustment.FilmProfile,
-  FilmAdjustment.FilmStrength,
-  FilmAdjustment.FilmContrast,
-  FilmAdjustment.FilmSaturation,
-  FilmAdjustment.FilmRolloff,
-  FilmAdjustment.FilmBleed,
-  FilmAdjustment.FilmCross,
-  FilmAdjustment.FilmBaseColor,
-  FilmAdjustment.FilmShadowTint,
-  FilmAdjustment.FilmCurves,
-  FilmAdjustment.FilmShadows,
-  FilmAdjustment.FilmHighlights,
-  FilmAdjustment.FilmBlur,
-];
 
 const BLACK_AND_WHITE_KEYS = [BwAdjustment.BwRed, BwAdjustment.BwGreen, BwAdjustment.BwBlue];
 
@@ -50,21 +35,39 @@ const FILM_EFFECTS_KEYS = [
   CreativeAdjustment.GlowAmount,
   CreativeAdjustment.HalationAmount,
   CreativeAdjustment.FlareAmount,
-  FilmAdjustment.FlimWarmth,
+  'centré',
   FilmAdjustment.FlimAdjacency,
+  FilmAdjustment.FlimWarmth,
   FilmAdjustment.FlimHiTint,
   FilmAdjustment.FlimShTint,
   FilmAdjustment.FilmBlurPreAmount,
+  FilmAdjustment.FilmBlurPreCompensation,
   FilmAdjustment.FilmBlurPreRadius,
   FilmAdjustment.FilmBlurPreSoftAmount,
   FilmAdjustment.FilmBlurPreSoftRadius,
+  Effect.VignetteAmount,
+  Effect.VignetteFeather,
+  Effect.VignetteMidpoint,
+  Effect.VignetteRoundness,
+];
+
+const LUT_KEYS = [
+  Effect.LutIntensity,
+  Effect.LutName,
+  Effect.LutPath,
+  Effect.LutSize,
+  Effect.LutTiming,
+  Effect.LutNormalizeMode,
+  Effect.LutInputRange,
+  Effect.LutInputOffset,
+  Effect.LutData,
 ];
 
 export const PRESET_SECTION_VISIBILITY_KEYS: Record<string, string[]> = {
-  film: FILM_LOOK_KEYS,
   blackAndWhite: BLACK_AND_WHITE_KEYS,
   grain: GRAIN_KEYS,
   filmEffects: FILM_EFFECTS_KEYS,
+  lut: LUT_KEYS,
 };
 
 export function getPresetMode(preset: Preset): PasteMode {

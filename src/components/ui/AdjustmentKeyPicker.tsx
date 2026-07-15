@@ -58,26 +58,27 @@ const AdjustmentKeyPicker = ({ includedAdjustments, onChange }: AdjustmentKeyPic
           </Button>
         </div>
       </div>
-      <div className="bg-bg-primary p-4 rounded-md max-h-64 overflow-y-auto">
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-x-4 gap-y-6">
+      <div className="bg-bg-primary p-4 rounded-md max-h-[400px] overflow-y-auto">
+        <div className="flex flex-col gap-4">
           {(Object.entries(ADJUSTMENT_GROUPS) as [SectionKey, AdjustmentGroup[]][]).map(([section, groups]) => (
             <div key={section}>
               <Text variant={TextVariants.heading} className="mb-2">
                 {t(`editor.adjustments.sections.${section}`)}
               </Text>
-              {groups.map((group) => {
-                const isFullyChecked = group.keys.every((key) => includedAdjustments.includes(key));
+              <div className="flex flex-col gap-1">
+                {groups.map((group) => {
+                  const isFullyChecked = group.keys.every((key) => includedAdjustments.includes(key));
 
-                return (
-                  <div key={group.label} className="mb-1.5 last:mb-0">
+                  return (
                     <Switch
+                      key={group.label}
                       label={t(group.label as GroupLabelKey)}
                       checked={isFullyChecked}
                       onChange={(checked) => handleGroupToggle(group.keys, checked)}
                     />
-                  </div>
-                );
-              })}
+                  );
+                })}
+              </div>
             </div>
           ))}
         </div>

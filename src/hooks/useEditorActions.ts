@@ -98,13 +98,11 @@ export function useEditorActions() {
           lutPath: path,
           lutName: name,
           lutSize: result.size,
-          lutIntensity: 100,
-          lutTiming: 'after',
-          lutNormalizeMode: 'clamp',
-          lutInputRange: 6,
-          lutInputOffset: 0,
-          lutShoulder: 0,
-          sectionVisibility: { ...(prev.sectionVisibility || INITIAL_ADJUSTMENTS.sectionVisibility), effects: true },
+          sectionVisibility: {
+            ...(prev.sectionVisibility || INITIAL_ADJUSTMENTS.sectionVisibility),
+            effects: true,
+            lut: true,
+          },
         }));
       } catch (err) {
         toast.error(`Failed to load LUT: ${err}`);
@@ -221,7 +219,8 @@ export function useEditorActions() {
 
       if (!copiedAdjustments || !appSettings) return;
 
-      const { mode, includedAdjustments } = appSettings.copyPasteSettings;
+      const mode = appSettings.copyPasteSettings?.mode ?? PasteMode.Replace;
+      const includedAdjustments = appSettings.copyPasteSettings?.includedAdjustments ?? COPYABLE_ADJUSTMENT_KEYS;
       const includedSet = new Set(includedAdjustments);
       const adjustmentsToApply: Partial<Adjustments> = {};
 

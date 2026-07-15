@@ -2109,23 +2109,6 @@ pub fn is_image_edited(
     bytemuck::bytes_of(&current_adj) != bytemuck::bytes_of(&default_adj)
 }
 
-// Film simulation: parse a [r, g, b] 0-255 array into a padded 0..1 vec.
-fn parse_film_color(value: &serde_json::Value, default: [f32; 3]) -> [f32; 4] {
-    let arr = value.as_array();
-    let channel = |i: usize, d: f32| -> f32 {
-        arr.and_then(|a| a.get(i))
-            .and_then(|v| v.as_f64())
-            .map(|v| (v as f32 / 255.0).clamp(0.0, 1.0))
-            .unwrap_or(d)
-    };
-    [
-        channel(0, default[0]),
-        channel(1, default[1]),
-        channel(2, default[2]),
-        0.0,
-    ]
-}
-
 // Film curves: flat 768-entry array (r,g,b interleaved, 0..1) -> 16x16 chunks of
 // padded vec3 (arrays > 32 lack Default, hence the chunking). Falls back to the
 // identity curve so a stale/partial sidecar can never black out the image.
@@ -2947,39 +2930,27 @@ fn get_global_adjustments_from_json(
             Some(15.0),
         ),
 
-        film_strength: get_val("film", "filmStrength", 100.0, None),
-        film_contrast: get_val("film", "filmContrast", 100.0, Some(100.0)),
-        film_saturation: get_val("film", "filmSaturation", 100.0, Some(100.0)),
-        film_rolloff: get_val("film", "filmRolloff", 100.0, None),
-        film_bleed: get_val("film", "filmBleed", 100.0, None),
-        film_cross: if is_visible("film") && js_adjustments["filmCross"].as_bool().unwrap_or(false) {
-            1.0
-        } else {
-            0.0
-        },
+        // Old Film Simulation (Krea port) keys were removed from the frontend
+        // after the Looks panel was deleted. The section is never visible now,
+        // so these fields are kept at their "off" defaults to preserve the
+        // GPU uniform layout without reading deleted JSON keys.
+        film_strength: 0.0,
+        film_contrast: 1.0,
+        film_saturation: 1.0,
+        film_rolloff: 0.0,
+        film_bleed: 0.0,
+        film_cross: 0.0,
         _pad_film1: 0.0,
         _pad_film2: 0.0,
-        film_base_color: if is_visible("film") {
-            parse_film_color(&js_adjustments["filmBaseColor"], [1.0, 1.0, 1.0])
-        } else {
-            [1.0, 1.0, 1.0, 0.0]
-        },
-        film_shadow_tint: if is_visible("film") {
-            parse_film_color(&js_adjustments["filmShadowTint"], [0.0, 0.0, 0.0])
-        } else {
-            [0.0, 0.0, 0.0, 0.0]
-        },
-        film_curves: if is_visible("film") {
-            parse_film_curves(&js_adjustments["filmCurves"])
-        } else {
-            parse_film_curves(&serde_json::Value::Null)
-        },
+        film_base_color: [1.0, 1.0, 1.0, 0.0],
+        film_shadow_tint: [0.0, 0.0, 0.0, 0.0],
+        film_curves: parse_film_curves(&serde_json::Value::Null),
 
         // Extended film dials. shadows/highlights raw -100..100;
         // blur 0..1 (sigma = *3 px in the post-pass).
-        film_shadows: get_val("film", "filmShadows", 1.0, None),
-        film_highlights: get_val("film", "filmHighlights", 1.0, None),
-        film_blur: get_val("film", "filmBlur", 100.0, None),
+        film_shadows: 1.0,
+        film_highlights: 1.0,
+        film_blur: 0.0,
         film_blur_pre_amount: if tone_mapper == "flim" && film_effects_on {
             js_adjustments["filmBlurPreAmount"].as_f64().unwrap_or(0.0) as f32 / 100.0
         } else {
@@ -4413,15 +4384,15 @@ mod film_layout_tests {
     fn film_tab_modules_follow_panel_toggle() {
         let base = serde_json::json!({
             "toneMapper": "basic",
-            "sectionVisibility": { "film": true, "blackAndWhite": true },
-            "filmContrast": 130,
+            "sectionVisibility": { "blackAndWhite": true },
+            "flimEv": 0.5,
+            "flimPreset": 0,
             "crystalGrainAmount": 50,
             "bwRed": 33, "bwGreen": 33, "bwBlue": 33
         });
-        // Panel OFF (non-flim tonemapper): film sim, crystal grain and B&W
-        // are gated out even though their sections are marked visible.
+        // Panel OFF (non-flim tonemapper): crystal grain and B&W are gated out
+        // even though their sections are marked visible.
         let off = get_global_adjustments_from_json(&base, true, None);
-        assert_eq!(off.film_contrast, 1.0, "film sim must be gated when panel is off");
         assert_eq!(off.crystal_grain_amount, 0.0, "crystal grain must be gated when panel is off");
         assert_eq!(off.bw_weights[3], 0.0, "B&W must be gated when panel is off");
 
@@ -4429,7 +4400,7 @@ mod film_layout_tests {
         let mut on_json = base.clone();
         on_json["toneMapper"] = serde_json::json!("flim");
         let on = get_global_adjustments_from_json(&on_json, true, None);
-        assert!((on.film_contrast - 1.3).abs() < 1e-6);
+        assert!((on.flim_ev - 4.8).abs() < 1e-6, "flim EV must include preset pre-exposure + user offset");
         assert!((on.crystal_grain_amount - 0.5).abs() < 1e-6);
         assert_eq!(on.bw_weights[3], 1.0);
     }

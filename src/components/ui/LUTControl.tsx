@@ -1,15 +1,17 @@
 import { open } from '@tauri-apps/plugin-dialog';
 import { invoke } from '@tauri-apps/api/core';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { ChevronDown, ImageOff, Upload, X, Trash2 } from 'lucide-react';
+import { ImageOff, Upload, Trash2 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { AnimatePresence, motion } from 'framer-motion';
+import clsx from 'clsx';
 import { useContextMenu } from '../../context/ContextMenuContext';
 import { toast } from 'react-toastify';
 import Slider from './Slider';
-import Dropdown from './Dropdown';
+import Text from './Text';
 import { useEditorStore } from '../../store/useEditorStore';
 import { useSettingsStore } from '../../store/useSettingsStore';
+import { TextVariants } from '../../types/typography';
 
 interface LutEntry {
   name: string;
@@ -26,18 +28,14 @@ interface LUTControlProps {
   lutName: string | null;
   lutIntensity: number;
   lutTiming?: 'after' | 'before';
-  lutNormalizeMode?: 'clamp' | 'linear' | 'log' | 'hdr';
   lutInputRange?: number;
   lutInputOffset?: number;
-  lutShoulder?: number;
   onLutSelect: (path: string) => void;
   onLutHover?: (path: string | null) => void;
   onIntensityChange: (intensity: number) => void;
   onTimingChange?: (timing: 'after' | 'before') => void;
-  onNormalizeModeChange?: (mode: 'clamp' | 'linear' | 'log' | 'hdr') => void;
   onInputRangeChange?: (range: number) => void;
   onInputOffsetChange?: (offset: number) => void;
-  onShoulderChange?: (shoulder: number) => void;
   onClear: () => void;
   onDragStateChange?: (isDragging: boolean) => void;
 }
@@ -49,18 +47,14 @@ export default function LUTControl({
   lutName,
   lutIntensity,
   lutTiming = 'after',
-  lutNormalizeMode = 'clamp',
   lutInputRange = 6,
   lutInputOffset = 0,
-  lutShoulder = 0,
   onLutSelect,
   onLutHover,
   onIntensityChange,
   onTimingChange,
-  onNormalizeModeChange,
   onInputRangeChange,
   onInputOffsetChange,
-  onShoulderChange,
   onClear,
   onDragStateChange,
 }: LUTControlProps) {
@@ -69,7 +63,6 @@ export default function LUTControl({
   const selectedImagePath = useEditorStore((state) => state.selectedImage?.path ?? null);
   const isImageReady = useEditorStore((state) => state.selectedImage?.isReady ?? false);
 
-  const [isExpanded, setIsExpanded] = useState(false);
   const [entries, setEntries] = useState<LutEntry[]>([]);
   const [previews, setPreviews] = useState<Record<string, string | null>>({});
   const [isLoadingPreviews, setIsLoadingPreviews] = useState(false);
@@ -119,7 +112,7 @@ export default function LUTControl({
   }, [refreshList]);
 
   useEffect(() => {
-    if (!isExpanded || !selectedImagePath || !isImageReady || entries.length === 0) {
+    if (!selectedImagePath || !isImageReady || entries.length === 0) {
       return;
     }
     const cacheKey = `${selectedImagePath}|${entries.map((entry) => entry.path).join(',')}`;
@@ -151,7 +144,7 @@ export default function LUTControl({
     return () => {
       isActive = false;
     };
-  }, [isExpanded, selectedImagePath, isImageReady, entries]);
+  }, [selectedImagePath, isImageReady, entries]);
 
   const handleImport = async () => {
     try {
@@ -213,178 +206,131 @@ export default function LUTControl({
   };
 
   return (
-    <div className="mb-2">
-      <div className="flex justify-between items-center">
-        <span className="text-sm font-medium text-text-secondary select-none">{t('ui.lut.label')}</span>
-        <div className="flex items-center gap-1">
-          {lutName && (
-            <button
-              onClick={onClear}
-              className="flex items-center justify-center p-0.5 rounded-full bg-bg-tertiary hover:bg-surface text-text-secondary hover:text-text-primary transition-colors"
-              data-tooltip={t('ui.lut.clearLut')}
-            >
-              <X size={14} />
-            </button>
-          )}
+    <div className="space-y-3">
+      <Text variant={TextVariants.heading} className="mb-1">
+        {t('ui.lut.mode')}
+      </Text>
+      <div className="flex gap-1">
+        {(['after', 'before'] as const).map((timing) => (
           <button
-            onClick={() => setIsExpanded((value) => !value)}
-            className="flex items-center gap-1 text-sm text-text-secondary select-none cursor-pointer hover:text-accent transition-colors"
-            data-tooltip={lutName || t('ui.lut.selectLutFile')}
+            key={timing}
+            className={clsx(
+              'flex-1 px-2 py-1 text-sm font-medium rounded-md transition-colors',
+              lutTiming === timing
+                ? 'bg-accent text-button-text'
+                : 'bg-card-active text-text-secondary hover:bg-surface',
+            )}
+            onClick={() => onTimingChange?.(timing)}
           >
-            <span className="truncate max-w-35 text-right">{lutName || t('ui.lut.select')}</span>
-            <ChevronDown size={16} className={`transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`} />
+            {timing === 'after' ? t('ui.lut.timingAfter') : t('ui.lut.timingBefore')}
           </button>
-        </div>
+        ))}
       </div>
 
-      <AnimatePresence initial={false}>
-        {isExpanded && (
-          <motion.div
-            initial={{ height: 0, opacity: 0 }}
-            animate={{ height: 'auto', opacity: 1 }}
-            exit={{ height: 0, opacity: 0 }}
-            transition={{ duration: 0.25, ease: 'easeInOut' }}
-            className="overflow-hidden"
-          >
-            <div className="mt-2 pb-1">
-              {entries.length === 0 ? (
-                <button
-                  onClick={handleImport}
-                  className="w-full flex items-center justify-center gap-1.5 py-4 rounded-md bg-bg-tertiary hover:bg-surface border-2 border-dashed border-text-secondary/20 hover:border-text-secondary/40 text-sm text-text-primary transition-colors"
-                >
-                  <Upload size={16} />
-                  {t('ui.lut.import')}
-                </button>
-              ) : (
-                <div className="grid grid-cols-3 gap-2">
-                  {entries.map((entry) => {
-                    const thumb = previews[entry.path];
-                    const isSelected = entry.path === lutPath;
-                    return (
-                      <button
-                        key={entry.path}
-                        onMouseEnter={() => onLutHover?.(entry.path)}
-                        onMouseLeave={() => onLutHover?.(null)}
-                        onClick={() => handleSwatchClick(entry.path)}
-                        onContextMenu={(e) => handleContextMenu(e, entry)}
-                        className={`relative aspect-square rounded-md overflow-hidden bg-bg-tertiary border-2 transition-colors ${
-                          isSelected ? 'border-accent' : 'border-transparent hover:border-surface'
-                        }`}
-                        data-tooltip={entry.name}
-                      >
-                        {isLoadingPreviews && thumb === undefined ? (
-                          <div className="w-full h-full animate-pulse bg-surface" />
-                        ) : thumb ? (
-                          <img src={thumb} alt={entry.name} className="w-full h-full object-cover" draggable={false} />
-                        ) : (
-                          <div className="w-full h-full flex items-center justify-center text-text-secondary">
-                            <ImageOff size={18} />
-                          </div>
-                        )}
-                        <span className="absolute inset-x-0 bottom-0 px-1 py-0.5 text-[10px] text-white bg-black/50 truncate text-left">
-                          {entry.name}
-                        </span>
-                      </button>
-                    );
-                  })}
-                  <button
-                    onClick={handleImport}
-                    className="aspect-square rounded-md bg-bg-tertiary border-2 border-text-secondary/25 hover:border-accent flex items-center justify-center text-text-secondary hover:text-text-primary transition-all duration-150"
-                    data-tooltip={t('ui.lut.import')}
-                  >
-                    <Upload size={20} />
-                  </button>
-                </div>
-              )}
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      <Text variant={TextVariants.heading} className="mb-1">
+        {t('ui.lut.parameters')}
+      </Text>
+      <Slider
+        label={t('ui.lut.intensity')}
+        min={0}
+        max={100}
+        step={1}
+        value={lutIntensity}
+        defaultValue={100}
+        onChange={(e) => onIntensityChange(parseInt(String(e.target.value), 10))}
+        onDragStateChange={onDragStateChange}
+        fillOrigin="min"
+      />
 
       <AnimatePresence initial={false}>
-        {lutName && (
+        {lutTiming === 'before' && (
           <motion.div
             initial={{ height: 0, opacity: 0 }}
             animate={{ height: 'auto', opacity: 1 }}
             exit={{ height: 0, opacity: 0 }}
             transition={{ duration: 0.2, ease: 'easeInOut' }}
-            className="overflow-hidden"
+            className="overflow-hidden space-y-1"
           >
-            <div className="mt-2">
-              <Slider
-                label={t('ui.lut.intensity')}
-                min={0}
-                max={100}
-                step={1}
-                value={lutIntensity}
-                defaultValue={100}
-                onChange={(e) => onIntensityChange(parseInt(String(e.target.value), 10))}
-                onDragStateChange={onDragStateChange}
-                fillOrigin="min"
-              />
-              <Dropdown
-                value={lutTiming}
-                options={[
-                  { value: 'after', label: t('ui.lut.timingAfter') },
-                  { value: 'before', label: t('ui.lut.timingBefore') },
-                ]}
-                onChange={(value) => onTimingChange?.(value as 'after' | 'before')}
-              />
-              <Dropdown
-                value={lutNormalizeMode}
-                options={[
-                  { value: 'clamp', label: t('ui.lut.normalizeClamp') },
-                  { value: 'linear', label: t('ui.lut.normalizeLinear') },
-                  { value: 'log', label: t('ui.lut.normalizeLog') },
-                  { value: 'hdr', label: t('ui.lut.normalizeHdr') },
-                ]}
-                onChange={(value) => onNormalizeModeChange?.(value as 'clamp' | 'linear' | 'log' | 'hdr')}
-              />
-              <div className={lutNormalizeMode === 'clamp' ? 'opacity-50 pointer-events-none' : ''}>
-                <Slider
-                  label={t('ui.lut.inputRange')}
-                  min={0}
-                  max={32}
-                  step={0.5}
-                  value={lutInputRange}
-                  defaultValue={6}
-                  onChange={(e) => onInputRangeChange?.(parseFloat(String(e.target.value)))}
-                  onDragStateChange={onDragStateChange}
-                  fillOrigin="min"
-                />
-                <Slider
-                  label={t('ui.lut.inputOffset')}
-                  min={-16}
-                  max={16}
-                  step={0.5}
-                  value={lutInputOffset}
-                  defaultValue={0}
-                  onChange={(e) => onInputOffsetChange?.(parseFloat(String(e.target.value)))}
-                  onDragStateChange={onDragStateChange}
-                  fillOrigin="min"
-                />
-              </div>
-              <div
-                className={
-                  lutNormalizeMode === 'clamp' || lutNormalizeMode === 'hdr' ? 'opacity-50 pointer-events-none' : ''
-                }
-              >
-                <Slider
-                  label={t('ui.lut.shoulder')}
-                  min={0}
-                  max={400}
-                  step={1}
-                  value={lutShoulder}
-                  defaultValue={0}
-                  onChange={(e) => onShoulderChange?.(parseInt(String(e.target.value), 10))}
-                  onDragStateChange={onDragStateChange}
-                  fillOrigin="min"
-                />
-              </div>
-            </div>
+            <Slider
+              label={t('ui.lut.inputRange')}
+              min={0}
+              max={32}
+              step={0.5}
+              value={lutInputRange}
+              defaultValue={6}
+              onChange={(e) => onInputRangeChange?.(parseFloat(String(e.target.value)))}
+              onDragStateChange={onDragStateChange}
+              fillOrigin="min"
+            />
+            <Slider
+              label={t('ui.lut.inputOffset')}
+              min={-16}
+              max={16}
+              step={0.5}
+              value={lutInputOffset}
+              defaultValue={0}
+              onChange={(e) => onInputOffsetChange?.(parseFloat(String(e.target.value)))}
+              onDragStateChange={onDragStateChange}
+              fillOrigin="min"
+            />
           </motion.div>
         )}
       </AnimatePresence>
+
+      <Text variant={TextVariants.heading} className="mb-1">
+        {t('ui.lut.luts')}
+      </Text>
+      <div className="pt-1">
+        {entries.length === 0 ? (
+          <button
+            onClick={handleImport}
+            className="w-full flex items-center justify-center gap-1.5 py-4 rounded-md bg-bg-tertiary hover:bg-surface border-2 border-dashed border-text-secondary/20 hover:border-text-secondary/40 text-sm text-text-primary transition-colors"
+          >
+            <Upload size={16} />
+            {t('ui.lut.import')}
+          </button>
+        ) : (
+          <div className="grid grid-cols-3 gap-2">
+            {entries.map((entry) => {
+              const thumb = previews[entry.path];
+              const isSelected = entry.path === lutPath;
+              return (
+                <button
+                  key={entry.path}
+                  onMouseEnter={() => onLutHover?.(entry.path)}
+                  onMouseLeave={() => onLutHover?.(null)}
+                  onClick={() => handleSwatchClick(entry.path)}
+                  onContextMenu={(e) => handleContextMenu(e, entry)}
+                  className={`relative aspect-square rounded-md overflow-hidden bg-bg-tertiary border-2 transition-colors ${
+                    isSelected ? 'border-accent' : 'border-transparent hover:border-surface'
+                  }`}
+                  data-tooltip={entry.name}
+                >
+                  {isLoadingPreviews && thumb === undefined ? (
+                    <div className="w-full h-full animate-pulse bg-surface" />
+                  ) : thumb ? (
+                    <img src={thumb} alt={entry.name} className="w-full h-full object-cover" draggable={false} />
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center text-text-secondary">
+                      <ImageOff size={18} />
+                    </div>
+                  )}
+                  <span className="absolute inset-x-0 bottom-0 px-1 py-0.5 text-[10px] text-white bg-black/50 truncate text-left">
+                    {entry.name}
+                  </span>
+                </button>
+              );
+            })}
+            <button
+              onClick={handleImport}
+              className="aspect-square rounded-md bg-bg-tertiary border-2 border-text-secondary/25 hover:border-accent flex items-center justify-center text-text-secondary hover:text-text-primary transition-all duration-150"
+              data-tooltip={t('ui.lut.import')}
+            >
+              <Upload size={20} />
+            </button>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

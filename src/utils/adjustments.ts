@@ -84,7 +84,6 @@ export enum Effect {
   LutNormalizeMode = 'lutNormalizeMode',
   LutInputRange = 'lutInputRange',
   LutInputOffset = 'lutInputOffset',
-  LutShoulder = 'lutShoulder',
   VignetteAmount = 'vignetteAmount',
   VignetteFeather = 'vignetteFeather',
   VignetteMidpoint = 'vignetteMidpoint',
@@ -98,19 +97,6 @@ export enum CreativeAdjustment {
 }
 
 export enum FilmAdjustment {
-  FilmProfile = 'filmProfile',
-  FilmStrength = 'filmStrength',
-  FilmContrast = 'filmContrast',
-  FilmSaturation = 'filmSaturation',
-  FilmRolloff = 'filmRolloff',
-  FilmBleed = 'filmBleed',
-  FilmCross = 'filmCross',
-  FilmBaseColor = 'filmBaseColor',
-  FilmShadowTint = 'filmShadowTint',
-  FilmCurves = 'filmCurves',
-  FilmShadows = 'filmShadows',
-  FilmHighlights = 'filmHighlights',
-  FilmBlur = 'filmBlur',
   CrystalGrainAmount = 'crystalGrainAmount',
   CrystalGrainMono = 'crystalGrainMono',
   CrystalGrainFilling = 'crystalGrainFilling',
@@ -245,12 +231,6 @@ export interface Adjustments {
   crop: Crop | null;
   dehaze: number;
   exposure: number;
-  filmBaseColor: Array<number>;
-  filmBleed: number;
-  filmBlur: number;
-  filmContrast: number;
-  filmCross: boolean;
-  filmCurves: Array<number>;
   crystalGrainAmount: number;
   crystalGrainMono: number;
   crystalGrainFilling: number;
@@ -262,13 +242,6 @@ export interface Adjustments {
   ipolGrainSigmaFilter: number;
   ipolGrainMonteCarlo: number;
   grainEngine: string;
-  filmHighlights: number;
-  filmProfile: string | null;
-  filmRolloff: number;
-  filmSaturation: number;
-  filmShadows: number;
-  filmShadowTint: Array<number>;
-  filmStrength: number;
   flimPreset: number;
   flimEv: number;
   flimStrength: number;
@@ -347,7 +320,6 @@ export interface Adjustments {
   lutNormalizeMode?: 'clamp' | 'linear' | 'log' | 'hdr';
   lutInputRange?: number;
   lutInputOffset?: number;
-  lutShoulder?: number;
   masks: Array<MaskContainer>;
   orientationSteps: number;
   rotation: number;
@@ -631,19 +603,6 @@ export const INITIAL_MASK_CONTAINER: MaskContainer = {
   visible: true,
 };
 
-// Identity film curves (r=g=b=i/255, flat 768) — local copy to avoid a circular
-// import with filmProfiles.ts. Wire format must match Rust parse_film_curves.
-const buildIdentityFilmCurves = (): Array<number> => {
-  const out = new Array<number>(768);
-  for (let i = 0; i < 256; i++) {
-    const v = i / 255;
-    out[i * 3] = v;
-    out[i * 3 + 1] = v;
-    out[i * 3 + 2] = v;
-  }
-  return out;
-};
-
 // Absolute flim preset parameters, mirroring FLIM_PRESETS in
 // src-tauri/src/image_processing.rs (parity is enforced by the
 // flim_advanced_keys_match_builtin_presets test there). Selecting a preset
@@ -791,17 +750,11 @@ export const INITIAL_ADJUSTMENTS: Adjustments = {
   curveMode: 'point',
   dehaze: 0,
   exposure: 0,
-  filmBaseColor: [255, 255, 255],
-  filmBleed: 0,
-  filmBlur: 0,
   filmBlurPreAmount: 0,
   filmBlurPreRadius: 0.5,
   filmBlurPreCompensation: 0,
   filmBlurPreSoftAmount: 0,
   filmBlurPreSoftRadius: 0.5,
-  filmContrast: 100,
-  filmCross: false,
-  filmCurves: buildIdentityFilmCurves(),
   crystalGrainAmount: 0,
   crystalGrainMono: 0,
   crystalGrainFilling: 0.25,
@@ -813,13 +766,6 @@ export const INITIAL_ADJUSTMENTS: Adjustments = {
   ipolGrainSigmaFilter: 0.8,
   ipolGrainMonteCarlo: 100,
   grainEngine: 'pierre',
-  filmHighlights: 0,
-  filmProfile: null,
-  filmRolloff: 0,
-  filmSaturation: 100,
-  filmShadows: 0,
-  filmShadowTint: [0, 0, 0],
-  filmStrength: 0,
   flimPreset: 0,
   flimEv: 0,
   flimStrength: 100,
@@ -872,7 +818,6 @@ export const INITIAL_ADJUSTMENTS: Adjustments = {
   lutNormalizeMode: 'clamp',
   lutInputRange: 6,
   lutInputOffset: 0,
-  lutShoulder: 0,
   masks: [],
   orientationSteps: 0,
   rotation: 0,
@@ -1019,16 +964,6 @@ export const normalizeLoadedAdjustments = (loadedAdjustments: Adjustments): any 
     bwRed: loadedAdjustments.bwRed ?? INITIAL_ADJUSTMENTS.bwRed,
     bwGreen: loadedAdjustments.bwGreen ?? INITIAL_ADJUSTMENTS.bwGreen,
     bwBlue: loadedAdjustments.bwBlue ?? INITIAL_ADJUSTMENTS.bwBlue,
-    filmProfile: loadedAdjustments.filmProfile ?? INITIAL_ADJUSTMENTS.filmProfile,
-    filmStrength: loadedAdjustments.filmStrength ?? INITIAL_ADJUSTMENTS.filmStrength,
-    filmContrast: loadedAdjustments.filmContrast ?? INITIAL_ADJUSTMENTS.filmContrast,
-    filmSaturation: loadedAdjustments.filmSaturation ?? INITIAL_ADJUSTMENTS.filmSaturation,
-    filmRolloff: loadedAdjustments.filmRolloff ?? INITIAL_ADJUSTMENTS.filmRolloff,
-    filmBleed: loadedAdjustments.filmBleed ?? INITIAL_ADJUSTMENTS.filmBleed,
-    filmCross: loadedAdjustments.filmCross ?? INITIAL_ADJUSTMENTS.filmCross,
-    filmShadows: loadedAdjustments.filmShadows ?? INITIAL_ADJUSTMENTS.filmShadows,
-    filmHighlights: loadedAdjustments.filmHighlights ?? INITIAL_ADJUSTMENTS.filmHighlights,
-    filmBlur: loadedAdjustments.filmBlur ?? INITIAL_ADJUSTMENTS.filmBlur,
     filmBlurPreAmount: loadedAdjustments.filmBlurPreAmount ?? INITIAL_ADJUSTMENTS.filmBlurPreAmount,
     filmBlurPreRadius: loadedAdjustments.filmBlurPreRadius ?? INITIAL_ADJUSTMENTS.filmBlurPreRadius,
     filmBlurPreCompensation: loadedAdjustments.filmBlurPreCompensation ?? INITIAL_ADJUSTMENTS.filmBlurPreCompensation,
@@ -1057,16 +992,6 @@ export const normalizeLoadedAdjustments = (loadedAdjustments: Adjustments): any 
     flimHiTint: loadedAdjustments.flimHiTint ?? INITIAL_ADJUSTMENTS.flimHiTint,
     flimShTint: loadedAdjustments.flimShTint ?? INITIAL_ADJUSTMENTS.flimShTint,
     ...normalizeFlimAdv(loadedAdjustments),
-    filmBaseColor:
-      loadedAdjustments.filmBaseColor?.length === 3
-        ? loadedAdjustments.filmBaseColor
-        : INITIAL_ADJUSTMENTS.filmBaseColor,
-    filmShadowTint:
-      loadedAdjustments.filmShadowTint?.length === 3
-        ? loadedAdjustments.filmShadowTint
-        : INITIAL_ADJUSTMENTS.filmShadowTint,
-    filmCurves:
-      loadedAdjustments.filmCurves?.length === 768 ? loadedAdjustments.filmCurves : INITIAL_ADJUSTMENTS.filmCurves,
     toneMapper: loadedAdjustments.toneMapper ?? INITIAL_ADJUSTMENTS.toneMapper,
     lensCorrectionMode: loadedAdjustments.lensCorrectionMode || 'manual',
     lensMaker: loadedAdjustments.lensMaker ?? INITIAL_ADJUSTMENTS.lensMaker,
@@ -1115,47 +1040,46 @@ export interface AdjustmentGroup {
 }
 
 export const ADJUSTMENT_GROUPS: Record<string, AdjustmentGroup[]> = {
-  basic: [
+  film: [
     {
-      label: 'modals.copyPaste.groups.exposureToneMapper',
-      keys: [BasicAdjustment.Exposure, 'toneMapper'],
-    },
-    {
-      label: 'modals.copyPaste.groups.tone',
+      label: 'modals.copyPaste.groups.toneMap',
       keys: [
-        BasicAdjustment.Brightness,
-        BasicAdjustment.Contrast,
-        BasicAdjustment.Highlights,
-        BasicAdjustment.Shadows,
-        BasicAdjustment.Whites,
-        BasicAdjustment.Blacks,
+        'toneMapper',
+        FilmAdjustment.FlimPreset,
+        FilmAdjustment.FlimEv,
+        FilmAdjustment.FlimStrength,
+        ColorAdjustment.Temperature,
+        ColorAdjustment.Tint,
       ],
     },
     {
-      label: 'modals.copyPaste.groups.curves',
-      keys: ['curves', 'pointCurves', 'parametricCurve', 'curveMode'],
+      label: 'modals.copyPaste.groups.response',
+      keys: [
+        FilmAdjustment.FlimContrast,
+        FilmAdjustment.FlimShoulder,
+        FilmAdjustment.FlimToe,
+        FilmAdjustment.FlimSaturation,
+      ],
     },
   ],
-  color: [
-    { label: 'modals.copyPaste.groups.whiteBalance', keys: [ColorAdjustment.Temperature, ColorAdjustment.Tint] },
-    { label: 'modals.copyPaste.groups.presence', keys: [ColorAdjustment.Saturation, ColorAdjustment.Vibrance] },
+  hwsb: [
     {
-      label: 'modals.copyPaste.groups.hueShift',
-      keys: [ColorAdjustment.Hue],
+      label: 'modals.copyPaste.groups.tone',
+      keys: [BasicAdjustment.Highlights, BasicAdjustment.Whites, BasicAdjustment.Shadows, BasicAdjustment.Blacks],
     },
-    { label: 'modals.copyPaste.groups.colorGrading', keys: [ColorAdjustment.ColorGrading] },
-    { label: 'modals.copyPaste.groups.colorMixer', keys: [ColorAdjustment.Hsl] },
-    { label: 'modals.copyPaste.groups.colorCalibration', keys: ['colorCalibration'] },
+    {
+      label: 'modals.copyPaste.groups.color',
+      keys: [ColorAdjustment.Vibrance, ColorAdjustment.Saturation],
+    },
+    {
+      label: 'modals.copyPaste.groups.adjustBasic',
+      keys: [BasicAdjustment.Exposure, BasicAdjustment.Brightness, BasicAdjustment.Contrast],
+    },
   ],
   details: [
     {
       label: 'modals.copyPaste.groups.clarityDehaze',
-      keys: [
-        DetailsAdjustment.Clarity,
-        DetailsAdjustment.Structure,
-        DetailsAdjustment.Dehaze,
-        DetailsAdjustment.Centré,
-      ],
+      keys: [DetailsAdjustment.Clarity, DetailsAdjustment.Structure, DetailsAdjustment.Dehaze],
     },
     {
       label: 'modals.copyPaste.groups.sharpness',
@@ -1170,16 +1094,7 @@ export const ADJUSTMENT_GROUPS: Record<string, AdjustmentGroup[]> = {
       keys: [DetailsAdjustment.ChromaticAberrationRedCyan, DetailsAdjustment.ChromaticAberrationBlueYellow],
     },
   ],
-  effects: [
-    {
-      label: 'modals.copyPaste.groups.vignette',
-      keys: [Effect.VignetteAmount, Effect.VignetteFeather, Effect.VignetteMidpoint, Effect.VignetteRoundness],
-    },
-    { label: 'modals.copyPaste.groups.grain', keys: [Effect.GrainAmount, Effect.GrainRoughness, Effect.GrainSize] },
-    {
-      label: 'modals.copyPaste.groups.halationGlow',
-      keys: [CreativeAdjustment.GlowAmount, CreativeAdjustment.HalationAmount, CreativeAdjustment.FlareAmount],
-    },
+  lut: [
     {
       label: 'modals.copyPaste.groups.lut',
       keys: [
@@ -1191,9 +1106,33 @@ export const ADJUSTMENT_GROUPS: Record<string, AdjustmentGroup[]> = {
         Effect.LutNormalizeMode,
         Effect.LutInputRange,
         Effect.LutInputOffset,
-        Effect.LutShoulder,
         Effect.LutData,
       ],
+    },
+  ],
+  effects: [
+    {
+      label: 'modals.copyPaste.groups.creative',
+      keys: [
+        CreativeAdjustment.HalationAmount,
+        CreativeAdjustment.GlowAmount,
+        CreativeAdjustment.FlareAmount,
+        'centré',
+        FilmAdjustment.FlimAdjacency,
+        FilmAdjustment.FilmBlurPreAmount,
+        FilmAdjustment.FilmBlurPreCompensation,
+        FilmAdjustment.FilmBlurPreRadius,
+        FilmAdjustment.FilmBlurPreSoftAmount,
+        FilmAdjustment.FilmBlurPreSoftRadius,
+      ],
+    },
+    {
+      label: 'modals.copyPaste.groups.color',
+      keys: [FilmAdjustment.FlimWarmth, FilmAdjustment.FlimHiTint, FilmAdjustment.FlimShTint],
+    },
+    {
+      label: 'modals.copyPaste.groups.vignette',
+      keys: [Effect.VignetteAmount, Effect.VignetteFeather, Effect.VignetteMidpoint, Effect.VignetteRoundness],
     },
   ],
   blackAndWhite: [
@@ -1202,71 +1141,52 @@ export const ADJUSTMENT_GROUPS: Record<string, AdjustmentGroup[]> = {
       keys: [BwAdjustment.BwRed, BwAdjustment.BwGreen, BwAdjustment.BwBlue],
     },
   ],
-  film: [
+  grain: [
     {
-      label: 'modals.copyPaste.groups.film',
+      label: 'modals.copyPaste.groups.grainEngine',
+      keys: [FilmAdjustment.GrainEngine],
+    },
+    {
+      label: 'modals.copyPaste.groups.crystalGrain',
       keys: [
-        FilmAdjustment.FilmProfile,
-        FilmAdjustment.FilmStrength,
-        FilmAdjustment.FilmContrast,
-        FilmAdjustment.FilmSaturation,
-        FilmAdjustment.FilmRolloff,
-        FilmAdjustment.FilmBleed,
-        FilmAdjustment.FilmCross,
-        FilmAdjustment.FilmBaseColor,
-        FilmAdjustment.FilmShadowTint,
-        FilmAdjustment.FilmCurves,
-        FilmAdjustment.FilmShadows,
-        FilmAdjustment.FilmHighlights,
-        FilmAdjustment.FilmBlur,
-        FilmAdjustment.FilmBlurPreAmount,
-        FilmAdjustment.FilmBlurPreRadius,
-        FilmAdjustment.FilmBlurPreCompensation,
-        FilmAdjustment.FilmBlurPreSoftAmount,
-        FilmAdjustment.FilmBlurPreSoftRadius,
-        FilmAdjustment.GrainEngine,
         FilmAdjustment.CrystalGrainAmount,
         FilmAdjustment.CrystalGrainMono,
         FilmAdjustment.CrystalGrainFilling,
         FilmAdjustment.CrystalGrainSize,
         FilmAdjustment.CrystalGrainLayers,
         FilmAdjustment.CrystalGrainStd,
+      ],
+    },
+    {
+      label: 'modals.copyPaste.groups.ipolGrain',
+      keys: [
         FilmAdjustment.IpolGrainMuR,
         FilmAdjustment.IpolGrainSigmaR,
         FilmAdjustment.IpolGrainSigmaFilter,
         FilmAdjustment.IpolGrainMonteCarlo,
-        FilmAdjustment.FlimPreset,
-        FilmAdjustment.FlimEv,
-        FilmAdjustment.FlimStrength,
-        FilmAdjustment.FlimContrast,
-        FilmAdjustment.FlimShoulder,
-        FilmAdjustment.FlimToe,
-        FilmAdjustment.FlimSaturation,
-        FilmAdjustment.FlimWarmth,
-        FilmAdjustment.FlimAdjacency,
-        FilmAdjustment.FlimHiTint,
-        FilmAdjustment.FlimShTint,
-        FilmAdjustment.FlimAdvPreExposure,
-        FilmAdjustment.FlimAdvNegExposure,
-        FilmAdjustment.FlimAdvNegDensity,
-        FilmAdjustment.FlimAdvPrintExposure,
-        FilmAdjustment.FlimAdvPrintDensity,
-        FilmAdjustment.FlimAdvLog2Max,
-        FilmAdjustment.FlimAdvBacklightR,
-        FilmAdjustment.FlimAdvBacklightG,
-        FilmAdjustment.FlimAdvBacklightB,
-        FilmAdjustment.FlimAdvSaturation,
-        FilmAdjustment.FlimAdvBlackAuto,
-        FilmAdjustment.FlimAdvBlackPoint,
-        FilmAdjustment.FlimAdvPreFilterHue,
-        FilmAdjustment.FlimAdvPreFilterStrength,
-        FilmAdjustment.FlimAdvPostFilterHue,
-        FilmAdjustment.FlimAdvPostFilterStrength,
-        FilmAdjustment.FlimAdvGamutExpand,
-        FilmAdjustment.FlimAdvPaletteRotate,
-        FilmAdjustment.FlimAdvPushR,
-        FilmAdjustment.FlimAdvPushB,
       ],
+    },
+  ],
+  curves: [
+    {
+      label: 'modals.copyPaste.groups.curves',
+      keys: ['curves', 'pointCurves', 'parametricCurve', 'curveMode'],
+    },
+  ],
+  advanced: [
+    {
+      label: 'modals.copyPaste.groups.advanced',
+      keys: [...FLIM_ADV_KEYS],
+    },
+  ],
+  legacy: [
+    {
+      label: 'modals.copyPaste.groups.adjustColor',
+      keys: [ColorAdjustment.Hue, ColorAdjustment.Hsl, ColorAdjustment.ColorGrading, 'colorCalibration'],
+    },
+    {
+      label: 'modals.copyPaste.groups.grain',
+      keys: [Effect.GrainAmount, Effect.GrainRoughness, Effect.GrainSize],
     },
   ],
   geometry: [
@@ -1359,7 +1279,6 @@ export const ADJUSTMENT_SECTIONS: Sections = {
     Effect.LutNormalizeMode,
     Effect.LutInputRange,
     Effect.LutInputOffset,
-    Effect.LutShoulder,
     Effect.VignetteAmount,
     Effect.VignetteFeather,
     Effect.VignetteMidpoint,
@@ -1367,24 +1286,6 @@ export const ADJUSTMENT_SECTIONS: Sections = {
   ],
   blackAndWhite: [BwAdjustment.BwRed, BwAdjustment.BwGreen, BwAdjustment.BwBlue],
   film: [
-    FilmAdjustment.FilmProfile,
-    FilmAdjustment.FilmStrength,
-    FilmAdjustment.FilmContrast,
-    FilmAdjustment.FilmSaturation,
-    FilmAdjustment.FilmRolloff,
-    FilmAdjustment.FilmBleed,
-    FilmAdjustment.FilmCross,
-    FilmAdjustment.FilmBaseColor,
-    FilmAdjustment.FilmShadowTint,
-    FilmAdjustment.FilmCurves,
-    FilmAdjustment.FilmShadows,
-    FilmAdjustment.FilmHighlights,
-    FilmAdjustment.FilmBlur,
-    FilmAdjustment.FilmBlurPreAmount,
-    FilmAdjustment.FilmBlurPreRadius,
-    FilmAdjustment.FilmBlurPreCompensation,
-    FilmAdjustment.FilmBlurPreSoftAmount,
-    FilmAdjustment.FilmBlurPreSoftRadius,
     FilmAdjustment.FlimPreset,
     FilmAdjustment.FlimEv,
     FilmAdjustment.FlimStrength,

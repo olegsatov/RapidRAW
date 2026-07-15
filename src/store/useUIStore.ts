@@ -26,6 +26,7 @@ export interface CollapsibleSectionsState {
   details: boolean;
   effects: boolean;
   film: boolean;
+  lut: boolean;
 }
 
 export interface ConfirmModalState {
@@ -179,6 +180,7 @@ export const useUIStore = create<UIState>((set, get) => ({
     details: false,
     effects: false,
     film: false,
+    lut: false,
   },
   activeLeftBottomTab: LeftPanelTab.Presets,
 

@@ -102,8 +102,6 @@ fn main() {
         "flimHiTint": hi_tint,
         "flimShTint": sh_tint,
         "grainAmount": 0,
-        "filmStrength": 0,
-        "filmBlur": 0,
         "crystalGrainAmount": 0,
         "sectionVisibility": {
             "basic": true,

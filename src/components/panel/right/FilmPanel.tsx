@@ -387,6 +387,80 @@ export default function FilmPanel() {
         <CollapsibleSection
           canToggleVisibility={false}
           isContentVisible={true}
+          isOpen={basicOpen}
+          onToggle={() => setBasicOpen((v) => !v)}
+          title={t('editor.film.hwsb')}
+        >
+          <div className="p-2 bg-bg-tertiary rounded-md mb-3">
+            <Text variant={TextVariants.heading} className="mb-2">
+              {t('adjustments.effects.tone')}
+            </Text>
+            <Slider
+              label={t('adjustments.basic.highlights')}
+              max={100}
+              min={-100}
+              onChange={(e: any) => handleAdjustmentChange(BasicAdjustment.Highlights, e.target.value)}
+              step={1}
+              value={adjustments.highlights ?? 0}
+              onDragStateChange={onDragStateChange}
+            />
+            <Slider
+              label={t('adjustments.basic.whites')}
+              max={100}
+              min={-100}
+              onChange={(e: any) => handleAdjustmentChange(BasicAdjustment.Whites, e.target.value)}
+              step={1}
+              value={adjustments.whites ?? 0}
+              onDragStateChange={onDragStateChange}
+            />
+            <Slider
+              label={t('adjustments.basic.shadows')}
+              max={100}
+              min={-100}
+              onChange={(e: any) => handleAdjustmentChange(BasicAdjustment.Shadows, e.target.value)}
+              step={1}
+              value={adjustments.shadows ?? 0}
+              onDragStateChange={onDragStateChange}
+            />
+            <Slider
+              label={t('adjustments.basic.blacks')}
+              max={100}
+              min={-100}
+              onChange={(e: any) => handleAdjustmentChange(BasicAdjustment.Blacks, e.target.value)}
+              step={1}
+              value={adjustments.blacks ?? 0}
+              onDragStateChange={onDragStateChange}
+            />
+          </div>
+
+          <div className="p-2 bg-bg-tertiary rounded-md">
+            <Text variant={TextVariants.heading} className="mb-2">
+              {t('editor.adjustments.sections.color')}
+            </Text>
+            <Slider
+              label={t('adjustments.color.vibrance')}
+              max={100}
+              min={-100}
+              onChange={(e: any) => handleAdjustmentChange(ColorAdjustment.Vibrance, e.target.value)}
+              step={1}
+              value={adjustments.vibrance ?? 0}
+              onDragStateChange={onDragStateChange}
+            />
+            <Slider
+              label={t('adjustments.color.saturation')}
+              max={100}
+              min={-100}
+              onChange={(e: any) => handleAdjustmentChange(ColorAdjustment.Saturation, e.target.value)}
+              step={1}
+              value={adjustments.saturation ?? 0}
+              onDragStateChange={onDragStateChange}
+            />
+          </div>
+        </CollapsibleSection>
+
+        <CollapsibleSection
+          canToggleVisibility={false}
+          isContentVisible={true}
           isOpen={detailsOpen}
           onToggle={() => setDetailsOpen((v) => !v)}
           title={t('editor.adjustments.sections.details')}
@@ -674,80 +748,6 @@ export default function FilmPanel() {
           title={t('adjustments.effects.grain')}
         >
           <GrainPanel adjustments={adjustments} setAdjustments={setAdjustments} onDragStateChange={onDragStateChange} />
-        </CollapsibleSection>
-
-        <CollapsibleSection
-          canToggleVisibility={false}
-          isContentVisible={true}
-          isOpen={basicOpen}
-          onToggle={() => setBasicOpen((v) => !v)}
-          title={t('editor.film.hwsb')}
-        >
-          <div className="p-2 bg-bg-tertiary rounded-md mb-3">
-            <Text variant={TextVariants.heading} className="mb-2">
-              {t('adjustments.effects.tone')}
-            </Text>
-            <Slider
-              label={t('adjustments.basic.highlights')}
-              max={100}
-              min={-100}
-              onChange={(e: any) => handleAdjustmentChange(BasicAdjustment.Highlights, e.target.value)}
-              step={1}
-              value={adjustments.highlights ?? 0}
-              onDragStateChange={onDragStateChange}
-            />
-            <Slider
-              label={t('adjustments.basic.whites')}
-              max={100}
-              min={-100}
-              onChange={(e: any) => handleAdjustmentChange(BasicAdjustment.Whites, e.target.value)}
-              step={1}
-              value={adjustments.whites ?? 0}
-              onDragStateChange={onDragStateChange}
-            />
-            <Slider
-              label={t('adjustments.basic.shadows')}
-              max={100}
-              min={-100}
-              onChange={(e: any) => handleAdjustmentChange(BasicAdjustment.Shadows, e.target.value)}
-              step={1}
-              value={adjustments.shadows ?? 0}
-              onDragStateChange={onDragStateChange}
-            />
-            <Slider
-              label={t('adjustments.basic.blacks')}
-              max={100}
-              min={-100}
-              onChange={(e: any) => handleAdjustmentChange(BasicAdjustment.Blacks, e.target.value)}
-              step={1}
-              value={adjustments.blacks ?? 0}
-              onDragStateChange={onDragStateChange}
-            />
-          </div>
-
-          <div className="p-2 bg-bg-tertiary rounded-md">
-            <Text variant={TextVariants.heading} className="mb-2">
-              {t('editor.adjustments.sections.color')}
-            </Text>
-            <Slider
-              label={t('adjustments.color.vibrance')}
-              max={100}
-              min={-100}
-              onChange={(e: any) => handleAdjustmentChange(ColorAdjustment.Vibrance, e.target.value)}
-              step={1}
-              value={adjustments.vibrance ?? 0}
-              onDragStateChange={onDragStateChange}
-            />
-            <Slider
-              label={t('adjustments.color.saturation')}
-              max={100}
-              min={-100}
-              onChange={(e: any) => handleAdjustmentChange(ColorAdjustment.Saturation, e.target.value)}
-              step={1}
-              value={adjustments.saturation ?? 0}
-              onDragStateChange={onDragStateChange}
-            />
-          </div>
         </CollapsibleSection>
 
         <CollapsibleSection
