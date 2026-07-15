@@ -1043,33 +1043,40 @@ export const ADJUSTMENT_GROUPS: Record<string, AdjustmentGroup[]> = {
   film: [
     {
       label: 'modals.copyPaste.groups.toneMap',
-      keys: [
-        'toneMapper',
-        FilmAdjustment.FlimPreset,
-        FilmAdjustment.FlimEv,
-        FilmAdjustment.FlimStrength,
-        ColorAdjustment.Temperature,
-        ColorAdjustment.Tint,
-      ],
+      keys: ['toneMapper', FilmAdjustment.FlimPreset, FilmAdjustment.FlimStrength],
+    },
+    {
+      label: 'modals.copyPaste.groups.exposure',
+      keys: [FilmAdjustment.FlimEv],
+    },
+    {
+      label: 'modals.copyPaste.groups.whiteBalance',
+      keys: [ColorAdjustment.Temperature, ColorAdjustment.Tint],
     },
     {
       label: 'modals.copyPaste.groups.response',
+      keys: [FilmAdjustment.FlimContrast, FilmAdjustment.FlimShoulder, FilmAdjustment.FlimToe],
+    },
+  ],
+  color: [
+    {
+      label: 'modals.copyPaste.groups.toneMapper',
       keys: [
-        FilmAdjustment.FlimContrast,
-        FilmAdjustment.FlimShoulder,
-        FilmAdjustment.FlimToe,
         FilmAdjustment.FlimSaturation,
+        FilmAdjustment.FlimWarmth,
+        FilmAdjustment.FlimHiTint,
+        FilmAdjustment.FlimShTint,
       ],
+    },
+    {
+      label: 'modals.copyPaste.groups.classic',
+      keys: [ColorAdjustment.Vibrance, ColorAdjustment.Saturation],
     },
   ],
   hwsb: [
     {
       label: 'modals.copyPaste.groups.tone',
       keys: [BasicAdjustment.Highlights, BasicAdjustment.Whites, BasicAdjustment.Shadows, BasicAdjustment.Blacks],
-    },
-    {
-      label: 'modals.copyPaste.groups.color',
-      keys: [ColorAdjustment.Vibrance, ColorAdjustment.Saturation],
     },
     {
       label: 'modals.copyPaste.groups.adjustBasic',
@@ -1127,10 +1134,6 @@ export const ADJUSTMENT_GROUPS: Record<string, AdjustmentGroup[]> = {
       ],
     },
     {
-      label: 'modals.copyPaste.groups.color',
-      keys: [FilmAdjustment.FlimWarmth, FilmAdjustment.FlimHiTint, FilmAdjustment.FlimShTint],
-    },
-    {
       label: 'modals.copyPaste.groups.vignette',
       keys: [Effect.VignetteAmount, Effect.VignetteFeather, Effect.VignetteMidpoint, Effect.VignetteRoundness],
     },
@@ -1171,12 +1174,6 @@ export const ADJUSTMENT_GROUPS: Record<string, AdjustmentGroup[]> = {
     {
       label: 'modals.copyPaste.groups.curves',
       keys: ['curves', 'pointCurves', 'parametricCurve', 'curveMode'],
-    },
-  ],
-  advanced: [
-    {
-      label: 'modals.copyPaste.groups.advanced',
-      keys: [...FLIM_ADV_KEYS],
     },
   ],
   legacy: [
