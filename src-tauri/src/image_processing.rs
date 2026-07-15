@@ -2744,6 +2744,7 @@ fn get_global_adjustments_from_json(
         match v {
             "linear" => 1,
             "log" => 2,
+            "hdr" => 3,
             _ => 0,
         }
     });

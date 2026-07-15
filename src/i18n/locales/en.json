@@ -1907,6 +1907,7 @@
       "normalizeClamp": "Clamp",
       "normalizeLinear": "Linear",
       "normalizeLog": "Log",
+      "normalizeHdr": "HDR extrapolate",
       "normalizeMode": "Input normalization",
       "removeLut": "Remove LUT",
       "select": "Select",

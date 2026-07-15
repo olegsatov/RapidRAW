@@ -1276,6 +1276,27 @@ fn prepare_lut_input(hdr: vec3<f32>) -> vec3<f32> {
                  vec3(0.0), vec3(1.0));
 }
 
+const HDR_LUT_TOTAL_RANGE: f32 = 32.0;
+
+// Sample the HDR-extrapolated LUT. The texture stores scene-linear values mapped
+// from a log-symmetric domain [-16..+16] stops (total 32 stops). The input
+// range/offset sliders control which sub-range of that domain is used.
+fn sample_hdr_lut_tetrahedral(hdr: vec3<f32>) -> vec3<f32> {
+    let range = max(adjustments.global.lut_input_range, 0.5);
+    let scale = HDR_LUT_TOTAL_RANGE / range;
+
+    var log_rgb = log2(max(hdr, vec3(1e-6)));
+    log_rgb += vec3(adjustments.global.lut_input_offset);
+    log_rgb *= vec3(scale);
+
+    let uvw = clamp(log_rgb / HDR_LUT_TOTAL_RANGE + vec3(0.5), vec3(0.0), vec3(1.0));
+    let lut_hdr = sample_lut_tetrahedral(uvw);
+
+    var log_out = log2(max(lut_hdr, vec3(1e-6)));
+    log_out /= vec3(scale);
+    return pow(vec3(2.0), log_out);
+}
+
 fn apply_glow_bloom(
     color: vec3<f32>,
     blurred_color_input_space: vec3<f32>,
@@ -1557,8 +1578,13 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
     }
 
     if (adjustments.global.lut_timing == 1u && adjustments.global.has_lut == 1u) {
-        let lut_in = prepare_lut_input(composite_rgb_linear);
-        let lut_color = sample_lut_tetrahedral(lut_in);
+        var lut_color: vec3<f32>;
+        if (adjustments.global.lut_normalize_mode == 3u) {
+            lut_color = sample_hdr_lut_tetrahedral(composite_rgb_linear);
+        } else {
+            let lut_in = prepare_lut_input(composite_rgb_linear);
+            lut_color = sample_lut_tetrahedral(lut_in);
+        }
         composite_rgb_linear = mix(composite_rgb_linear, lut_color,
                                    adjustments.global.lut_intensity);
     }

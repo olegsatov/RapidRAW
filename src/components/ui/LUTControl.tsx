@@ -26,7 +26,7 @@ interface LUTControlProps {
   lutName: string | null;
   lutIntensity: number;
   lutTiming?: 'after' | 'before';
-  lutNormalizeMode?: 'clamp' | 'linear' | 'log';
+  lutNormalizeMode?: 'clamp' | 'linear' | 'log' | 'hdr';
   lutInputRange?: number;
   lutInputOffset?: number;
   lutShoulder?: number;
@@ -34,7 +34,7 @@ interface LUTControlProps {
   onLutHover?: (path: string | null) => void;
   onIntensityChange: (intensity: number) => void;
   onTimingChange?: (timing: 'after' | 'before') => void;
-  onNormalizeModeChange?: (mode: 'clamp' | 'linear' | 'log') => void;
+  onNormalizeModeChange?: (mode: 'clamp' | 'linear' | 'log' | 'hdr') => void;
   onInputRangeChange?: (range: number) => void;
   onInputOffsetChange?: (offset: number) => void;
   onShoulderChange?: (shoulder: number) => void;
@@ -336,8 +336,9 @@ export default function LUTControl({
                   { value: 'clamp', label: t('ui.lut.normalizeClamp') },
                   { value: 'linear', label: t('ui.lut.normalizeLinear') },
                   { value: 'log', label: t('ui.lut.normalizeLog') },
+                  { value: 'hdr', label: t('ui.lut.normalizeHdr') },
                 ]}
-                onChange={(value) => onNormalizeModeChange?.(value as 'clamp' | 'linear' | 'log')}
+                onChange={(value) => onNormalizeModeChange?.(value as 'clamp' | 'linear' | 'log' | 'hdr')}
               />
               <div className={lutNormalizeMode === 'clamp' ? 'opacity-50 pointer-events-none' : ''}>
                 <Slider
@@ -362,6 +363,12 @@ export default function LUTControl({
                   onDragStateChange={onDragStateChange}
                   fillOrigin="min"
                 />
+              </div>
+              <div
+                className={
+                  lutNormalizeMode === 'clamp' || lutNormalizeMode === 'hdr' ? 'opacity-50 pointer-events-none' : ''
+                }
+              >
                 <Slider
                   label={t('ui.lut.shoulder')}
                   min={0}

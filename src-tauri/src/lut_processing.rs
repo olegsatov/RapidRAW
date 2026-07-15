@@ -22,10 +22,15 @@ use crate::image_processing::{
     resolve_tonemapper_override_from_handle,
 };
 
+const HDR_LUT_TOTAL_RANGE: f32 = 32.0;
+const HDR_LUT_SIZE: u32 = 65;
+
 #[derive(Debug, Clone)]
 pub struct Lut {
     pub size: u32,
     pub data: Vec<f32>,
+    pub hdr_size: u32,
+    pub hdr_data: Vec<f32>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -151,6 +156,69 @@ fn import_android_lut(source: &str) -> anyhow::Result<()> {
     Ok(())
 }
 
+fn build_hdr_lut(original: &Lut) -> (u32, Vec<f32>) {
+    let size = HDR_LUT_SIZE as usize;
+    let orig_size = original.size as usize;
+    let mut data = Vec::with_capacity(size * size * size * 3);
+
+    fn sample_trilinear(data: &[f32], size: usize, u: f32, v: f32, w: f32) -> [f32; 3] {
+        let max = (size - 1) as f32;
+        let x = u.clamp(0.0, 1.0) * max;
+        let y = v.clamp(0.0, 1.0) * max;
+        let z = w.clamp(0.0, 1.0) * max;
+        let x0 = x.floor() as usize;
+        let y0 = y.floor() as usize;
+        let z0 = z.floor() as usize;
+        let x1 = (x0 + 1).min(size - 1);
+        let y1 = (y0 + 1).min(size - 1);
+        let z1 = (z0 + 1).min(size - 1);
+        let fx = x - x0 as f32;
+        let fy = y - y0 as f32;
+        let fz = z - z0 as f32;
+
+        let idx = |x, y, z| ((z * size + y) * size + x) * 3;
+
+        let mut out = [0.0f32; 3];
+        for c in 0..3 {
+            let c000 = data[idx(x0, y0, z0) + c];
+            let c001 = data[idx(x0, y0, z1) + c];
+            let c010 = data[idx(x0, y1, z0) + c];
+            let c011 = data[idx(x0, y1, z1) + c];
+            let c100 = data[idx(x1, y0, z0) + c];
+            let c101 = data[idx(x1, y0, z1) + c];
+            let c110 = data[idx(x1, y1, z0) + c];
+            let c111 = data[idx(x1, y1, z1) + c];
+
+            let c00 = c000 * (1.0 - fz) + c001 * fz;
+            let c01 = c010 * (1.0 - fz) + c011 * fz;
+            let c10 = c100 * (1.0 - fz) + c101 * fz;
+            let c11 = c110 * (1.0 - fz) + c111 * fz;
+
+            let c0 = c00 * (1.0 - fy) + c01 * fy;
+            let c1 = c10 * (1.0 - fy) + c11 * fy;
+
+            out[c] = c0 * (1.0 - fx) + c1 * fx;
+        }
+        out
+    }
+
+    for b in 0..size {
+        let w = b as f32 / (size - 1) as f32;
+        for g in 0..size {
+            let v = g as f32 / (size - 1) as f32;
+            for r in 0..size {
+                let u = r as f32 / (size - 1) as f32;
+                let rgb = sample_trilinear(&original.data, orig_size, u, v, w);
+                for c in 0..3 {
+                    let log_y = (rgb[c] - 0.5) * HDR_LUT_TOTAL_RANGE;
+                    data.push(2.0f32.powf(log_y));
+                }
+            }
+        }
+    }
+    (HDR_LUT_SIZE, data)
+}
+
 fn parse_cube(reader: impl BufRead) -> anyhow::Result<Lut> {
     let mut size: Option<u32> = None;
     let mut data: Vec<f32> = Vec::new();
@@ -243,9 +311,18 @@ fn parse_cube(reader: impl BufRead) -> anyhow::Result<Lut> {
         ));
     }
 
-    Ok(Lut {
+    let lut = Lut {
         size: lut_size,
         data,
+        hdr_size: 0,
+        hdr_data: Vec::new(),
+    };
+    let (hdr_size, hdr_data) = build_hdr_lut(&lut);
+    Ok(Lut {
+        size: lut_size,
+        data: lut.data,
+        hdr_size,
+        hdr_data,
     })
 }
 
@@ -283,7 +360,19 @@ fn parse_3dl(reader: impl BufRead) -> anyhow::Result<Lut> {
         ));
     }
 
-    Ok(Lut { size, data })
+    let lut = Lut {
+        size,
+        data,
+        hdr_size: 0,
+        hdr_data: Vec::new(),
+    };
+    let (hdr_size, hdr_data) = build_hdr_lut(&lut);
+    Ok(Lut {
+        size,
+        data: lut.data,
+        hdr_size,
+        hdr_data,
+    })
 }
 
 fn parse_hald(image: DynamicImage) -> anyhow::Result<Lut> {
@@ -315,7 +404,19 @@ fn parse_hald(image: DynamicImage) -> anyhow::Result<Lut> {
         data.push(pixel[2] as f32 / 255.0);
     }
 
-    Ok(Lut { size, data })
+    let lut = Lut {
+        size,
+        data,
+        hdr_size: 0,
+        hdr_data: Vec::new(),
+    };
+    let (hdr_size, hdr_data) = build_hdr_lut(&lut);
+    Ok(Lut {
+        size,
+        data: lut.data,
+        hdr_size,
+        hdr_data,
+    })
 }
 
 pub fn parse_lut_file(path_str: &str) -> anyhow::Result<Lut> {

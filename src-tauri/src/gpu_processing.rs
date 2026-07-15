@@ -1492,8 +1492,12 @@ impl GpuProcessor {
         });
 
         let (lut_texture_view, lut_sampler) = if let Some(lut_arc) = &request.lut {
-            let lut_data = &lut_arc.data;
-            let size = lut_arc.size;
+            let use_hdr = request.adjustments.global.lut_normalize_mode == 3;
+            let (lut_data, size) = if use_hdr && !lut_arc.hdr_data.is_empty() {
+                (&lut_arc.hdr_data, lut_arc.hdr_size)
+            } else {
+                (&lut_arc.data, lut_arc.size)
+            };
             let mut rgba_lut_data_f16 = Vec::with_capacity(lut_data.len() / 3 * 4);
             for chunk in lut_data.chunks_exact(3) {
                 rgba_lut_data_f16.push(f16::from_f32(chunk[0]));

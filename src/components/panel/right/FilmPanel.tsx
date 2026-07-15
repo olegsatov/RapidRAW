@@ -496,7 +496,7 @@ export default function FilmPanel() {
               onTimingChange={(timing: 'after' | 'before') =>
                 setAdjustments((prev: Partial<Adjustments>) => ({ ...prev, lutTiming: timing }))
               }
-              onNormalizeModeChange={(mode: 'clamp' | 'linear' | 'log') =>
+              onNormalizeModeChange={(mode: 'clamp' | 'linear' | 'log' | 'hdr') =>
                 setAdjustments((prev: Partial<Adjustments>) => ({ ...prev, lutNormalizeMode: mode }))
               }
               onInputRangeChange={(range: number) =>

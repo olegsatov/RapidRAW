@@ -344,7 +344,7 @@ export interface Adjustments {
   lutPath?: string | null;
   lutSize?: number;
   lutTiming?: 'after' | 'before';
-  lutNormalizeMode?: 'clamp' | 'linear' | 'log';
+  lutNormalizeMode?: 'clamp' | 'linear' | 'log' | 'hdr';
   lutInputRange?: number;
   lutInputOffset?: number;
   lutShoulder?: number;

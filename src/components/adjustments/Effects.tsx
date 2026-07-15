@@ -40,7 +40,7 @@ export default function EffectsPanel({
     setAdjustments((prev: Partial<Adjustments>) => ({ ...prev, lutTiming: timing }));
   };
 
-  const handleLutNormalizeModeChange = (mode: 'clamp' | 'linear' | 'log') => {
+  const handleLutNormalizeModeChange = (mode: 'clamp' | 'linear' | 'log' | 'hdr') => {
     setAdjustments((prev: Partial<Adjustments>) => ({ ...prev, lutNormalizeMode: mode }));
   };
 
