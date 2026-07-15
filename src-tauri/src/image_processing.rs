@@ -1579,6 +1579,7 @@ pub struct GlobalAdjustments {
     pub lut_input_range: f32,
     pub lut_input_offset: f32,
     pub lut_shoulder: f32,
+    _pad_lut_end: [f32; 3],
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, Pod, Zeroable, Default)]
@@ -2837,6 +2838,7 @@ fn get_global_adjustments_from_json(
         lut_input_range,
         lut_input_offset,
         lut_shoulder,
+        _pad_lut_end: [0.0; 3],
 
         // An explicitly chosen flim tonemapper (Film tab) always wins over the
         // global "force default tonemapper" app setting.
