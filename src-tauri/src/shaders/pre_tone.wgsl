@@ -180,6 +180,12 @@ struct GlobalAdjustments {
     _pad_flim_hi: f32,
     flim_sh_tint: vec3<f32>,        // split-tone shadow tint (baked from slider, + = warm)
     _pad_flim_sh: f32,
+
+    lut_timing: u32,
+    lut_normalize_mode: u32,
+    lut_input_range: f32,
+    lut_input_offset: f32,
+    lut_shoulder: f32,
 }
 
 struct MaskAdjustments {
