@@ -2724,7 +2724,14 @@ fn get_global_adjustments_from_json(
         flim_warmth_t,
     );
 
-    let (has_lut, lut_intensity) = if is_visible("effects") {
+    // LUT lives in the Adjust tab under Effects, or in the Film tab as its own
+    // section. The eye toggle must disable it in the correct context.
+    let lut_on = if tone_mapper == "flim" {
+        is_visible("lut")
+    } else {
+        is_visible("effects")
+    };
+    let (has_lut, lut_intensity) = if lut_on {
         (
             if js_adjustments["lutPath"].is_string() {
                 1
@@ -2740,14 +2747,20 @@ fn get_global_adjustments_from_json(
     let lut_timing = js_adjustments["lutTiming"].as_str().map_or(0u32, |v| {
         if v == "before" { 1 } else { 0 }
     });
-    let lut_normalize_mode = js_adjustments["lutNormalizeMode"].as_str().map_or(0u32, |v| {
-        match v {
-            "linear" => 1,
-            "log" => 2,
-            "hdr" => 3,
-            _ => 0,
-        }
-    });
+    // LUTs applied before the tone mapper are always sampled with HDR
+    // extrapolation so they can act on scene-linear values above 1.0.
+    let lut_normalize_mode = if lut_timing == 1 {
+        3u32
+    } else {
+        js_adjustments["lutNormalizeMode"].as_str().map_or(0u32, |v| {
+            match v {
+                "linear" => 1,
+                "log" => 2,
+                "hdr" => 3,
+                _ => 0,
+            }
+        })
+    };
     let lut_input_range = js_adjustments["lutInputRange"].as_f64().unwrap_or(6.0) as f32;
     let lut_input_offset = js_adjustments["lutInputOffset"].as_f64().unwrap_or(0.0) as f32;
     let lut_shoulder = js_adjustments["lutShoulder"].as_f64().unwrap_or(0.0) as f32 / 100.0;

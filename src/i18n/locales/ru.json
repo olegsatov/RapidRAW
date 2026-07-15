@@ -565,7 +565,8 @@
         "agx": "AgX",
         "flim": "Flim"
       },
-      "preset": "Пресет",
+      "preset": "Тон-карта",
+      "lights": "Светлые тона",
       "presets": {
         "default": "По умолчанию",
         "nostalgia": "Nostalgia",
@@ -575,6 +576,8 @@
       "ev": "Экспозиция (EV)",
       "strength": "Сила",
       "looks": "Луки",
+      "lut": "LUT",
+      "hwsb": "HWSB",
       "effects": "Эффекты",
       "contrast": "Контраст",
       "saturation": "Насыщенность",
@@ -1903,6 +1906,9 @@
       "inputRange": "Диапазон входа",
       "intensity": "Интенсивность",
       "label": "LUT",
+      "luts": "LUT-ы",
+      "mode": "Режим",
+      "parameters": "Параметры",
       "normalizeClamp": "Клип",
       "normalizeLinear": "Линейная",
       "normalizeLog": "Логарифмическая",

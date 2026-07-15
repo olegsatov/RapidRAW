@@ -565,7 +565,8 @@
         "agx": "AgX",
         "flim": "Flim"
       },
-      "preset": "Preset",
+      "preset": "Tone map",
+      "lights": "Lights",
       "presets": {
         "default": "Default",
         "nostalgia": "Nostalgia",
@@ -575,6 +576,8 @@
       "ev": "Exposure (EV)",
       "strength": "Strength",
       "looks": "Looks",
+      "lut": "LUT",
+      "hwsb": "HWSB",
       "effects": "Effects",
       "contrast": "Contrast",
       "saturation": "Saturation",
@@ -1904,6 +1907,9 @@
       "inputRange": "Input range",
       "intensity": "Intensity",
       "label": "LUT",
+      "luts": "LUTs",
+      "mode": "Mode",
+      "parameters": "Parameters",
       "normalizeClamp": "Clamp",
       "normalizeLinear": "Linear",
       "normalizeLog": "Log",

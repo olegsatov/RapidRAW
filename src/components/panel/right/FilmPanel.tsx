@@ -8,7 +8,6 @@ import Dropdown from '../../ui/Dropdown';
 import Slider from '../../ui/Slider';
 import Text from '../../ui/Text';
 import CollapsibleSection from '../../ui/CollapsibleSection';
-import FilmLookPanel from '../../adjustments/Film';
 import BlackAndWhitePanel from '../../adjustments/BlackAndWhite';
 import GrainPanel from '../../adjustments/Grain';
 import CurveGraph from '../../adjustments/Curves';
@@ -62,9 +61,29 @@ const paramsEqual = (a: FlimPresetParams, b: FlimPresetParams): boolean =>
   FLIM_ADV_KEYS.every((key) => Math.abs(a[key] - b[key]) < 1e-6);
 
 // Advanced panel sliders; labels are i18n keys under editor.film.adv.*.
+type AdvLabel =
+  | 'preExposure'
+  | 'negExposure'
+  | 'negDensity'
+  | 'printExposure'
+  | 'printDensity'
+  | 'shoulderBase'
+  | 'backlightR'
+  | 'backlightG'
+  | 'backlightB'
+  | 'midtoneSat'
+  | 'preFilterHue'
+  | 'preFilterStrength'
+  | 'postFilterHue'
+  | 'postFilterStrength'
+  | 'gamutExpand'
+  | 'paletteRotate'
+  | 'pushR'
+  | 'pushB';
+
 const ADV_SLIDERS: Array<{
   key: keyof FlimPresetParams;
-  label: string;
+  label: AdvLabel;
   min: number;
   max: number;
   step: number;
@@ -333,22 +352,24 @@ export default function FilmPanel() {
           />
           <Slider
             defaultValue={0}
-            label={t('editor.film.shoulder')}
+            label={t('editor.film.lights')}
             max={100}
             min={-100}
-            onChange={(e: any) => handleAdjustmentChange(FilmAdjustment.FlimShoulder, e.target.value)}
+            onChange={(e: any) =>
+              handleAdjustmentChange(FilmAdjustment.FlimShoulder, String(-parseFloat(e.target.value)))
+            }
             step={1}
-            value={adjustments.flimShoulder ?? 0}
+            value={-(adjustments.flimShoulder ?? 0)}
             onDragStateChange={onDragStateChange}
           />
           <Slider
             defaultValue={0}
-            label={t('editor.film.toe')}
+            label={t('adjustments.basic.shadows')}
             max={100}
             min={-100}
-            onChange={(e: any) => handleAdjustmentChange(FilmAdjustment.FlimToe, e.target.value)}
+            onChange={(e: any) => handleAdjustmentChange(FilmAdjustment.FlimToe, String(-parseFloat(e.target.value)))}
             step={1}
-            value={adjustments.flimToe ?? 0}
+            value={-(adjustments.flimToe ?? 0)}
             onDragStateChange={onDragStateChange}
           />
           <Slider
@@ -366,9 +387,301 @@ export default function FilmPanel() {
         <CollapsibleSection
           canToggleVisibility={false}
           isContentVisible={true}
+          isOpen={detailsOpen}
+          onToggle={() => setDetailsOpen((v) => !v)}
+          title={t('editor.adjustments.sections.details')}
+        >
+          <FilmDetailsPanel
+            adjustments={adjustments}
+            setAdjustments={setAdjustments}
+            appSettings={appSettings}
+            onDragStateChange={onDragStateChange}
+          />
+        </CollapsibleSection>
+
+        <CollapsibleSection
+          isContentVisible={sectionVisibility.lut}
+          isOpen={!!collapsibleSectionsState.lut}
+          onToggle={() => handleToggleSection('lut')}
+          onToggleVisibility={() => handleToggleVisibility('lut')}
+          title={t('editor.film.lut')}
+        >
+          <div className="p-2 bg-bg-tertiary rounded-md">
+            <LUTControl
+              lutPath={adjustments.lutPath || null}
+              lutName={adjustments.lutName || null}
+              lutIntensity={adjustments.lutIntensity || 100}
+              lutTiming={adjustments.lutTiming || 'after'}
+              lutInputRange={adjustments.lutInputRange ?? 6}
+              lutInputOffset={adjustments.lutInputOffset ?? 0}
+              onLutSelect={handleLutSelect}
+              onLutHover={setLutPreviewOverride}
+              onIntensityChange={(intensity: number) =>
+                setAdjustments((prev: Partial<Adjustments>) => ({ ...prev, lutIntensity: intensity }))
+              }
+              onTimingChange={(timing: 'after' | 'before') =>
+                setAdjustments((prev: Partial<Adjustments>) => ({
+                  ...prev,
+                  lutTiming: timing,
+                  lutNormalizeMode: timing === 'before' ? 'hdr' : 'clamp',
+                }))
+              }
+              onInputRangeChange={(range: number) =>
+                setAdjustments((prev: Partial<Adjustments>) => ({ ...prev, lutInputRange: range }))
+              }
+              onInputOffsetChange={(offset: number) =>
+                setAdjustments((prev: Partial<Adjustments>) => ({ ...prev, lutInputOffset: offset }))
+              }
+              onClear={() =>
+                setAdjustments((prev: Partial<Adjustments>) => ({
+                  ...prev,
+                  lutPath: null,
+                  lutName: null,
+                  lutData: null,
+                  lutSize: 0,
+                  lutIntensity: 100,
+                  lutTiming: 'after',
+                  lutNormalizeMode: 'clamp',
+                  lutInputRange: 6,
+                  lutInputOffset: 0,
+                }))
+              }
+              onDragStateChange={onDragStateChange}
+            />
+          </div>
+        </CollapsibleSection>
+
+        <CollapsibleSection
+          isContentVisible={sectionVisibility.filmEffects}
+          isOpen={filmEffectsOpen}
+          onToggle={() => setFilmEffectsOpen((v) => !v)}
+          onToggleVisibility={() => handleToggleVisibility('filmEffects')}
+          title={t('editor.film.effects')}
+        >
+          <div className="p-2 bg-bg-tertiary rounded-md mb-3">
+            <Text variant={TextVariants.heading} className="mb-2">
+              {t('adjustments.effects.creative')}
+            </Text>
+            <Slider
+              defaultValue={0}
+              label={t('editor.film.halation')}
+              max={200}
+              min={0}
+              onChange={(e: any) => handleAdjustmentChange(CreativeAdjustment.HalationAmount, e.target.value)}
+              step={1}
+              value={adjustments.halationAmount ?? 0}
+              onDragStateChange={onDragStateChange}
+            />
+            <Slider
+              label={t('adjustments.details.centre')}
+              max={100}
+              min={-100}
+              onChange={(e: any) => handleAdjustmentChange('centré', e.target.value)}
+              step={1}
+              value={adjustments.centré ?? 0}
+              onDragStateChange={onDragStateChange}
+            />
+            <Slider
+              defaultValue={0}
+              label={t('adjustments.effects.glow')}
+              max={100}
+              min={0}
+              onChange={(e: any) => handleAdjustmentChange(CreativeAdjustment.GlowAmount, e.target.value)}
+              step={1}
+              value={adjustments.glowAmount ?? 0}
+              onDragStateChange={onDragStateChange}
+            />
+            <Slider
+              defaultValue={0}
+              label={t('editor.film.adjacency')}
+              max={100}
+              min={0}
+              onChange={(e: any) => handleAdjustmentChange(FilmAdjustment.FlimAdjacency, e.target.value)}
+              step={1}
+              value={adjustments.flimAdjacency ?? 0}
+              onDragStateChange={onDragStateChange}
+            />
+            <div className="flex gap-2">
+              <div className="flex-1">
+                <Slider
+                  defaultValue={0}
+                  label={t('editor.film.preToneDiffusionAmount')}
+                  max={100}
+                  min={0}
+                  onChange={(e: any) => handleAdjustmentChange(FilmAdjustment.FilmBlurPreAmount, e.target.value)}
+                  step={1}
+                  value={adjustments.filmBlurPreAmount ?? 0}
+                  onDragStateChange={onDragStateChange}
+                />
+              </div>
+              <div className="flex-1">
+                <Slider
+                  defaultValue={0}
+                  label={t('editor.film.preToneDiffusionCompensation')}
+                  max={100}
+                  min={0}
+                  onChange={(e: any) => handleAdjustmentChange(FilmAdjustment.FilmBlurPreCompensation, e.target.value)}
+                  step={1}
+                  value={adjustments.filmBlurPreCompensation ?? 0}
+                  onDragStateChange={onDragStateChange}
+                />
+              </div>
+              <div className="flex-1">
+                <Slider
+                  defaultValue={0.5}
+                  label={t('editor.film.preToneDiffusionRadius')}
+                  max={4}
+                  min={0.5}
+                  onChange={(e: any) => handleAdjustmentChange(FilmAdjustment.FilmBlurPreRadius, e.target.value)}
+                  step={0.1}
+                  value={adjustments.filmBlurPreRadius ?? 0.5}
+                  onDragStateChange={onDragStateChange}
+                />
+              </div>
+            </div>
+            <div className="flex gap-2">
+              <div className="w-2/3">
+                <Slider
+                  defaultValue={0}
+                  label={t('editor.film.preToneSoftBlurAmount')}
+                  max={100}
+                  min={0}
+                  onChange={(e: any) => handleAdjustmentChange(FilmAdjustment.FilmBlurPreSoftAmount, e.target.value)}
+                  step={1}
+                  value={adjustments.filmBlurPreSoftAmount ?? 0}
+                  onDragStateChange={onDragStateChange}
+                />
+              </div>
+              <div className="w-1/3">
+                <Slider
+                  defaultValue={0.5}
+                  label={t('editor.film.preToneSoftBlurRadius')}
+                  max={4}
+                  min={0.5}
+                  onChange={(e: any) => handleAdjustmentChange(FilmAdjustment.FilmBlurPreSoftRadius, e.target.value)}
+                  step={0.1}
+                  value={adjustments.filmBlurPreSoftRadius ?? 0.5}
+                  onDragStateChange={onDragStateChange}
+                />
+              </div>
+            </div>
+          </div>
+
+          <div className="p-2 bg-bg-tertiary rounded-md mb-3">
+            <Text variant={TextVariants.heading} className="mb-2">
+              {t('editor.adjustments.sections.color')}
+            </Text>
+            <Slider
+              defaultValue={0}
+              label={t('editor.film.warmth')}
+              max={100}
+              min={-100}
+              onChange={(e: any) => handleAdjustmentChange(FilmAdjustment.FlimWarmth, e.target.value)}
+              step={1}
+              value={adjustments.flimWarmth ?? 0}
+              onDragStateChange={onDragStateChange}
+            />
+            <Slider
+              defaultValue={0}
+              label={t('editor.film.hiTint')}
+              max={100}
+              min={-100}
+              onChange={(e: any) => handleAdjustmentChange(FilmAdjustment.FlimHiTint, e.target.value)}
+              step={1}
+              value={adjustments.flimHiTint ?? 0}
+              onDragStateChange={onDragStateChange}
+            />
+            <Slider
+              defaultValue={0}
+              label={t('editor.film.shTint')}
+              max={100}
+              min={-100}
+              onChange={(e: any) => handleAdjustmentChange(FilmAdjustment.FlimShTint, e.target.value)}
+              step={1}
+              value={adjustments.flimShTint ?? 0}
+              onDragStateChange={onDragStateChange}
+            />
+          </div>
+
+          <div className="p-2 bg-bg-tertiary rounded-md">
+            <Text variant={TextVariants.heading} className="mb-2">
+              {t('adjustments.effects.vignette')}
+            </Text>
+            <Slider
+              defaultValue={0}
+              label={t('adjustments.effects.amount')}
+              max={100}
+              min={-100}
+              onChange={(e: any) => handleAdjustmentChange(Effect.VignetteAmount, e.target.value)}
+              step={1}
+              value={adjustments.vignetteAmount ?? 0}
+              onDragStateChange={onDragStateChange}
+            />
+            <Slider
+              defaultValue={50}
+              label={t('adjustments.effects.midpoint')}
+              max={100}
+              min={0}
+              onChange={(e: any) => handleAdjustmentChange(Effect.VignetteMidpoint, e.target.value)}
+              step={1}
+              value={adjustments.vignetteMidpoint ?? 50}
+              onDragStateChange={onDragStateChange}
+              fillOrigin="min"
+            />
+            <Slider
+              defaultValue={0}
+              label={t('adjustments.effects.roundness')}
+              max={100}
+              min={-100}
+              onChange={(e: any) => handleAdjustmentChange(Effect.VignetteRoundness, e.target.value)}
+              step={1}
+              value={adjustments.vignetteRoundness ?? 0}
+              onDragStateChange={onDragStateChange}
+            />
+            <Slider
+              defaultValue={50}
+              label={t('adjustments.effects.feather')}
+              max={100}
+              min={0}
+              onChange={(e: any) => handleAdjustmentChange(Effect.VignetteFeather, e.target.value)}
+              step={1}
+              value={adjustments.vignetteFeather ?? 50}
+              onDragStateChange={onDragStateChange}
+              fillOrigin="min"
+            />
+          </div>
+        </CollapsibleSection>
+
+        <CollapsibleSection
+          isContentVisible={sectionVisibility.blackAndWhite}
+          isOpen={!!collapsibleSectionsState.blackAndWhite}
+          onToggle={() => handleToggleSection('blackAndWhite')}
+          onToggleVisibility={() => handleToggleVisibility('blackAndWhite')}
+          title={t('editor.adjustments.sections.blackAndWhite')}
+        >
+          <BlackAndWhitePanel
+            adjustments={adjustments}
+            setAdjustments={setAdjustments}
+            onDragStateChange={onDragStateChange}
+          />
+        </CollapsibleSection>
+
+        <CollapsibleSection
+          isContentVisible={sectionVisibility.grain}
+          isOpen={grainOpen}
+          onToggle={() => setGrainOpen((v) => !v)}
+          onToggleVisibility={() => handleToggleVisibility('grain')}
+          title={t('adjustments.effects.grain')}
+        >
+          <GrainPanel adjustments={adjustments} setAdjustments={setAdjustments} onDragStateChange={onDragStateChange} />
+        </CollapsibleSection>
+
+        <CollapsibleSection
+          canToggleVisibility={false}
+          isContentVisible={true}
           isOpen={basicOpen}
           onToggle={() => setBasicOpen((v) => !v)}
-          title={t('editor.adjustments.sections.basic')}
+          title={t('editor.film.hwsb')}
         >
           <div className="p-2 bg-bg-tertiary rounded-md mb-3">
             <Text variant={TextVariants.heading} className="mb-2">
@@ -456,404 +769,11 @@ export default function FilmPanel() {
         <CollapsibleSection
           canToggleVisibility={false}
           isContentVisible={true}
-          isOpen={detailsOpen}
-          onToggle={() => setDetailsOpen((v) => !v)}
-          title={t('editor.adjustments.sections.details')}
-        >
-          <FilmDetailsPanel
-            adjustments={adjustments}
-            setAdjustments={setAdjustments}
-            appSettings={appSettings}
-            onDragStateChange={onDragStateChange}
-          />
-        </CollapsibleSection>
-
-        <CollapsibleSection
-          isContentVisible={sectionVisibility.filmEffects}
-          isOpen={filmEffectsOpen}
-          onToggle={() => setFilmEffectsOpen((v) => !v)}
-          onToggleVisibility={() => handleToggleVisibility('filmEffects')}
-          title={t('editor.film.effects')}
-        >
-          <div className="p-2 bg-bg-tertiary rounded-md mb-3">
-            <Text variant={TextVariants.heading} className="mb-2">
-              {t('adjustments.effects.lut')}
-            </Text>
-            <LUTControl
-              lutPath={adjustments.lutPath || null}
-              lutName={adjustments.lutName || null}
-              lutIntensity={adjustments.lutIntensity || 100}
-              lutTiming={adjustments.lutTiming || 'after'}
-              lutNormalizeMode={adjustments.lutNormalizeMode || 'clamp'}
-              lutInputRange={adjustments.lutInputRange ?? 6}
-              lutInputOffset={adjustments.lutInputOffset ?? 0}
-              lutShoulder={adjustments.lutShoulder ?? 0}
-              onLutSelect={handleLutSelect}
-              onLutHover={setLutPreviewOverride}
-              onIntensityChange={(intensity: number) =>
-                setAdjustments((prev: Partial<Adjustments>) => ({ ...prev, lutIntensity: intensity }))
-              }
-              onTimingChange={(timing: 'after' | 'before') =>
-                setAdjustments((prev: Partial<Adjustments>) => ({ ...prev, lutTiming: timing }))
-              }
-              onNormalizeModeChange={(mode: 'clamp' | 'linear' | 'log' | 'hdr') =>
-                setAdjustments((prev: Partial<Adjustments>) => ({ ...prev, lutNormalizeMode: mode }))
-              }
-              onInputRangeChange={(range: number) =>
-                setAdjustments((prev: Partial<Adjustments>) => ({ ...prev, lutInputRange: range }))
-              }
-              onInputOffsetChange={(offset: number) =>
-                setAdjustments((prev: Partial<Adjustments>) => ({ ...prev, lutInputOffset: offset }))
-              }
-              onShoulderChange={(shoulder: number) =>
-                setAdjustments((prev: Partial<Adjustments>) => ({ ...prev, lutShoulder: shoulder }))
-              }
-              onClear={() =>
-                setAdjustments((prev: Partial<Adjustments>) => ({
-                  ...prev,
-                  lutPath: null,
-                  lutName: null,
-                  lutData: null,
-                  lutSize: 0,
-                  lutIntensity: 100,
-                  lutTiming: 'after',
-                  lutNormalizeMode: 'clamp',
-                  lutInputRange: 6,
-                  lutInputOffset: 0,
-                  lutShoulder: 0,
-                }))
-              }
-              onDragStateChange={onDragStateChange}
-            />
-          </div>
-
-          <div className="p-2 bg-bg-tertiary rounded-md mb-3">
-            <Text variant={TextVariants.heading} className="mb-2">
-              {t('adjustments.effects.creative')}
-            </Text>
-            <Slider
-              defaultValue={0}
-              label={t('editor.film.halation')}
-              max={200}
-              min={0}
-              onChange={(e: any) => handleAdjustmentChange(CreativeAdjustment.HalationAmount, e.target.value)}
-              step={1}
-              value={adjustments.halationAmount ?? 0}
-              onDragStateChange={onDragStateChange}
-            />
-            <Slider
-              label={t('adjustments.details.centre')}
-              max={100}
-              min={-100}
-              onChange={(e: any) => handleAdjustmentChange('centré', e.target.value)}
-              step={1}
-              value={adjustments.centré ?? 0}
-              onDragStateChange={onDragStateChange}
-            />
-            <Slider
-              defaultValue={0}
-              label={t('adjustments.effects.glow')}
-              max={100}
-              min={0}
-              onChange={(e: any) => handleAdjustmentChange(CreativeAdjustment.GlowAmount, e.target.value)}
-              step={1}
-              value={adjustments.glowAmount ?? 0}
-              onDragStateChange={onDragStateChange}
-            />
-            <Slider
-              defaultValue={0}
-              label={t('editor.film.adjacency')}
-              max={100}
-              min={0}
-              onChange={(e: any) => handleAdjustmentChange(FilmAdjustment.FlimAdjacency, e.target.value)}
-              step={1}
-              value={adjustments.flimAdjacency ?? 0}
-              onDragStateChange={onDragStateChange}
-            />
-            <div className="flex gap-2">
-              <div className="w-[30%]">
-                <Slider
-                  defaultValue={0}
-                  label={t('editor.film.preToneDiffusionAmount')}
-                  max={100}
-                  min={0}
-                  onChange={(e: any) => handleAdjustmentChange(FilmAdjustment.FilmBlurPreAmount, e.target.value)}
-                  step={1}
-                  value={adjustments.filmBlurPreAmount ?? 0}
-                  onDragStateChange={onDragStateChange}
-                />
-              </div>
-              <div className="w-[30%]">
-                <Slider
-                  defaultValue={0}
-                  label={t('editor.film.preToneDiffusionCompensation')}
-                  max={100}
-                  min={0}
-                  onChange={(e: any) => handleAdjustmentChange(FilmAdjustment.FilmBlurPreCompensation, e.target.value)}
-                  step={1}
-                  value={adjustments.filmBlurPreCompensation ?? 0}
-                  onDragStateChange={onDragStateChange}
-                />
-              </div>
-              <div className="w-[30%]">
-                <Slider
-                  defaultValue={0.5}
-                  label={t('editor.film.preToneDiffusionRadius')}
-                  max={4}
-                  min={0.5}
-                  onChange={(e: any) => handleAdjustmentChange(FilmAdjustment.FilmBlurPreRadius, e.target.value)}
-                  step={0.1}
-                  value={adjustments.filmBlurPreRadius ?? 0.5}
-                  onDragStateChange={onDragStateChange}
-                />
-              </div>
-            </div>
-            <div className="flex gap-2">
-              <div className="w-2/3">
-                <Slider
-                  defaultValue={0}
-                  label={t('editor.film.preToneSoftBlurAmount')}
-                  max={100}
-                  min={0}
-                  onChange={(e: any) => handleAdjustmentChange(FilmAdjustment.FilmBlurPreSoftAmount, e.target.value)}
-                  step={1}
-                  value={adjustments.filmBlurPreSoftAmount ?? 0}
-                  onDragStateChange={onDragStateChange}
-                />
-              </div>
-              <div className="w-1/3">
-                <Slider
-                  defaultValue={0.5}
-                  label={t('editor.film.preToneSoftBlurRadius')}
-                  max={4}
-                  min={0.5}
-                  onChange={(e: any) => handleAdjustmentChange(FilmAdjustment.FilmBlurPreSoftRadius, e.target.value)}
-                  step={0.1}
-                  value={adjustments.filmBlurPreSoftRadius ?? 0.5}
-                  onDragStateChange={onDragStateChange}
-                />
-              </div>
-            </div>
-            <Text variant={TextVariants.heading} className="mb-2 mt-3">
-              {t('adjustments.effects.vignette')}
-            </Text>
-            <Slider
-              defaultValue={0}
-              label={t('adjustments.effects.amount')}
-              max={100}
-              min={-100}
-              onChange={(e: any) => handleAdjustmentChange(Effect.VignetteAmount, e.target.value)}
-              step={1}
-              value={adjustments.vignetteAmount ?? 0}
-              onDragStateChange={onDragStateChange}
-            />
-            <Slider
-              defaultValue={50}
-              label={t('adjustments.effects.midpoint')}
-              max={100}
-              min={0}
-              onChange={(e: any) => handleAdjustmentChange(Effect.VignetteMidpoint, e.target.value)}
-              step={1}
-              value={adjustments.vignetteMidpoint ?? 50}
-              onDragStateChange={onDragStateChange}
-              fillOrigin="min"
-            />
-            <Slider
-              defaultValue={0}
-              label={t('adjustments.effects.roundness')}
-              max={100}
-              min={-100}
-              onChange={(e: any) => handleAdjustmentChange(Effect.VignetteRoundness, e.target.value)}
-              step={1}
-              value={adjustments.vignetteRoundness ?? 0}
-              onDragStateChange={onDragStateChange}
-            />
-            <Slider
-              defaultValue={50}
-              label={t('adjustments.effects.feather')}
-              max={100}
-              min={0}
-              onChange={(e: any) => handleAdjustmentChange(Effect.VignetteFeather, e.target.value)}
-              step={1}
-              value={adjustments.vignetteFeather ?? 50}
-              onDragStateChange={onDragStateChange}
-              fillOrigin="min"
-            />
-          </div>
-
-          <div className="p-2 bg-bg-tertiary rounded-md">
-            <Text variant={TextVariants.heading} className="mb-2">
-              {t('editor.adjustments.sections.color')}
-            </Text>
-            <Slider
-              defaultValue={0}
-              label={t('editor.film.warmth')}
-              max={100}
-              min={-100}
-              onChange={(e: any) => handleAdjustmentChange(FilmAdjustment.FlimWarmth, e.target.value)}
-              step={1}
-              value={adjustments.flimWarmth ?? 0}
-              onDragStateChange={onDragStateChange}
-            />
-            <Slider
-              defaultValue={0}
-              label={t('editor.film.hiTint')}
-              max={100}
-              min={-100}
-              onChange={(e: any) => handleAdjustmentChange(FilmAdjustment.FlimHiTint, e.target.value)}
-              step={1}
-              value={adjustments.flimHiTint ?? 0}
-              onDragStateChange={onDragStateChange}
-            />
-            <Slider
-              defaultValue={0}
-              label={t('editor.film.shTint')}
-              max={100}
-              min={-100}
-              onChange={(e: any) => handleAdjustmentChange(FilmAdjustment.FlimShTint, e.target.value)}
-              step={1}
-              value={adjustments.flimShTint ?? 0}
-              onDragStateChange={onDragStateChange}
-            />
-          </div>
-        </CollapsibleSection>
-
-        <CollapsibleSection
-          isContentVisible={sectionVisibility.film}
-          isOpen={!!collapsibleSectionsState.film}
-          onToggle={() => handleToggleSection('film')}
-          onToggleVisibility={() => handleToggleVisibility('film')}
-          title={t('editor.film.looks')}
-        >
-          <FilmLookPanel
-            adjustments={adjustments}
-            setAdjustments={setAdjustments}
-            onDragStateChange={onDragStateChange}
-          />
-        </CollapsibleSection>
-
-        <CollapsibleSection
-          isContentVisible={sectionVisibility.blackAndWhite}
-          isOpen={!!collapsibleSectionsState.blackAndWhite}
-          onToggle={() => handleToggleSection('blackAndWhite')}
-          onToggleVisibility={() => handleToggleVisibility('blackAndWhite')}
-          title={t('editor.adjustments.sections.blackAndWhite')}
-        >
-          <BlackAndWhitePanel
-            adjustments={adjustments}
-            setAdjustments={setAdjustments}
-            onDragStateChange={onDragStateChange}
-          />
-        </CollapsibleSection>
-
-        <CollapsibleSection
-          isContentVisible={sectionVisibility.grain}
-          isOpen={grainOpen}
-          onToggle={() => setGrainOpen((v) => !v)}
-          onToggleVisibility={() => handleToggleVisibility('grain')}
-          title={t('adjustments.effects.grain')}
-        >
-          <GrainPanel adjustments={adjustments} setAdjustments={setAdjustments} onDragStateChange={onDragStateChange} />
-        </CollapsibleSection>
-
-        <CollapsibleSection
-          canToggleVisibility={false}
-          isContentVisible={true}
           isOpen={advancedOpen}
           onToggle={() => setAdvancedOpen((v) => !v)}
           title={t('editor.film.advanced')}
         >
-          <button
-            className="w-full mb-3 py-1.5 text-sm rounded-md bg-card-active hover:bg-surface text-text-primary"
-            onClick={handleResetImage}
-          >
-            {t('editor.film.resetImage')}
-          </button>
-
-          {ADV_SLIDERS.slice(0, 10).map(({ key, label, min, max, step }) => (
-            <Slider
-              key={key}
-              defaultValue={INITIAL_ADJUSTMENTS[key]}
-              label={t(`editor.film.adv.${label}`)}
-              max={max}
-              min={min}
-              onChange={(e: any) => handleAdvChange(key, e.target.value)}
-              step={step}
-              value={adjustments[key] ?? INITIAL_ADJUSTMENTS[key]}
-              onDragStateChange={onDragStateChange}
-            />
-          ))}
-
-          <label className="flex items-center gap-2 mb-2 text-sm text-text-secondary cursor-pointer select-none">
-            <input
-              type="checkbox"
-              className="accent-accent"
-              checked={blackAuto}
-              onChange={(e) => handleAdvChange('flimAdvBlackAuto', e.target.checked ? 1 : 0)}
-            />
-            {t('editor.film.adv.blackAuto')}
-          </label>
-          <div className={blackAuto ? 'opacity-40 pointer-events-none' : ''}>
-            <Slider
-              defaultValue={INITIAL_ADJUSTMENTS.flimAdvBlackPoint}
-              label={t('editor.film.adv.blackPoint')}
-              max={10}
-              min={-10}
-              onChange={(e: any) => handleAdvChange('flimAdvBlackPoint', e.target.value)}
-              step={0.1}
-              value={adjustments.flimAdvBlackPoint ?? 0}
-              onDragStateChange={onDragStateChange}
-            />
-          </div>
-
-          {ADV_SLIDERS.slice(10).map(({ key, label, min, max, step }) => (
-            <Slider
-              key={key}
-              defaultValue={INITIAL_ADJUSTMENTS[key]}
-              label={t(`editor.film.adv.${label}`)}
-              max={max}
-              min={min}
-              onChange={(e: any) => handleAdvChange(key, e.target.value)}
-              step={step}
-              value={adjustments[key] ?? INITIAL_ADJUSTMENTS[key]}
-              onDragStateChange={onDragStateChange}
-            />
-          ))}
-
-          {savingPreset ? (
-            <div className="flex items-center gap-2 mt-3">
-              <input
-                type="text"
-                autoFocus
-                className="grow text-sm bg-card-active border border-gray-500 rounded-sm px-2 py-1 outline-none focus:ring-1 focus:ring-blue-500 text-text-primary"
-                placeholder={t('editor.film.presetNamePlaceholder')}
-                value={presetName}
-                onChange={(e) => setPresetName(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
-                    handleSavePreset();
-                  } else if (e.key === 'Escape') {
-                    setSavingPreset(false);
-                    setPresetName('');
-                  }
-                }}
-              />
-              <button
-                className="shrink-0 px-2 py-1 text-sm rounded-md bg-accent text-white disabled:opacity-40"
-                disabled={!presetName.trim()}
-                onClick={handleSavePreset}
-              >
-                {t('editor.film.savePresetConfirm')}
-              </button>
-            </div>
-          ) : (
-            <button
-              className="w-full mt-3 py-1.5 text-sm rounded-md bg-card-active hover:bg-surface text-text-primary"
-              onClick={() => setSavingPreset(true)}
-            >
-              {t('editor.film.savePreset')}
-            </button>
-          )}
+          {' '}
         </CollapsibleSection>
       </div>
     </div>
