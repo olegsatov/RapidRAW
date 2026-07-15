@@ -343,7 +343,7 @@ export default function LUTControl({
                 <Slider
                   label={t('ui.lut.inputRange')}
                   min={0}
-                  max={8}
+                  max={32}
                   step={0.5}
                   value={lutInputRange}
                   defaultValue={6}
@@ -353,8 +353,8 @@ export default function LUTControl({
                 />
                 <Slider
                   label={t('ui.lut.inputOffset')}
-                  min={-4}
-                  max={4}
+                  min={-16}
+                  max={16}
                   step={0.5}
                   value={lutInputOffset}
                   defaultValue={0}
@@ -365,7 +365,7 @@ export default function LUTControl({
                 <Slider
                   label={t('ui.lut.shoulder')}
                   min={0}
-                  max={100}
+                  max={400}
                   step={1}
                   value={lutShoulder}
                   defaultValue={0}
