@@ -122,6 +122,7 @@ export default function FilmPanel() {
 
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [basicOpen, setBasicOpen] = useState(false);
+  const [colorOpen, setColorOpen] = useState(false);
   const [curvesOpen, setCurvesOpen] = useState(false);
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [filmEffectsOpen, setFilmEffectsOpen] = useState(false);
@@ -372,17 +373,85 @@ export default function FilmPanel() {
             value={-(adjustments.flimToe ?? 0)}
             onDragStateChange={onDragStateChange}
           />
-          <Slider
-            defaultValue={100}
-            label={t('editor.film.saturation')}
-            max={200}
-            min={0}
-            onChange={(e: any) => handleAdjustmentChange(FilmAdjustment.FlimSaturation, e.target.value)}
-            step={1}
-            value={adjustments.flimSaturation ?? 100}
-            onDragStateChange={onDragStateChange}
-          />
         </div>
+
+        <CollapsibleSection
+          canToggleVisibility={false}
+          isContentVisible={true}
+          isOpen={colorOpen}
+          onToggle={() => setColorOpen((v) => !v)}
+          title={t('editor.adjustments.sections.color')}
+        >
+          <div className="p-2 bg-bg-tertiary rounded-md mb-3">
+            <Text variant={TextVariants.heading} className="mb-2">
+              {t('adjustments.basic.toneMapper')}
+            </Text>
+            <Slider
+              defaultValue={100}
+              label={t('editor.film.saturation')}
+              max={200}
+              min={0}
+              onChange={(e: any) => handleAdjustmentChange(FilmAdjustment.FlimSaturation, e.target.value)}
+              step={1}
+              value={adjustments.flimSaturation ?? 100}
+              onDragStateChange={onDragStateChange}
+            />
+            <Slider
+              defaultValue={0}
+              label={t('editor.film.warmth')}
+              max={100}
+              min={-100}
+              onChange={(e: any) => handleAdjustmentChange(FilmAdjustment.FlimWarmth, e.target.value)}
+              step={1}
+              value={adjustments.flimWarmth ?? 0}
+              onDragStateChange={onDragStateChange}
+            />
+            <Slider
+              defaultValue={0}
+              label={t('editor.film.hiTint')}
+              max={100}
+              min={-100}
+              onChange={(e: any) => handleAdjustmentChange(FilmAdjustment.FlimHiTint, e.target.value)}
+              step={1}
+              value={adjustments.flimHiTint ?? 0}
+              onDragStateChange={onDragStateChange}
+            />
+            <Slider
+              defaultValue={0}
+              label={t('editor.film.shTint')}
+              max={100}
+              min={-100}
+              onChange={(e: any) => handleAdjustmentChange(FilmAdjustment.FlimShTint, e.target.value)}
+              step={1}
+              value={adjustments.flimShTint ?? 0}
+              onDragStateChange={onDragStateChange}
+            />
+          </div>
+
+          <div className="p-2 bg-bg-tertiary rounded-md">
+            <Text variant={TextVariants.heading} className="mb-2">
+              {t('editor.film.classic')}
+            </Text>
+            <Slider
+              label={t('adjustments.color.vibrance')}
+              max={100}
+              min={-100}
+              onChange={(e: any) => handleAdjustmentChange(ColorAdjustment.Vibrance, e.target.value)}
+              step={1}
+              value={adjustments.vibrance ?? 0}
+              onDragStateChange={onDragStateChange}
+            />
+            <Slider
+              label={t('adjustments.color.saturation')}
+              max={100}
+              min={-100}
+              onChange={(e: any) => handleAdjustmentChange(ColorAdjustment.Saturation, e.target.value)}
+              step={1}
+              value={adjustments.saturation ?? 0}
+              onDragStateChange={onDragStateChange}
+            />
+          </div>
+        </CollapsibleSection>
 
         <CollapsibleSection
           canToggleVisibility={false}
@@ -429,30 +498,6 @@ export default function FilmPanel() {
               onChange={(e: any) => handleAdjustmentChange(BasicAdjustment.Blacks, e.target.value)}
               step={1}
               value={adjustments.blacks ?? 0}
-              onDragStateChange={onDragStateChange}
-            />
-          </div>
-
-          <div className="p-2 bg-bg-tertiary rounded-md">
-            <Text variant={TextVariants.heading} className="mb-2">
-              {t('editor.adjustments.sections.color')}
-            </Text>
-            <Slider
-              label={t('adjustments.color.vibrance')}
-              max={100}
-              min={-100}
-              onChange={(e: any) => handleAdjustmentChange(ColorAdjustment.Vibrance, e.target.value)}
-              step={1}
-              value={adjustments.vibrance ?? 0}
-              onDragStateChange={onDragStateChange}
-            />
-            <Slider
-              label={t('adjustments.color.saturation')}
-              max={100}
-              min={-100}
-              onChange={(e: any) => handleAdjustmentChange(ColorAdjustment.Saturation, e.target.value)}
-              step={1}
-              value={adjustments.saturation ?? 0}
               onDragStateChange={onDragStateChange}
             />
           </div>
@@ -639,42 +684,6 @@ export default function FilmPanel() {
                 />
               </div>
             </div>
-          </div>
-
-          <div className="p-2 bg-bg-tertiary rounded-md mb-3">
-            <Text variant={TextVariants.heading} className="mb-2">
-              {t('editor.adjustments.sections.color')}
-            </Text>
-            <Slider
-              defaultValue={0}
-              label={t('editor.film.warmth')}
-              max={100}
-              min={-100}
-              onChange={(e: any) => handleAdjustmentChange(FilmAdjustment.FlimWarmth, e.target.value)}
-              step={1}
-              value={adjustments.flimWarmth ?? 0}
-              onDragStateChange={onDragStateChange}
-            />
-            <Slider
-              defaultValue={0}
-              label={t('editor.film.hiTint')}
-              max={100}
-              min={-100}
-              onChange={(e: any) => handleAdjustmentChange(FilmAdjustment.FlimHiTint, e.target.value)}
-              step={1}
-              value={adjustments.flimHiTint ?? 0}
-              onDragStateChange={onDragStateChange}
-            />
-            <Slider
-              defaultValue={0}
-              label={t('editor.film.shTint')}
-              max={100}
-              min={-100}
-              onChange={(e: any) => handleAdjustmentChange(FilmAdjustment.FlimShTint, e.target.value)}
-              step={1}
-              value={adjustments.flimShTint ?? 0}
-              onDragStateChange={onDragStateChange}
-            />
           </div>
 
           <div className="p-2 bg-bg-tertiary rounded-md">
