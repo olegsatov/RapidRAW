@@ -1573,6 +1573,12 @@ pub struct GlobalAdjustments {
     _pad_flim_hi: f32,
     pub flim_sh_tint: [f32; 3],      // split-tone shadow tint (baked from slider, + = warm)
     _pad_flim_sh: f32,
+
+    pub lut_timing: u32,
+    pub lut_normalize_mode: u32,
+    pub lut_input_range: f32,
+    pub lut_input_offset: f32,
+    pub lut_shoulder: f32,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, Pod, Zeroable, Default)]
@@ -2719,16 +2725,26 @@ fn get_global_adjustments_from_json(
 
     let (has_lut, lut_intensity) = if is_visible("effects") {
         (
-            if js_adjustments["lutPath"].is_string() {
-                1
-            } else {
-                0
-            },
+            js_adjustments["lutPath"].is_string() as u32,
             js_adjustments["lutIntensity"].as_f64().unwrap_or(100.0) as f32 / 100.0,
         )
     } else {
-        (0, 1.0)
+        (0, 0.0)
     };
+
+    let lut_timing = js_adjustments["lutTiming"].as_str().map_or(0u32, |v| {
+        if v == "before" { 1 } else { 0 }
+    });
+    let lut_normalize_mode = js_adjustments["lutNormalizeMode"].as_str().map_or(0u32, |v| {
+        match v {
+            "linear" => 1,
+            "log" => 2,
+            _ => 0,
+        }
+    });
+    let lut_input_range = js_adjustments["lutInputRange"].as_f64().unwrap_or(6.0) as f32;
+    let lut_input_offset = js_adjustments["lutInputOffset"].as_f64().unwrap_or(0.0) as f32;
+    let lut_shoulder = js_adjustments["lutShoulder"].as_f64().unwrap_or(0.0) as f32 / 100.0;
 
     GlobalAdjustments {
         exposure: get_val("basic", "exposure", SCALES.exposure, None),
@@ -2816,6 +2832,11 @@ fn get_global_adjustments_from_json(
 
         has_lut,
         lut_intensity,
+        lut_timing,
+        lut_normalize_mode,
+        lut_input_range,
+        lut_input_offset,
+        lut_shoulder,
 
         // An explicitly chosen flim tonemapper (Film tab) always wins over the
         // global "force default tonemapper" app setting.
