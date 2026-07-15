@@ -36,6 +36,26 @@ export default function EffectsPanel({
     setAdjustments((prev: Partial<Adjustments>) => ({ ...prev, lutIntensity: intensity }));
   };
 
+  const handleLutTimingChange = (timing: 'after' | 'before') => {
+    setAdjustments((prev: Partial<Adjustments>) => ({ ...prev, lutTiming: timing }));
+  };
+
+  const handleLutNormalizeModeChange = (mode: 'clamp' | 'linear' | 'log') => {
+    setAdjustments((prev: Partial<Adjustments>) => ({ ...prev, lutNormalizeMode: mode }));
+  };
+
+  const handleLutInputRangeChange = (range: number) => {
+    setAdjustments((prev: Partial<Adjustments>) => ({ ...prev, lutInputRange: range }));
+  };
+
+  const handleLutInputOffsetChange = (offset: number) => {
+    setAdjustments((prev: Partial<Adjustments>) => ({ ...prev, lutInputOffset: offset }));
+  };
+
+  const handleLutShoulderChange = (shoulder: number) => {
+    setAdjustments((prev: Partial<Adjustments>) => ({ ...prev, lutShoulder: shoulder }));
+  };
+
   const handleLutClear = () => {
     setAdjustments((prev: Partial<Adjustments>) => ({
       ...prev,
@@ -44,6 +64,11 @@ export default function EffectsPanel({
       lutData: null,
       lutSize: 0,
       lutIntensity: 100,
+      lutTiming: 'after',
+      lutNormalizeMode: 'clamp',
+      lutInputRange: 6,
+      lutInputOffset: 0,
+      lutShoulder: 0,
     }));
   };
 
@@ -99,9 +124,19 @@ export default function EffectsPanel({
               lutPath={adjustments.lutPath || null}
               lutName={adjustments.lutName || null}
               lutIntensity={adjustments.lutIntensity || 100}
+              lutTiming={adjustments.lutTiming || 'after'}
+              lutNormalizeMode={adjustments.lutNormalizeMode || 'clamp'}
+              lutInputRange={adjustments.lutInputRange ?? 6}
+              lutInputOffset={adjustments.lutInputOffset ?? 0}
+              lutShoulder={adjustments.lutShoulder ?? 0}
               onLutSelect={handleLutSelect}
               onLutHover={onLutHover}
               onIntensityChange={handleLutIntensityChange}
+              onTimingChange={handleLutTimingChange}
+              onNormalizeModeChange={handleLutNormalizeModeChange}
+              onInputRangeChange={handleLutInputRangeChange}
+              onInputOffsetChange={handleLutInputOffsetChange}
+              onShoulderChange={handleLutShoulderChange}
               onClear={handleLutClear}
               onDragStateChange={onDragStateChange}
             />

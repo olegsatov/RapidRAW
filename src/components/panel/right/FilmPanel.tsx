@@ -483,10 +483,30 @@ export default function FilmPanel() {
               lutPath={adjustments.lutPath || null}
               lutName={adjustments.lutName || null}
               lutIntensity={adjustments.lutIntensity || 100}
+              lutTiming={adjustments.lutTiming || 'after'}
+              lutNormalizeMode={adjustments.lutNormalizeMode || 'clamp'}
+              lutInputRange={adjustments.lutInputRange ?? 6}
+              lutInputOffset={adjustments.lutInputOffset ?? 0}
+              lutShoulder={adjustments.lutShoulder ?? 0}
               onLutSelect={handleLutSelect}
               onLutHover={setLutPreviewOverride}
               onIntensityChange={(intensity: number) =>
                 setAdjustments((prev: Partial<Adjustments>) => ({ ...prev, lutIntensity: intensity }))
+              }
+              onTimingChange={(timing: 'after' | 'before') =>
+                setAdjustments((prev: Partial<Adjustments>) => ({ ...prev, lutTiming: timing }))
+              }
+              onNormalizeModeChange={(mode: 'clamp' | 'linear' | 'log') =>
+                setAdjustments((prev: Partial<Adjustments>) => ({ ...prev, lutNormalizeMode: mode }))
+              }
+              onInputRangeChange={(range: number) =>
+                setAdjustments((prev: Partial<Adjustments>) => ({ ...prev, lutInputRange: range }))
+              }
+              onInputOffsetChange={(offset: number) =>
+                setAdjustments((prev: Partial<Adjustments>) => ({ ...prev, lutInputOffset: offset }))
+              }
+              onShoulderChange={(shoulder: number) =>
+                setAdjustments((prev: Partial<Adjustments>) => ({ ...prev, lutShoulder: shoulder }))
               }
               onClear={() =>
                 setAdjustments((prev: Partial<Adjustments>) => ({
@@ -496,6 +516,11 @@ export default function FilmPanel() {
                   lutData: null,
                   lutSize: 0,
                   lutIntensity: 100,
+                  lutTiming: 'after',
+                  lutNormalizeMode: 'clamp',
+                  lutInputRange: 6,
+                  lutInputOffset: 0,
+                  lutShoulder: 0,
                 }))
               }
               onDragStateChange={onDragStateChange}
