@@ -2726,11 +2726,15 @@ fn get_global_adjustments_from_json(
 
     let (has_lut, lut_intensity) = if is_visible("effects") {
         (
-            js_adjustments["lutPath"].is_string() as u32,
+            if js_adjustments["lutPath"].is_string() {
+                1
+            } else {
+                0
+            },
             js_adjustments["lutIntensity"].as_f64().unwrap_or(100.0) as f32 / 100.0,
         )
     } else {
-        (0, 0.0)
+        (0, 1.0)
     };
 
     let lut_timing = js_adjustments["lutTiming"].as_str().map_or(0u32, |v| {

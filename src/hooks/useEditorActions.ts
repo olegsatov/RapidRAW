@@ -99,6 +99,11 @@ export function useEditorActions() {
           lutName: name,
           lutSize: result.size,
           lutIntensity: 100,
+          lutTiming: 'after',
+          lutNormalizeMode: 'clamp',
+          lutInputRange: 6,
+          lutInputOffset: 0,
+          lutShoulder: 0,
           sectionVisibility: { ...(prev.sectionVisibility || INITIAL_ADJUSTMENTS.sectionVisibility), effects: true },
         }));
       } catch (err) {
