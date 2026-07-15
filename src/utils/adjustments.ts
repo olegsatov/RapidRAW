@@ -80,6 +80,11 @@ export enum Effect {
   LutName = 'lutName',
   LutPath = 'lutPath',
   LutSize = 'lutSize',
+  LutTiming = 'lutTiming',
+  LutNormalizeMode = 'lutNormalizeMode',
+  LutInputRange = 'lutInputRange',
+  LutInputOffset = 'lutInputOffset',
+  LutShoulder = 'lutShoulder',
   VignetteAmount = 'vignetteAmount',
   VignetteFeather = 'vignetteFeather',
   VignetteMidpoint = 'vignetteMidpoint',
@@ -338,6 +343,11 @@ export interface Adjustments {
   lutName?: string | null;
   lutPath?: string | null;
   lutSize?: number;
+  lutTiming?: 'after' | 'before';
+  lutNormalizeMode?: 'clamp' | 'linear' | 'log';
+  lutInputRange?: number;
+  lutInputOffset?: number;
+  lutShoulder?: number;
   masks: Array<MaskContainer>;
   orientationSteps: number;
   rotation: number;
@@ -490,6 +500,7 @@ export interface SectionVisibility {
   film: boolean;
   filmEffects: boolean;
   grain: boolean;
+  lut: boolean;
 }
 
 export const COLOR_LABELS: Array<Color> = [
@@ -599,6 +610,7 @@ export const INITIAL_MASK_ADJUSTMENTS: MaskAdjustments = {
     film: true,
     filmEffects: true,
     grain: true,
+    lut: true,
   },
   shadows: 0,
   sharpness: 0,
@@ -856,6 +868,11 @@ export const INITIAL_ADJUSTMENTS: Adjustments = {
   lutName: null,
   lutPath: null,
   lutSize: 0,
+  lutTiming: 'after',
+  lutNormalizeMode: 'clamp',
+  lutInputRange: 6,
+  lutInputOffset: 0,
+  lutShoulder: 0,
   masks: [],
   orientationSteps: 0,
   rotation: 0,
@@ -870,6 +887,7 @@ export const INITIAL_ADJUSTMENTS: Adjustments = {
     film: false,
     filmEffects: true,
     grain: false,
+    lut: true,
   },
   shadows: 0,
   sharpness: 0,
@@ -1164,7 +1182,18 @@ export const ADJUSTMENT_GROUPS: Record<string, AdjustmentGroup[]> = {
     },
     {
       label: 'modals.copyPaste.groups.lut',
-      keys: [Effect.LutIntensity, Effect.LutName, Effect.LutPath, Effect.LutSize, Effect.LutData],
+      keys: [
+        Effect.LutIntensity,
+        Effect.LutName,
+        Effect.LutPath,
+        Effect.LutSize,
+        Effect.LutTiming,
+        Effect.LutNormalizeMode,
+        Effect.LutInputRange,
+        Effect.LutInputOffset,
+        Effect.LutShoulder,
+        Effect.LutData,
+      ],
     },
   ],
   blackAndWhite: [
@@ -1326,6 +1355,11 @@ export const ADJUSTMENT_SECTIONS: Sections = {
     Effect.LutName,
     Effect.LutPath,
     Effect.LutSize,
+    Effect.LutTiming,
+    Effect.LutNormalizeMode,
+    Effect.LutInputRange,
+    Effect.LutInputOffset,
+    Effect.LutShoulder,
     Effect.VignetteAmount,
     Effect.VignetteFeather,
     Effect.VignetteMidpoint,
