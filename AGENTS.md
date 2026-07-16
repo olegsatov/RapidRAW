@@ -71,6 +71,20 @@ with extra care, and keep this list current as features are added:
   `src/App.tsx`, `src-tauri/src/app_settings.rs`,
   `src-tauri/src/startup_modifiers.rs`, and the `LaunchPayload` /
   `frontend_ready` changes in `src-tauri/src/lib.rs`.
+- Flag/rejected culling (Lightroom-style pick/reject, `Z`/`X`/`U` hotkeys,
+  auto-advance toggle, library flag filter, Delete Rejected): `flag` field in
+  `src-tauri/src/image_processing.rs` (`ImageMetadata`) and
+  `set_flag_for_paths` in `src-tauri/src/file_management.rs`,
+  `handleSetFlag` in `src/hooks/useLibraryActions.ts`, flag parts of
+  `src/store/useLibraryStore.ts`, `src/hooks/useAppNavigation.ts`,
+  `src/hooks/useTauriListeners.ts`, `src/hooks/useKeyboardShortcuts.ts`,
+  `src/utils/keyboardUtils.ts`, `src/components/panel/BottomBar.tsx`,
+  `src/components/panel/Filmstrip.tsx`,
+  `src/components/panel/library/LibraryItems.tsx` / `LibraryGrid.tsx`,
+  `src/hooks/useAppContextMenus.ts`, `src/hooks/useSortedLibrary.ts`,
+  `src/components/panel/MainLibrary.tsx`,
+  `src/components/panel/library/LibraryHeader.tsx`, culling-apply in
+  `src/components/modals/AppModals.tsx`.
 - Preset adjustment selection (copy/paste-style merge/replace mode + per-key
   inclusion): `src/utils/presetUtils.ts`, `src/components/ui/PasteModeSwitch.tsx`,
   `src/components/ui/AdjustmentKeyPicker.tsx`, `src/hooks/usePresets.ts`,
