@@ -85,7 +85,7 @@ fn resolve_image_metadata(
     sidecar_path: &Path,
     enable_xmp_sync: bool,
     settings: &AppSettings,
-) -> (bool, Option<Vec<String>>, u8) {
+) -> (bool, Option<Vec<String>>, u8, i8) {
     let mut metadata = crate::exif_processing::load_sidecar(sidecar_path);
 
     if enable_xmp_sync
@@ -99,19 +99,20 @@ fn resolve_image_metadata(
     let tm_override = crate::image_processing::resolve_tonemapper_override(settings, is_raw);
     let edited =
         crate::image_processing::is_image_edited(&metadata.adjustments, is_raw, tm_override);
-    (edited, metadata.tags, metadata.rating)
+    (edited, metadata.tags, metadata.rating, metadata.flag)
 }
 
 fn emit_image_metadata_loaded(
     app_handle: &AppHandle,
     path: &str,
     rating: u8,
+    flag: i8,
     is_edited: bool,
     tags: &Option<Vec<String>>,
 ) {
     let _ = app_handle.emit(
         "image-metadata-loaded",
-        serde_json::json!({ "path": path, "rating": rating, "is_edited": is_edited, "tags": tags }),
+        serde_json::json!({ "path": path, "rating": rating, "flag": flag, "is_edited": is_edited, "tags": tags }),
     );
 }
 
@@ -164,7 +165,7 @@ pub fn start_metadata_workers(app_handle: tauri::AppHandle) {
                 let settings = load_settings(app_clone.clone()).unwrap_or_default();
                 let enable_xmp_sync = settings.enable_xmp_sync.unwrap_or(false);
 
-                let (is_edited, tags, rating) = resolve_image_metadata(
+                let (is_edited, tags, rating, flag) = resolve_image_metadata(
                     &item.image_path,
                     &item.sidecar_path,
                     enable_xmp_sync,
@@ -175,6 +176,7 @@ pub fn start_metadata_workers(app_handle: tauri::AppHandle) {
                     &app_clone,
                     &item.virtual_path,
                     rating,
+                    flag,
                     is_edited,
                     &tags,
                 );
@@ -266,6 +268,7 @@ pub struct ImageFile {
     modified: u64,
     is_edited: bool,
     rating: u8,
+    flag: i8,
     tags: Option<Vec<String>>,
     exif: Option<HashMap<String, String>>,
     is_virtual_copy: bool,
@@ -478,7 +481,7 @@ pub fn list_images_in_dir(path: String, app_handle: AppHandle) -> Result<Vec<Ima
                     && resolve_xmp_path(&path_buf)
                         .is_some_and(|p| crate::file_management::is_cloud_placeholder(&p));
 
-                let (is_edited, tags, rating) =
+                let (is_edited, tags, rating, flag) =
                     if crate::file_management::is_cloud_placeholder(&sidecar_path)
                         || xmp_is_placeholder
                     {
@@ -488,7 +491,7 @@ pub fn list_images_in_dir(path: String, app_handle: AppHandle) -> Result<Vec<Ima
                             path_buf.clone(),
                             sidecar_path.clone(),
                         );
-                        (false, None, 0)
+                        (false, None, 0, 0)
                     } else {
                         resolve_image_metadata(&path_buf, &sidecar_path, enable_xmp_sync, &settings)
                     };
@@ -501,6 +504,7 @@ pub fn list_images_in_dir(path: String, app_handle: AppHandle) -> Result<Vec<Ima
                     exif: None,
                     is_virtual_copy,
                     rating,
+                    flag,
                     is_cloud_placeholder,
                 });
             }
@@ -602,7 +606,7 @@ pub fn list_images_recursive(
                     && resolve_xmp_path(&path_buf)
                         .is_some_and(|p| crate::file_management::is_cloud_placeholder(&p));
 
-                let (is_edited, tags, rating) =
+                let (is_edited, tags, rating, flag) =
                     if crate::file_management::is_cloud_placeholder(&sidecar_path)
                         || xmp_is_placeholder
                     {
@@ -612,7 +616,7 @@ pub fn list_images_recursive(
                             path_buf.clone(),
                             sidecar_path.clone(),
                         );
-                        (false, None, 0)
+                        (false, None, 0, 0)
                     } else {
                         resolve_image_metadata(&path_buf, &sidecar_path, enable_xmp_sync, &settings)
                     };
@@ -625,6 +629,7 @@ pub fn list_images_recursive(
                     exif: None,
                     is_virtual_copy,
                     rating,
+                    flag,
                     is_cloud_placeholder,
                 });
             }
@@ -866,7 +871,7 @@ pub fn get_album_images(
                 && resolve_xmp_path(&source_path)
                     .is_some_and(|p| crate::file_management::is_cloud_placeholder(&p));
 
-            let (is_edited, tags, rating) = if crate::file_management::is_cloud_placeholder(
+            let (is_edited, tags, rating, flag) = if crate::file_management::is_cloud_placeholder(
                 &sidecar_path,
             ) || xmp_is_placeholder
             {
@@ -876,7 +881,7 @@ pub fn get_album_images(
                     source_path.clone(),
                     sidecar_path.clone(),
                 );
-                (false, None, 0)
+                (false, None, 0, 0)
             } else {
                 resolve_image_metadata(&source_path, &sidecar_path, enable_xmp_sync, &settings)
             };
@@ -889,6 +894,7 @@ pub fn get_album_images(
                 exif: None,
                 is_virtual_copy,
                 rating,
+                flag,
                 is_cloud_placeholder,
             })
         })
@@ -2656,6 +2662,27 @@ pub fn set_rating_for_paths(
         if enable_xmp_sync {
             let source_path = parse_virtual_path(path).0;
             sync_metadata_to_xmp(&source_path, &metadata, create_xmp_if_missing);
+        }
+    });
+
+    Ok(())
+}
+
+#[tauri::command]
+pub fn set_flag_for_paths(paths: Vec<String>, flag: i8) -> Result<(), String> {
+    if !(-1..=1).contains(&flag) {
+        return Err(format!("Invalid flag value: {flag}"));
+    }
+
+    paths.par_iter().for_each(|path| {
+        let (_, sidecar_path) = parse_virtual_path(path);
+
+        let mut metadata = crate::exif_processing::load_sidecar(&sidecar_path);
+
+        metadata.flag = flag;
+
+        if let Ok(json_string) = serde_json::to_string_pretty(&metadata) {
+            let _ = std::fs::write(&sidecar_path, json_string);
         }
     });
 
