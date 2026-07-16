@@ -37,6 +37,7 @@ export interface AppModalsProps {
   handleSaveRename: (nameTemplate: string) => Promise<void>;
   handleStartImport: (settings: any) => Promise<void>;
   handleSetColorLabel: (color: string | null, paths?: string[]) => Promise<void>;
+  handleSetFlag: (flag: number, paths?: string[]) => void;
   handleRate: (rating: number, paths?: string[]) => void;
   executeDelete: (paths: string[], options: any) => Promise<void>;
   handleSaveCollage: (base64Data: string, firstPath: string) => Promise<string>;
@@ -302,7 +303,7 @@ export default function AppModals(props: AppModalsProps) {
         thumbnails={thumbnails}
         onApply={(action, paths) => {
           if (action === 'reject') {
-            props.handleSetColorLabel('red', paths);
+            props.handleSetFlag(-1, paths);
           } else if (action === 'rate_zero') {
             props.handleRate(1, paths);
           } else if (action === 'delete') {

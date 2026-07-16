@@ -316,6 +316,7 @@ function App() {
     handleLibraryImageSingleClick,
     handleImageClick,
     handleSetColorLabel,
+    handleSetFlag,
     refreshAllFolderTrees,
     handleTogglePinFolder,
     handleCreateAlbumItem,
@@ -818,6 +819,7 @@ function App() {
           handleSaveRename={handleSaveRename}
           handleStartImport={handleStartImport}
           handleSetColorLabel={handleSetColorLabel}
+          handleSetFlag={handleSetFlag}
           handleRate={handleRate}
           executeDelete={executeDelete}
           handleSaveCollage={handleSaveCollage}
