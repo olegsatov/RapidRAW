@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback, memo, useMemo } from 'react';
+import { useState, useEffect, useRef, useCallback, memo, useMemo, type PointerEvent as ReactPointerEvent } from 'react';
 import ReactCrop from 'react-image-crop';
 import 'react-image-crop/dist/ReactCrop.css';
 import { Stage, Layer, Ellipse, Line, Transformer, Group, Circle, Rect } from 'react-konva';
@@ -39,6 +39,13 @@ export interface CropDragInfo {
   boxHeight: number;
 }
 
+// Dragging outside the crop frame rotates the image under the static
+// frame (Lightroom-style) through the existing liveRotation pipeline.
+const ROTATE_ZONE_PX = 20;
+const ROTATE_DEG_PER_PX = 0.05;
+const ROTATE_MIN_DEG = -45;
+const ROTATE_MAX_DEG = 45;
+
 interface ImageCanvasProps {
   appSettings: AppSettings | null;
   activeAiPatchContainerId: string | null;
@@ -64,6 +71,8 @@ interface ImageCanvasProps {
   onLiveMaskPreview?: (previewMaskDef: any) => void;
   onManualCleanup?(subMaskId: string, sourceX: number, sourceY: number): Promise<void> | void;
   onQuickErase(subMaskId: string | null, startPoint: Coord, endpoint: Coord): void;
+  onRotateCommit?(angle: number): void;
+  onRotateDrag?(angle: number): void;
   onSelectAiSubMask(id: string | null): void;
   onSelectMask(id: string | null): void;
   onSelectAiPatchContainer?: (id: string | null) => void;
@@ -1175,6 +1184,8 @@ const ImageCanvas = memo(
     onLiveMaskPreview,
     onManualCleanup,
     onQuickErase,
+    onRotateCommit,
+    onRotateDrag,
     onSelectAiSubMask,
     onSelectMask,
     onSelectAiPatchContainer,
@@ -1212,6 +1223,16 @@ const ImageCanvas = memo(
       boxWidth: 0,
       boxHeight: 0,
     });
+    const cropViewOuterRef = useRef<HTMLDivElement>(null);
+    const cropViewInnerRef = useRef<HTMLDivElement>(null);
+    const rotateDragRef = useRef<{
+      startClientX: number;
+      startClientY: number;
+      startRotation: number;
+      verticalSign: number;
+      lastAngle: number;
+    } | null>(null);
+    const rotateDragCleanupRef = useRef<(() => void) | null>(null);
 
     // The crop library derives edge resizes from its own corner-emulation
     // (which mis-tracks the pointer and collapses at box boundaries when
@@ -1471,6 +1492,188 @@ const ImageCanvas = memo(
       }
       return { width: w, height: h };
     }, [selectedImage.width, selectedImage.height, adjustments.orientationSteps]);
+
+    const getCropFrameClientRect = useCallback((): DOMRect | null => {
+      const inner = cropViewInnerRef.current;
+      if (!inner || !crop) {
+        return null;
+      }
+      const rect = inner.getBoundingClientRect();
+      const isPct = crop.unit === '%';
+      const baseW = isPct ? 100 : effectiveImageDimensions.width;
+      const baseH = isPct ? 100 : effectiveImageDimensions.height;
+      if (!baseW || !baseH) {
+        return null;
+      }
+      return new DOMRect(
+        rect.left + (crop.x / baseW) * rect.width,
+        rect.top + (crop.y / baseH) * rect.height,
+        (crop.width / baseW) * rect.width,
+        (crop.height / baseH) * rect.height,
+      );
+    }, [crop, effectiveImageDimensions]);
+
+    const isInCropRotateZone = useCallback(
+      (clientX: number, clientY: number): boolean => {
+        if (isStraightenActive || !crop) {
+          return false;
+        }
+        const frame = getCropFrameClientRect();
+        if (!frame) {
+          return false;
+        }
+        const dx = Math.max(frame.left - clientX, 0, clientX - frame.right);
+        const dy = Math.max(frame.top - clientY, 0, clientY - frame.bottom);
+        return Math.hypot(dx, dy) > ROTATE_ZONE_PX;
+      },
+      [isStraightenActive, crop, getCropFrameClientRect],
+    );
+
+    // The ReactCrop root sets its own cursor, so the rotate cursor has to be
+    // applied to it inline in addition to the outer crop-view container.
+    const applyCropRotateCursor = useCallback((cursor: string) => {
+      if (cropViewOuterRef.current) {
+        cropViewOuterRef.current.style.cursor = cursor;
+      }
+      const reactCropEl = cropViewInnerRef.current?.querySelector('.ReactCrop') as HTMLElement | null;
+      if (reactCropEl) {
+        reactCropEl.style.cursor = cursor;
+      }
+    }, []);
+
+    // The icon is drawn for the right side of the frame and rotated around
+    // the image center to match the side the pointer is on.
+    const getCropRotateCursor = useCallback((clientX: number, clientY: number): string => {
+      const inner = cropViewInnerRef.current;
+      let angle = 0;
+      if (inner) {
+        const rect = inner.getBoundingClientRect();
+        angle = Math.atan2(clientY - (rect.top + rect.height / 2), clientX - (rect.left + rect.width / 2));
+      }
+      const svg =
+        '<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32" fill="none" stroke="white" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="filter: drop-shadow(0px 1px 2px rgba(0,0,0,0.8));">' +
+        `<g transform="rotate(${Math.round(angle * (180 / Math.PI))} 16 16)">` +
+        '<path d="M 23 9 A 10 10 0 0 1 23 23"/>' +
+        '<path d="M 28 9 L 23 9 L 23 14"/>' +
+        '<path d="M 28 23 L 23 23 L 23 18"/>' +
+        '</g></svg>';
+      return `url('data:image/svg+xml;utf8,${encodeURIComponent(svg)}') 16 16, crosshair`;
+    }, []);
+
+    useEffect(() => {
+      return () => {
+        rotateDragCleanupRef.current?.();
+      };
+    }, []);
+
+    const handleCropRotateHover = useCallback(
+      (e: ReactPointerEvent<HTMLDivElement>) => {
+        if (rotateDragRef.current || cropDragInfoRef.current.ord) {
+          return;
+        }
+        applyCropRotateCursor(
+          isInCropRotateZone(e.clientX, e.clientY) ? getCropRotateCursor(e.clientX, e.clientY) : '',
+        );
+      },
+      [isInCropRotateZone, applyCropRotateCursor, getCropRotateCursor],
+    );
+
+    const handleCropRotateLeave = useCallback(() => {
+      if (!rotateDragRef.current) {
+        applyCropRotateCursor('');
+      }
+    }, [applyCropRotateCursor]);
+
+    const handleCropRotatePointerDown = useCallback(
+      (e: ReactPointerEvent<HTMLDivElement>) => {
+        if (e.button !== 0 || (!onRotateDrag && !onRotateCommit)) {
+          return;
+        }
+        if (!isInCropRotateZone(e.clientX, e.clientY)) {
+          return;
+        }
+        // Keep ReactCrop from starting a new selection with this gesture.
+        e.preventDefault();
+        e.stopPropagation();
+        try {
+          e.currentTarget.setPointerCapture(e.pointerId);
+        } catch {
+          // best-effort fallback for drags ending outside the window
+        }
+
+        const startRotation = liveRotation ?? adjustments.rotation ?? 0;
+        // Vertical drags rotate around the image center: up on the right side
+        // is counter-clockwise, up on the left side is clockwise. The side is
+        // fixed at drag start so crossing the center doesn't flip the mapping.
+        const innerRect = cropViewInnerRef.current?.getBoundingClientRect();
+        const centerX = innerRect ? innerRect.left + innerRect.width / 2 : e.clientX;
+        rotateDragRef.current = {
+          startClientX: e.clientX,
+          startClientY: e.clientY,
+          startRotation,
+          verticalSign: e.clientX >= centerX ? 1 : -1,
+          lastAngle: startRotation,
+        };
+        const applyDragCursor = (x: number, y: number) => {
+          const cursor = getCropRotateCursor(x, y);
+          applyCropRotateCursor(cursor);
+          document.body.style.cursor = cursor;
+        };
+        applyDragCursor(e.clientX, e.clientY);
+
+        function handleMove(ev: PointerEvent) {
+          const drag = rotateDragRef.current;
+          if (!drag) {
+            return;
+          }
+          applyDragCursor(ev.clientX, ev.clientY);
+          const delta = ev.clientX - drag.startClientX + drag.verticalSign * (ev.clientY - drag.startClientY);
+          const raw = drag.startRotation + delta * ROTATE_DEG_PER_PX;
+          const angle = Math.round(Math.min(ROTATE_MAX_DEG, Math.max(ROTATE_MIN_DEG, raw)) * 10) / 10;
+          if (angle !== drag.lastAngle) {
+            drag.lastAngle = angle;
+            onRotateDrag?.(angle);
+          }
+        }
+
+        function handleEnd(ev: PointerEvent) {
+          rotateDragCleanupRef.current = null;
+          window.removeEventListener('pointermove', handleMove);
+          window.removeEventListener('pointerup', handleEnd);
+          window.removeEventListener('pointercancel', handleEnd);
+          const drag = rotateDragRef.current;
+          rotateDragRef.current = null;
+          document.body.style.cursor = '';
+          applyCropRotateCursor(
+            isInCropRotateZone(ev.clientX, ev.clientY) ? getCropRotateCursor(ev.clientX, ev.clientY) : '',
+          );
+          if (drag && drag.lastAngle !== drag.startRotation) {
+            onRotateCommit?.(drag.lastAngle);
+          }
+        }
+
+        rotateDragCleanupRef.current = () => {
+          window.removeEventListener('pointermove', handleMove);
+          window.removeEventListener('pointerup', handleEnd);
+          window.removeEventListener('pointercancel', handleEnd);
+          rotateDragRef.current = null;
+          document.body.style.cursor = '';
+          applyCropRotateCursor('');
+        };
+        window.addEventListener('pointermove', handleMove);
+        window.addEventListener('pointerup', handleEnd);
+        window.addEventListener('pointercancel', handleEnd);
+      },
+      [
+        onRotateDrag,
+        onRotateCommit,
+        isInCropRotateZone,
+        applyCropRotateCursor,
+        getCropRotateCursor,
+        liveRotation,
+        adjustments.rotation,
+      ],
+    );
 
     const activeCrop = adjustments.crop;
     const isPercentCrop = activeCrop?.unit === '%';
@@ -2997,14 +3200,19 @@ const ImageCanvas = memo(
         </div>
 
         <div
+          ref={cropViewOuterRef}
           className="absolute inset-0 w-full h-full flex items-center justify-center transition-opacity duration-200"
           style={{
             opacity: isCropViewVisible ? 1 : 0,
             pointerEvents: isCropViewVisible ? 'auto' : 'none',
           }}
+          onPointerDownCapture={handleCropRotatePointerDown}
+          onPointerMove={handleCropRotateHover}
+          onPointerLeave={handleCropRotateLeave}
         >
           {cropPreviewUrl && uncroppedImageRenderSize && (
             <div
+              ref={cropViewInnerRef}
               style={{
                 height: uncroppedImageRenderSize.height,
                 position: 'relative',

@@ -1606,6 +1606,23 @@ export default function Editor({ onBackToLibrary, onContextMenu, transformWrappe
     }
   }, [isCropping, adjustments.crop, adjustments.orientationSteps, selectedImage, liveRotation]);
 
+  // Mouse rotation drag outside the crop frame: mirror the rotation slider by
+  // driving liveRotation while dragging and committing rotation on release.
+  const handleCropRotateDrag = useCallback(
+    (angle: number) => {
+      setEditor({ liveRotation: angle, isRotationActive: true });
+    },
+    [setEditor],
+  );
+
+  const handleCropRotateCommit = useCallback(
+    (angle: number) => {
+      setEditor({ liveRotation: null, isRotationActive: false });
+      setAdjustments((prev: Adjustments) => ({ ...prev, rotation: angle }));
+    },
+    [setEditor, setAdjustments],
+  );
+
   const handleCropChange = useCallback(
     (_pixelCrop: Crop, percentCrop: PercentCrop, dragInfo?: CropDragInfo | null) => {
       if (!selectedImage) return;
@@ -2117,6 +2134,8 @@ export default function Editor({ onBackToLibrary, onContextMenu, transformWrappe
             onLiveMaskPreview={handleLiveMaskPreview}
             onManualCleanup={handleManualCleanup}
             onQuickErase={handleQuickErase}
+            onRotateCommit={handleCropRotateCommit}
+            onRotateDrag={handleCropRotateDrag}
             onSelectAiSubMask={(id) => setEditor({ activeAiSubMaskId: id })}
             onSelectMask={(id) => setEditor({ activeMaskId: id })}
             onStraighten={handleStraighten}
