@@ -1641,6 +1641,36 @@ impl GpuProcessor {
         const TILE_SIZE: u32 = 2048;
         const TILE_OVERLAP: u32 = 128;
 
+        // Skip the input blurs nothing downstream can observe. Every consumer
+        // (local contrast, tonal shadows/blacks, centre, glow, halation,
+        // dehaze, flim adjacency) is amount-gated in the shaders, and masked
+        // adjustments accumulate into the same shader values — so a blur pass
+        // is only needed when one of its driving amounts is non-zero. The
+        // radius-40 pass costs 81 taps/px per direction and is the heaviest
+        // in the pipeline.
+        let glob = &request.adjustments.global;
+        let mask_n = (request.adjustments.mask_count as usize).min(MAX_MASKS);
+        let masks = &request.adjustments.mask_adjustments[..mask_n];
+        let halation_on =
+            glob.halation_amount != 0.0 || masks.iter().any(|m| m.halation_amount != 0.0);
+        let need_sharpness_blur =
+            glob.sharpness != 0.0 || masks.iter().any(|m| m.sharpness != 0.0);
+        let need_tonal_blur = glob.shadows != 0.0
+            || glob.blacks != 0.0
+            || masks.iter().any(|m| m.shadows != 0.0 || m.blacks != 0.0);
+        let need_clarity_blur = glob.clarity != 0.0
+            || glob.centré != 0.0
+            || halation_on
+            || (glob.tonemapper_mode == 2 && glob.flim_adjacency > 0.0)
+            || masks.iter().any(|m| m.clarity != 0.0);
+        let need_structure_blur = glob.structure != 0.0
+            || glob.dehaze != 0.0
+            || glob.glow_amount != 0.0
+            || halation_on
+            || masks
+                .iter()
+                .any(|m| m.structure != 0.0 || m.dehaze != 0.0 || m.glow_amount != 0.0);
+
         let mut final_pixels = vec![
             0u8;
             if skip_cpu_readback {
@@ -1761,10 +1791,13 @@ impl GpuProcessor {
                     true
                 };
 
-                let did_create_sharpness_blur = run_blur(1.0, &self.sharpness_blur_view);
-                let did_create_tonal_blur = run_blur(3.5, &self.tonal_blur_view);
-                let did_create_clarity_blur = run_blur(8.0, &self.clarity_blur_view);
-                let did_create_structure_blur = run_blur(40.0, &self.structure_blur_view);
+                let did_create_sharpness_blur =
+                    need_sharpness_blur && run_blur(1.0, &self.sharpness_blur_view);
+                let did_create_tonal_blur = need_tonal_blur && run_blur(3.5, &self.tonal_blur_view);
+                let did_create_clarity_blur =
+                    need_clarity_blur && run_blur(8.0, &self.clarity_blur_view);
+                let did_create_structure_blur =
+                    need_structure_blur && run_blur(40.0, &self.structure_blur_view);
 
 
                 let mut main_encoder = device.create_command_encoder(&Default::default());

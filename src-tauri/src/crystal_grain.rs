@@ -35,7 +35,7 @@ use image::{DynamicImage, ImageFormat, Rgb, Rgb32FImage};
 use rayon::prelude::*;
 use serde::Deserialize;
 use std::io::Cursor;
-use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering as AtomicOrdering};
+use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering as AtomicOrdering};
 use tauri::{AppHandle, Emitter, Manager};
 
 // ---------------------------------------------------------------------------
@@ -239,6 +239,31 @@ fn mirror(i: isize, n: usize) -> usize {
     m as usize
 }
 
+/// One output pixel of the convolution via the mirror path (borders).
+#[inline]
+fn convolve_px_symm_mirror(
+    seeds: &[f32],
+    w: usize,
+    h: usize,
+    flipped: &[f32],
+    k: usize,
+    c: isize,
+    x: usize,
+    y: usize,
+) -> f32 {
+    let mut acc = 0.0f32;
+    for di in 0..k {
+        let sy = mirror(y as isize + di as isize - c, h);
+        let srow = sy * w;
+        let frow = di * k;
+        for dj in 0..k {
+            let sx = mirror(x as isize + dj as isize - c, w);
+            acc += seeds[srow + sx] * flipped[frow + dj];
+        }
+    }
+    acc
+}
+
 /// 2D convolution ('same', 'symm' borders) — i.e. correlation with the
 /// flipped kernel, exactly like scipy.signal.convolve2d. Kernels are always
 /// odd-sized, so the 'same' centering is exact.
@@ -251,20 +276,31 @@ fn convolve_same_symm(seeds: &[f32], w: usize, h: usize, kernel: &[f32], k: usiz
         }
     }
     let c = (k / 2) as isize;
+    // Taps of pixel (x, y) span [x - lo, x + hi] (same for y); pixels whose
+    // whole span is in-bounds take the fast path without mirror()'s
+    // rem_euclid/division — it used to run once per tap (k² per pixel) and
+    // dominated the cost.
+    let lo = c as usize;
+    let hi = k - 1 - lo;
     let mut out = vec![0.0f32; w * h];
     out.par_chunks_mut(w).enumerate().for_each(|(y, row)| {
+        let interior_y = y >= lo && y + hi < h;
         for (x, px) in row.iter_mut().enumerate() {
-            let mut acc = 0.0f32;
-            for di in 0..k {
-                let sy = mirror(y as isize + di as isize - c, h);
-                let srow = sy * w;
-                let frow = di * k;
-                for dj in 0..k {
-                    let sx = mirror(x as isize + dj as isize - c, w);
-                    acc += seeds[srow + sx] * flipped[frow + dj];
+            *px = if interior_y && x >= lo && x + hi < w {
+                let y0 = y - lo;
+                let x0 = x - lo;
+                let mut acc = 0.0f32;
+                for di in 0..k {
+                    let srow = (y0 + di) * w + x0;
+                    let frow = di * k;
+                    for dj in 0..k {
+                        acc += seeds[srow + dj] * flipped[frow + dj];
+                    }
                 }
-            }
-            *px = acc;
+                acc
+            } else {
+                convolve_px_symm_mirror(seeds, w, h, &flipped, k, c, x, y)
+            };
         }
     });
     out
@@ -700,16 +736,29 @@ pub fn upload_grain_field(
     texture
 }
 
+/// Monotonic bake generation: only the newest bake may publish its texture.
+/// Slider drags fire overlapping bakes (400 ms debounce vs ~1 s bake time),
+/// and without this the last *finisher* — not the last *requested* — wins,
+/// leaving the preview on stale grain parameters.
+static BAKE_GENERATION: AtomicU64 = AtomicU64::new(0);
+
 /// "crystal-grain-baked" when the texture is live.
 #[tauri::command]
 pub async fn bake_crystal_grain_field(
     options: Option<CrystalGrainOptions>,
     app_handle: AppHandle,
 ) -> Result<(), String> {
+    let generation = BAKE_GENERATION.fetch_add(1, AtomicOrdering::SeqCst) + 1;
     tokio::task::spawn_blocking(move || {
         let opts = options.unwrap_or_default();
         let tile = GRAIN_FIELD_TILE;
         let mips = bake_grain_field(&opts, tile);
+
+        // A newer bake was requested while this one was rendering: drop the
+        // stale result quietly (no texture swap, no re-render event).
+        if BAKE_GENERATION.load(AtomicOrdering::SeqCst) != generation {
+            return Ok(());
+        }
 
         let state = app_handle.state::<AppState>();
         // Make sure the GPU context exists before we lock it for the swap.

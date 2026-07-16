@@ -332,8 +332,7 @@ export function useImageProcessing(
     // the render must cover the display resolution even in static preview
     // mode — an upscaled 1920px render aliases the grain (coarse blobs that
     // don't track the zoom). Static mode stays the resolution floor.
-    const grainActive =
-      ((useEditorStore.getState().adjustments.crystalGrainAmount as number) ?? 0) > 0;
+    const grainActive = ((useEditorStore.getState().adjustments.crystalGrainAmount as number) ?? 0) > 0;
     const staticMode = !(appSettings?.enableZoomHifi ?? true);
     if (staticMode && !grainActive) {
       return baseTargetRes;
@@ -504,10 +503,14 @@ export function useImageProcessing(
   // so the grain mip tracks the current zoom without a manual zoom-in/out
   // dance. Resolution increases are already handled by the hifi effect above;
   // this covers zoom-out, initial layout and everything else (debounced).
+  // Skipped entirely when realtime crystal grain is off — nothing else in the
+  // render depends on the display size.
   useEffect(() => {
     if (!selectedImage?.isReady || displaySize.width === 0) return;
     const t = setTimeout(() => {
       if (calculateTargetRes() > currentResRef.current) return; // hifi effect will render
+      const adj = useEditorStore.getState().adjustments;
+      if (!adj || (adj.crystalGrainAmount ?? 0) <= 0) return;
       useEditorStore.getState().setEditor((s) => ({ renderGeneration: s.renderGeneration + 1 }));
     }, 200);
     return () => clearTimeout(t);
