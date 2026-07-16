@@ -2521,8 +2521,8 @@ const ImageCanvas = memo(
         return null;
       }
 
-      const viewportWidth = imageRenderSize.width + 2 * imageRenderSize.offsetX;
-      const viewportHeight = imageRenderSize.height + 2 * imageRenderSize.offsetY;
+      const viewportWidth = imageRenderSize.width + 2 * imageRenderSize.offsetX - 2 * proofMargin;
+      const viewportHeight = imageRenderSize.height + 2 * imageRenderSize.offsetY - 2 * proofMargin;
 
       let uncroppedEffectiveWidth = selectedImage.width;
       let uncroppedEffectiveHeight = selectedImage.height;
@@ -2541,7 +2541,7 @@ const ImageCanvas = memo(
       const renderHeight = uncroppedEffectiveHeight * scale;
 
       return { width: renderWidth, height: renderHeight };
-    }, [selectedImage?.width, selectedImage?.height, imageRenderSize, adjustments.orientationSteps]);
+    }, [selectedImage?.width, selectedImage?.height, imageRenderSize, adjustments.orientationSteps, proofMargin]);
 
     const cropImageTransforms = useMemo(() => {
       const rotation = liveRotation !== null && liveRotation !== undefined ? liveRotation : adjustments.rotation || 0;
