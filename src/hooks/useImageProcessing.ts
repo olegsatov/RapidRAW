@@ -174,10 +174,14 @@ export function useImageProcessing(
 
       // Screen-space grain scale: the grain mip must match the DISPLAYED size
       // (zoom included), not the render resolution — the wgpu display blit
-      // does not average grain reliably on its own.
+      // does not average grain reliably on its own. The displayed size counts
+      // in PHYSICAL pixels: the export viewed in the same window is also
+      // downscaled to DPR-scaled pixels, so the mip divisor must include the
+      // device pixel ratio or the preview grain comes out too coarse.
       const { originalSize: orig, displaySize: disp } = useEditorStore.getState();
       const origMax = Math.max(orig.width, orig.height);
-      const dispMax = Math.max(disp.width, disp.height);
+      const dpr = typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1;
+      const dispMax = Math.max(disp.width, disp.height) * dpr;
       const grainMipLevel = origMax > 0 && dispMax > 0 ? Math.max(0, Math.log2(origMax / dispMax)) : null;
 
       try {

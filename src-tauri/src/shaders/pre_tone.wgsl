@@ -1158,20 +1158,24 @@ fn apply_halation(
     blurred_tail_input_space: vec3<f32>,
     amount: f32,
     is_raw: u32,
-    exp: f32, bright: f32
+    exp: f32
 ) -> vec3<f32> {
     if (amount <= 0.0) { return color; }
 
     // The blur textures are computed on the pre-grade input; approximate the
-    // graded linear space by re-applying the exposure adjustments.
+    // graded linear space by re-applying the exposure adjustment. Brightness
+    // is deliberately NOT re-applied here: the input color receives it only
+    // later in the pipeline, so halo and signal pass the brightness curve
+    // exactly once, as one composite (and the threshold stays keyed to scene
+    // stops rather than to a creative post-adjustment).
     var core_lin = blurred_core_input_space;
     var tail_lin = blurred_tail_input_space;
     if (is_raw == 0u) {
         core_lin = srgb_to_linear(core_lin);
         tail_lin = srgb_to_linear(tail_lin);
     }
-    core_lin = apply_filmic_exposure(apply_linear_exposure(core_lin, exp), bright);
-    tail_lin = apply_filmic_exposure(apply_linear_exposure(tail_lin, exp), bright);
+    core_lin = apply_linear_exposure(core_lin, exp);
+    tail_lin = apply_linear_exposure(tail_lin, exp);
 
     // Threshold in stops above middle grey (0.18 scene-referred convention):
     // the core reacts only to strong highlights, the tail reaches further down.
@@ -1342,7 +1346,7 @@ fn pre_tone(@builtin(global_invocation_id) id: vec3<u32>) {
     if (t_halation > 0.0) {
         processed_rgb = apply_halation(
             processed_rgb, clarity_blurred, structure_blurred, t_halation, is_raw,
-            t_exposure, t_brightness
+            t_exposure
         );
     }
     if (t_flare > 0.0) {

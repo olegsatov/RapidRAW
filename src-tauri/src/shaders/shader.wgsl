@@ -1064,7 +1064,14 @@ fn flim_transform(color_in: vec3<f32>, blur_in: vec3<f32>, exp: f32, bright: f32
         blur_lin = blur_lin * exp2(g.flim_ev) * mix(white, g.flim_pre_filter, g.flim_pre_filter_strength) * g.flim_warmth;
         let log_hi = log2(max(inp, vec3<f32>(1e-6)));
         let log_lo = log2(max(blur_lin, vec3<f32>(1e-6)));
-        let w = clamp(log_hi * 0.3 + 1.2, vec3<f32>(0.2), vec3<f32>(2.0));
+        // Weight grows toward highlights (developer flows into bright areas),
+        // keyed by luma so saturated edges don't split hue per channel. Below
+        // mid grey the legacy ramp is kept (strong mids, restrained shadows);
+        // above mid grey it keeps rising gently instead of pinning at the cap
+        // about a stop up, which made the growth effectively binary.
+        let mono_hi = log2(max(dot(inp, FLIM_LUMA), 1e-6));
+        let w_lo = clamp(mono_hi * 0.3 + 1.2, 0.2, 2.0);
+        let w = select(min(1.75 + (mono_hi - 1.82) * 0.12, 2.0), w_lo, mono_hi <= 1.82);
         inp = exp2(log_hi + (log_hi - log_lo) * g.flim_adjacency * 0.5 * w);
     }
     // extended gamut
