@@ -1307,3 +1307,11 @@ Run the app (`npm run tauri dev`) with a folder of test photos:
 8. Flags survive an app restart; a sidecar written before this feature (no `flag` key) loads as unflagged and gains `flag: 0` on next write.
 9. AI Culling modal → Reject sets the rejected flag (not the red color label).
 10. Keybinds for flag actions appear under Settings → Controls (rating section) and are rebindable.
+
+---
+
+## Amendments (from Task 2 code review)
+
+- **Task 2b (new, run right after Task 2):** Persist the new settings in Rust. `save_settings` (`src-tauri/src/app_settings.rs`) deserializes into typed structs and drops unknown fields, so without this the flag filter and `flagAutoAdvance` reset on restart. Add `#[serde(default)] pub flag: Option<String>` to Rust `FilterCriteria` (+ `Default` impl) and `#[serde(default)] pub flag_auto_advance: Option<bool>` to `AppSettings` (+ `Default`). CAUTION: `app_settings.rs` has unrelated uncommitted LUT changes — stage ONLY the flag hunks (backup/restore technique), verify with `cargo check`, commit message: `persist flag filter and auto-advance in settings`.
+- **Task 3, extra step:** `handleGoHome` (`src/hooks/useAppNavigation.ts:44-57`) resets `imageRatings` — add `imageFlags: {}` to the same `setLibrary` call.
+- **Task 9, extra step:** the active-filter indicator `isFilterActive` (`src/components/panel/library/LibraryHeader.tsx:332-335`) checks rating/rawStatus/colors — include `filterCriteria.flag && filterCriteria.flag !== 'all'` so the indicator lights when a flag filter is active.
