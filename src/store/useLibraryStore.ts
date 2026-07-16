@@ -32,6 +32,7 @@ interface LibraryState {
   // Images & Selection
   imageList: Array<ImageFile>;
   imageRatings: Record<string, number>;
+  imageFlags: Record<string, number>;
   multiSelectedPaths: Array<string>;
   selectionAnchorPath: string | null;
   libraryActivePath: string | null;
@@ -69,13 +70,14 @@ export const useLibraryStore = create<LibraryState>((set) => ({
 
   imageList: [],
   imageRatings: {},
+  imageFlags: {},
   multiSelectedPaths: [],
   selectionAnchorPath: null,
   libraryActivePath: null,
   libraryActiveAdjustments: INITIAL_ADJUSTMENTS,
 
   sortCriteria: { key: 'name', order: SortDirection.Ascending },
-  filterCriteria: { colors: [], rating: 0, rawStatus: RawStatus.All },
+  filterCriteria: { colors: [], rating: 0, rawStatus: RawStatus.All, flag: 'all' },
   searchCriteria: { tags: [], text: '', mode: 'OR' },
 
   isTreeLoading: false,
