@@ -48,6 +48,7 @@ export function useAppNavigation({ clearThumbnailQueue, refs }: AppNavigationPro
       activeAlbumId: null,
       imageList: [],
       imageRatings: {},
+      imageFlags: {},
       folderTrees: [],
       multiSelectedPaths: [],
       libraryActivePath: null,
@@ -340,12 +341,16 @@ export function useAppNavigation({ clearThumbnailQueue, refs }: AppNavigationPro
         }
 
         const initialRatings: Record<string, number> = {};
+        const initialFlags: Record<string, number> = {};
         files.forEach((f) => {
           if (f.rating !== undefined) {
             initialRatings[f.path] = f.rating;
           }
+          if (f.flag !== undefined) {
+            initialFlags[f.path] = f.flag;
+          }
         });
-        setLibrary({ imageRatings: initialRatings });
+        setLibrary({ imageRatings: initialRatings, imageFlags: initialFlags });
 
         const exifSortKeys = ['date_taken', 'iso', 'shutter_speed', 'aperture', 'focal_length'];
         const isExifSortActive = exifSortKeys.includes(sortCriteria.key);
@@ -418,13 +423,16 @@ export function useAppNavigation({ clearThumbnailQueue, refs }: AppNavigationPro
         const files: ImageFile[] = await invoke(Invokes.GetAlbumImages, { paths: imagePaths });
 
         const initialRatings: Record<string, number> = {};
+        const initialFlags: Record<string, number> = {};
         files.forEach((f) => {
           if (f.rating !== undefined) initialRatings[f.path] = f.rating;
+          if (f.flag !== undefined) initialFlags[f.path] = f.flag;
         });
 
         setLibrary({
           imageList: files,
           imageRatings: initialRatings,
+          imageFlags: initialFlags,
           ...(preserveEditor ? {} : { multiSelectedPaths: [], libraryActivePath: null }),
         });
       } catch (err) {

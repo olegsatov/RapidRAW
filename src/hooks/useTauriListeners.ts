@@ -122,10 +122,11 @@ export function useTauriListeners({
       }),
       listen('image-metadata-loaded', (event: any) => {
         if (!isEffectActive) return;
-        const { path, rating, is_edited, tags } = event.payload;
+        const { path, rating, is_edited, tags, flag } = event.payload;
 
         useLibraryStore.getState().setLibrary((state) => ({
           imageRatings: { ...state.imageRatings, [path]: rating },
+          ...(flag !== undefined ? { imageFlags: { ...state.imageFlags, [path]: flag } } : {}),
           imageList: state.imageList.map((img) =>
             img.path === path ? { ...img, is_edited, tags: tags ?? img.tags } : img,
           ),

@@ -35,6 +35,31 @@ export function useLibraryActions(handleImageSelect?: (path: string) => void) {
     });
   }, []);
 
+  const handleSetFlag = useCallback((newFlag: number, paths?: string[]) => {
+    const { multiSelectedPaths, imageFlags, setLibrary } = useLibraryStore.getState();
+    const { selectedImage } = useEditorStore.getState();
+
+    const pathsToFlag =
+      paths || (multiSelectedPaths.length > 0 ? multiSelectedPaths : selectedImage ? [selectedImage.path] : []);
+    if (pathsToFlag.length === 0) return;
+
+    const currentFlag = imageFlags[pathsToFlag[0]] || 0;
+    const finalFlag = newFlag === currentFlag ? 0 : newFlag;
+
+    setLibrary((state) => {
+      const newFlags = { ...state.imageFlags };
+      pathsToFlag.forEach((p) => {
+        newFlags[p] = finalFlag;
+      });
+      return { imageFlags: newFlags };
+    });
+
+    invoke(Invokes.SetFlagForPaths, { paths: pathsToFlag, flag: finalFlag }).catch((err) => {
+      console.error(err);
+      toast.error(`Failed to set flag: ${err}`);
+    });
+  }, []);
+
   const handleSetColorLabel = useCallback(async (color: string | null, paths?: string[]) => {
     const { multiSelectedPaths, libraryActivePath, imageList, setLibrary } = useLibraryStore.getState();
     const { selectedImage } = useEditorStore.getState();
@@ -386,6 +411,7 @@ export function useLibraryActions(handleImageSelect?: (path: string) => void) {
 
   return {
     handleRate,
+    handleSetFlag,
     handleSetColorLabel,
     handleTagsChanged,
     handleUpdateExif,
