@@ -19,6 +19,7 @@ import { calculateCenteredCrop } from '../utils/cropUtils';
 import { Invokes } from '../components/ui/AppProperties';
 import { globalImageCache } from '../utils/ImageLRUCache';
 import { PRESET_SECTION_VISIBILITY_KEYS } from '../utils/presetUtils';
+import { lutParamsToAdjustments, resolveLutParams } from '../utils/lutSettings';
 
 export const debouncedSetHistory = debounce((newAdj: Adjustments) => {
   useEditorStore.getState().pushHistory(newAdj);
@@ -86,15 +87,20 @@ export function useEditorActions() {
 
   const handleLutSelect = useCallback(
     async (path: string) => {
-      const isAndroid = useSettingsStore.getState().osPlatform === 'android';
+      const settingsState = useSettingsStore.getState();
+      const isAndroid = settingsState.osPlatform === 'android';
       try {
         const result: { size: number } = await invoke('load_and_parse_lut', { path });
         let name =
           isAndroid && path.startsWith('content://')
             ? await invoke<string>('resolve_android_content_uri_name', { uriStr: path })
             : path.split(/[\\/]/).pop() || 'LUT';
+        // Restore the per-LUT saved params (defaults for an unconfigured LUT)
+        // so the LUT always comes in the way it was dialed in.
+        const lutParams = lutParamsToAdjustments(resolveLutParams(settingsState.appSettings, path));
         setAdjustments((prev: Adjustments) => ({
           ...prev,
+          ...lutParams,
           lutPath: path,
           lutName: name,
           lutSize: result.size,
@@ -116,12 +122,13 @@ export function useEditorActions() {
       setEditor((state) => {
         if (!path) return { previewOverride: null };
         const name = path.split(/[\\/]/).pop() || 'LUT';
+        const lutParams = lutParamsToAdjustments(resolveLutParams(useSettingsStore.getState().appSettings, path));
         return {
           previewOverride: {
             ...state.adjustments,
+            ...lutParams,
             lutPath: path,
             lutName: name,
-            lutIntensity: state.adjustments.lutIntensity,
           },
         };
       });

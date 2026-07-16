@@ -11,6 +11,7 @@ import Slider from './Slider';
 import Text from './Text';
 import { useEditorStore } from '../../store/useEditorStore';
 import { useSettingsStore } from '../../store/useSettingsStore';
+import type { LutFileSettings } from './AppProperties';
 import { TextVariants } from '../../types/typography';
 
 interface LutEntry {
@@ -62,11 +63,14 @@ export default function LUTControl({
   const { showContextMenu } = useContextMenu();
   const selectedImagePath = useEditorStore((state) => state.selectedImage?.path ?? null);
   const isImageReady = useEditorStore((state) => state.selectedImage?.isReady ?? false);
+  const lutSettings = useSettingsStore((state) => state.appSettings?.lutSettings);
 
   const [entries, setEntries] = useState<LutEntry[]>([]);
   const [previews, setPreviews] = useState<Record<string, string | null>>({});
   const [isLoadingPreviews, setIsLoadingPreviews] = useState(false);
-  const previewCache = useRef<Map<string, Record<string, string | null>>>(new Map());
+  // Per-path staleness keys (image + saved per-LUT params): a swatch is
+  // regenerated only when the image or that LUT's own params change.
+  const previewCache = useRef<Map<string, { key: string; thumb: string | null }>>(new Map());
 
   const handleContextMenu = (event: React.MouseEvent, entry: LutEntry) => {
     event.preventDefault();
@@ -115,36 +119,50 @@ export default function LUTControl({
     if (!selectedImagePath || !isImageReady || entries.length === 0) {
       return;
     }
-    const cacheKey = `${selectedImagePath}|${entries.map((entry) => entry.path).join(',')}`;
-    const cached = previewCache.current.get(cacheKey);
-    if (cached) {
-      setPreviews(cached);
+    const keyFor = (path: string) => `${selectedImagePath}|${JSON.stringify(lutSettings?.[path] ?? null)}`;
+    const stalePaths = entries
+      .map((entry) => entry.path)
+      .filter((path) => previewCache.current.get(path)?.key !== keyFor(path));
+    if (stalePaths.length === 0) {
       return;
     }
 
     let isActive = true;
     setIsLoadingPreviews(true);
-    invoke<LutPreview[]>('generate_lut_previews', {
-      lutPaths: entries.map((entry) => entry.path),
-      size: PREVIEW_SIZE,
-    })
-      .then((results) => {
-        if (!isActive) return;
-        const map: Record<string, string | null> = {};
-        results.forEach((result) => {
-          map[result.path] = result.thumb;
-        });
-        previewCache.current.set(cacheKey, map);
-        setPreviews(map);
-      })
-      .catch((err) => console.error('Failed to generate LUT previews:', err))
-      .finally(() => {
-        if (isActive) setIsLoadingPreviews(false);
+    // Debounce so slider drags re-render the affected swatch after settling,
+    // not on every tick.
+    const timer = setTimeout(() => {
+      const lutParams: Record<string, LutFileSettings> = {};
+      stalePaths.forEach((path) => {
+        const stored = lutSettings?.[path];
+        if (stored) {
+          lutParams[path] = stored;
+        }
       });
+      invoke<LutPreview[]>('generate_lut_previews', {
+        lutPaths: stalePaths,
+        size: PREVIEW_SIZE,
+        lutParams,
+      })
+        .then((results) => {
+          if (!isActive) return;
+          const map: Record<string, string | null> = {};
+          results.forEach((result) => {
+            map[result.path] = result.thumb;
+            previewCache.current.set(result.path, { key: keyFor(result.path), thumb: result.thumb });
+          });
+          setPreviews((prev) => ({ ...prev, ...map }));
+        })
+        .catch((err) => console.error('Failed to generate LUT previews:', err))
+        .finally(() => {
+          if (isActive) setIsLoadingPreviews(false);
+        });
+    }, 250);
     return () => {
       isActive = false;
+      clearTimeout(timer);
     };
-  }, [selectedImagePath, isImageReady, entries]);
+  }, [selectedImagePath, isImageReady, entries, lutSettings]);
 
   const handleImport = async () => {
     try {
@@ -255,7 +273,7 @@ export default function LUTControl({
               label={t('ui.lut.inputRange')}
               min={0}
               max={32}
-              step={0.5}
+              step={0.1}
               value={lutInputRange}
               defaultValue={6}
               onChange={(e) => onInputRangeChange?.(parseFloat(String(e.target.value)))}
@@ -266,7 +284,7 @@ export default function LUTControl({
               label={t('ui.lut.inputOffset')}
               min={-16}
               max={16}
-              step={0.5}
+              step={0.1}
               value={lutInputOffset}
               defaultValue={0}
               onChange={(e) => onInputOffsetChange?.(parseFloat(String(e.target.value)))}

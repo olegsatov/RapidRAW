@@ -56,6 +56,15 @@ with extra care, and keep this list current as features are added:
   `src-tauri/src/shaders/film_post.wgsl`, film/grain parts of
   `src-tauri/src/gpu_processing.rs` / `image_processing.rs` /
   `export_processing.rs` (`crystal_grain.rs`, `film_grain.rs`).
+- LUT engine (pre/post-tonemapper timing + HDR normalization; per-LUT saved
+  application params restored on select/hover and used for list thumbnails):
+  `src/components/ui/LUTControl.tsx`, `src/utils/lutSettings.ts`, LUT parts of
+  `src/components/adjustments/Effects.tsx` /
+  `src/components/panel/right/FilmPanel.tsx` / `src/hooks/useEditorActions.ts`,
+  `src-tauri/src/lut_processing.rs`, LUT fields of
+  `src-tauri/src/app_settings.rs` / `image_processing.rs` /
+  `gpu_processing.rs`, LUT branches of `src-tauri/src/shaders/shader.wgsl` /
+  `pre_tone.wgsl`.
 - Session restore (Continue Session reopens last image + editor tab; now
   auto-restores on launch unless a startup modifier key is held):
   `src/hooks/useAppInitialization.ts`, `src/hooks/useAppNavigation.ts`,

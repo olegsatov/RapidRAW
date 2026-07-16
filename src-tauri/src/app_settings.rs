@@ -326,6 +326,22 @@ pub fn default_open_tree_sections() -> Vec<String> {
     vec!["current".to_string()]
 }
 
+/// Per-LUT-file application parameters, stored globally so a LUT remembers how
+/// it was dialed in (intensity, timing, pre-tonemapper input window). Missing
+/// fields fall back to the frontend defaults.
+#[derive(Serialize, Deserialize, Debug, Clone, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct LutFileSettings {
+    #[serde(default)]
+    pub intensity: Option<i32>,
+    #[serde(default)]
+    pub timing: Option<String>,
+    #[serde(default)]
+    pub input_range: Option<f32>,
+    #[serde(default)]
+    pub input_offset: Option<f32>,
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct AppSettings {
@@ -450,6 +466,8 @@ pub struct AppSettings {
     pub proof_margin_level: Option<u8>,
     #[serde(default)]
     pub editor_background_color: Option<String>,
+    #[serde(default)]
+    pub lut_settings: HashMap<String, LutFileSettings>,
 }
 
 impl Default for AppSettings {
@@ -543,6 +561,7 @@ impl Default for AppSettings {
             proof_margin_level_2: Some(120),
             proof_margin_level: Some(1),
             editor_background_color: None,
+            lut_settings: HashMap::new(),
         }
     }
 }

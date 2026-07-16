@@ -1,6 +1,7 @@
 import { useTranslation } from 'react-i18next';
 import Slider from '../ui/Slider';
 import { Adjustments, Effect, CreativeAdjustment } from '../../utils/adjustments';
+import { saveLutParams } from '../../utils/lutSettings';
 import LUTControl from '../ui/LUTControl';
 import { AppSettings } from '../ui/AppProperties';
 import Text from '../ui/Text';
@@ -34,6 +35,7 @@ export default function EffectsPanel({
 
   const handleLutIntensityChange = (intensity: number) => {
     setAdjustments((prev: Partial<Adjustments>) => ({ ...prev, lutIntensity: intensity }));
+    saveLutParams(adjustments.lutPath, { intensity });
   };
 
   const handleLutTimingChange = (timing: 'after' | 'before') => {
@@ -42,14 +44,17 @@ export default function EffectsPanel({
       lutTiming: timing,
       lutNormalizeMode: timing === 'before' ? 'hdr' : 'clamp',
     }));
+    saveLutParams(adjustments.lutPath, { timing });
   };
 
   const handleLutInputRangeChange = (range: number) => {
     setAdjustments((prev: Partial<Adjustments>) => ({ ...prev, lutInputRange: range }));
+    saveLutParams(adjustments.lutPath, { inputRange: range });
   };
 
   const handleLutInputOffsetChange = (offset: number) => {
     setAdjustments((prev: Partial<Adjustments>) => ({ ...prev, lutInputOffset: offset }));
+    saveLutParams(adjustments.lutPath, { inputOffset: offset });
   };
 
   const handleLutClear = () => {

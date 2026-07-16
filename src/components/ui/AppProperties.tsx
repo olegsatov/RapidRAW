@@ -179,6 +179,13 @@ export interface LastFolderState {
   lastSelectedImage?: string | null;
 }
 
+export interface LutFileSettings {
+  intensity?: number;
+  timing?: 'after' | 'before';
+  inputRange?: number;
+  inputOffset?: number;
+}
+
 export interface AppSettings {
   aiConnectorAddress?: string;
   aiProvider?: string;
@@ -236,6 +243,7 @@ export interface AppSettings {
   proofMarginLevel2?: number;
   proofMarginLevel?: 1 | 2;
   flagAutoAdvance?: boolean;
+  lutSettings?: Record<string, LutFileSettings>;
 }
 
 export interface BrushSettings {

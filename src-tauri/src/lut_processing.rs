@@ -16,11 +16,13 @@ use mozjpeg_rs::{Encoder, Preset};
 use tauri::{AppHandle, Manager, State};
 
 use crate::AppState;
+use crate::app_settings::LutFileSettings;
 use crate::cache_utils::calculate_transform_hash;
 use crate::image_processing::{
     RenderRequest, get_all_adjustments_from_json, process_and_get_dynamic_image,
     resolve_tonemapper_override_from_handle,
 };
+use std::collections::HashMap;
 
 const HDR_LUT_TOTAL_RANGE: f32 = 32.0;
 const HDR_LUT_SIZE: u32 = 65;
@@ -707,6 +709,7 @@ fn render_lut_swatch(
 pub fn generate_lut_previews(
     lut_paths: Vec<String>,
     size: u32,
+    lut_params: Option<HashMap<String, LutFileSettings>>,
     state: State<AppState>,
     app_handle: AppHandle,
 ) -> Result<Vec<LutPreview>, String> {
@@ -724,17 +727,24 @@ pub fn generate_lut_previews(
         crate::generate_transformed_preview(&state, &loaded_image, &base_json, size)?;
 
     let tm_override = resolve_tonemapper_override_from_handle(&app_handle, is_raw);
-    let lut_json = serde_json::json!({
-        "lutPath": "preview",
-        "lutIntensity": 100,
-        "sectionVisibility": { "effects": true }
-    });
-    let adjustments = get_all_adjustments_from_json(&lut_json, is_raw, tm_override);
     let transform_hash = calculate_transform_hash(&base_json);
 
+    // Swatches render with the per-LUT saved parameters (falling back to the
+    // stock 100%/after defaults) so the list matches what selecting the LUT
+    // will actually apply.
     let previews = lut_paths
         .into_iter()
         .map(|path| {
+            let params = lut_params.as_ref().and_then(|map| map.get(&path));
+            let lut_json = serde_json::json!({
+                "lutPath": "preview",
+                "lutIntensity": params.and_then(|p| p.intensity).unwrap_or(100),
+                "lutTiming": params.and_then(|p| p.timing.as_deref()).unwrap_or("after"),
+                "lutInputRange": params.and_then(|p| p.input_range).unwrap_or(6.0),
+                "lutInputOffset": params.and_then(|p| p.input_offset).unwrap_or(0.0),
+                "sectionVisibility": { "effects": true }
+            });
+            let adjustments = get_all_adjustments_from_json(&lut_json, is_raw, tm_override);
             let thumb = render_lut_swatch(
                 &context,
                 &state,

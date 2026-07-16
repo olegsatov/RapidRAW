@@ -31,6 +31,7 @@ import { useEditorStore } from '../../../store/useEditorStore';
 import { useSettingsStore } from '../../../store/useSettingsStore';
 import { useUIStore } from '../../../store/useUIStore';
 import { useEditorActions } from '../../../hooks/useEditorActions';
+import { saveLutParams } from '../../../utils/lutSettings';
 import { Invokes } from '../../ui/AppProperties';
 
 // Film tab: drives the flim tonemapper mode (github.com/bean-mhm/flim,
@@ -535,22 +536,26 @@ export default function FilmPanel() {
               lutInputOffset={adjustments.lutInputOffset ?? 0}
               onLutSelect={handleLutSelect}
               onLutHover={setLutPreviewOverride}
-              onIntensityChange={(intensity: number) =>
-                setAdjustments((prev: Partial<Adjustments>) => ({ ...prev, lutIntensity: intensity }))
-              }
-              onTimingChange={(timing: 'after' | 'before') =>
+              onIntensityChange={(intensity: number) => {
+                setAdjustments((prev: Partial<Adjustments>) => ({ ...prev, lutIntensity: intensity }));
+                saveLutParams(adjustments.lutPath, { intensity });
+              }}
+              onTimingChange={(timing: 'after' | 'before') => {
                 setAdjustments((prev: Partial<Adjustments>) => ({
                   ...prev,
                   lutTiming: timing,
                   lutNormalizeMode: timing === 'before' ? 'hdr' : 'clamp',
-                }))
-              }
-              onInputRangeChange={(range: number) =>
-                setAdjustments((prev: Partial<Adjustments>) => ({ ...prev, lutInputRange: range }))
-              }
-              onInputOffsetChange={(offset: number) =>
-                setAdjustments((prev: Partial<Adjustments>) => ({ ...prev, lutInputOffset: offset }))
-              }
+                }));
+                saveLutParams(adjustments.lutPath, { timing });
+              }}
+              onInputRangeChange={(range: number) => {
+                setAdjustments((prev: Partial<Adjustments>) => ({ ...prev, lutInputRange: range }));
+                saveLutParams(adjustments.lutPath, { inputRange: range });
+              }}
+              onInputOffsetChange={(offset: number) => {
+                setAdjustments((prev: Partial<Adjustments>) => ({ ...prev, lutInputOffset: offset }));
+                saveLutParams(adjustments.lutPath, { inputOffset: offset });
+              }}
               onClear={() =>
                 setAdjustments((prev: Partial<Adjustments>) => ({
                   ...prev,
