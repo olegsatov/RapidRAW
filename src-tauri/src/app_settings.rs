@@ -24,6 +24,8 @@ pub struct FilterCriteria {
     pub edited_status: Option<String>,
     #[serde(default)]
     pub colors: Vec<String>,
+    #[serde(default)]
+    pub flag: Option<String>,
 }
 
 impl Default for FilterCriteria {
@@ -33,6 +35,7 @@ impl Default for FilterCriteria {
             raw_status: "all".to_string(),
             edited_status: Some("all".to_string()),
             colors: Vec::new(),
+            flag: None,
         }
     }
 }
@@ -468,6 +471,8 @@ pub struct AppSettings {
     pub editor_background_color: Option<String>,
     #[serde(default)]
     pub lut_settings: HashMap<String, LutFileSettings>,
+    #[serde(default)]
+    pub flag_auto_advance: Option<bool>,
 }
 
 impl Default for AppSettings {
@@ -562,6 +567,7 @@ impl Default for AppSettings {
             proof_margin_level: Some(1),
             editor_background_color: None,
             lut_settings: HashMap::new(),
+            flag_auto_advance: None,
         }
     }
 }
