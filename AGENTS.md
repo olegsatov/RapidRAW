@@ -92,6 +92,11 @@ with extra care, and keep this list current as features are added:
   `src/components/modals/CopyPasteSettingsModal.tsx`,
   `src/components/presets/PresetsBrowser.tsx`,
   `src-tauri/src/file_management.rs`.
+- SIGBUS-safe file reads (upstream mmap'd image files; a page-in failure on a
+  flaky/external volume crashed the process — now plain reads return errors):
+  `read_file_bytes` in `src-tauri/src/file_management.rs` and its call sites in
+  `src-tauri/src/image_loader.rs` / `export_processing.rs` /
+  `negative_conversion.rs` / `lib.rs`.
 - Locale strings for the above: `src/i18n/locales/*.json`.
 
 ## Verification
