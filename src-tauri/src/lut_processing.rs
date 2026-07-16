@@ -739,7 +739,7 @@ pub fn generate_lut_previews(
             let lut_json = serde_json::json!({
                 "lutPath": "preview",
                 "lutIntensity": params.and_then(|p| p.intensity).unwrap_or(100),
-                "lutTiming": params.and_then(|p| p.timing.as_deref()).unwrap_or("after"),
+                "lutTiming": params.and_then(|p| p.timing.as_deref()).unwrap_or("before"),
                 "lutInputRange": params.and_then(|p| p.input_range).unwrap_or(6.0),
                 "lutInputOffset": params.and_then(|p| p.input_offset).unwrap_or(0.0),
                 "sectionVisibility": { "effects": true }

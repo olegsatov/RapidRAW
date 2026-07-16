@@ -13,7 +13,7 @@ export interface ResolvedLutParams {
 
 export const DEFAULT_LUT_PARAMS: ResolvedLutParams = {
   intensity: INITIAL_ADJUSTMENTS.lutIntensity ?? 100,
-  timing: INITIAL_ADJUSTMENTS.lutTiming ?? 'after',
+  timing: INITIAL_ADJUSTMENTS.lutTiming ?? 'before',
   inputRange: INITIAL_ADJUSTMENTS.lutInputRange ?? 6,
   inputOffset: INITIAL_ADJUSTMENTS.lutInputOffset ?? 0,
 };

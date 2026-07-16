@@ -65,8 +65,8 @@ export default function EffectsPanel({
       lutData: null,
       lutSize: 0,
       lutIntensity: 100,
-      lutTiming: 'after',
-      lutNormalizeMode: 'clamp',
+      lutTiming: 'before',
+      lutNormalizeMode: 'hdr',
       lutInputRange: 6,
       lutInputOffset: 0,
     }));
@@ -124,7 +124,7 @@ export default function EffectsPanel({
               lutPath={adjustments.lutPath || null}
               lutName={adjustments.lutName || null}
               lutIntensity={adjustments.lutIntensity || 100}
-              lutTiming={adjustments.lutTiming || 'after'}
+              lutTiming={adjustments.lutTiming || 'before'}
               lutInputRange={adjustments.lutInputRange ?? 6}
               lutInputOffset={adjustments.lutInputOffset ?? 0}
               onLutSelect={handleLutSelect}

@@ -2730,8 +2730,9 @@ fn get_global_adjustments_from_json(
         (0, 1.0)
     };
 
-    let lut_timing = js_adjustments["lutTiming"].as_str().map_or(0u32, |v| {
-        if v == "before" { 1 } else { 0 }
+    // Pre-tonemapper is the default application point; "after" is opt-in.
+    let lut_timing = js_adjustments["lutTiming"].as_str().map_or(1u32, |v| {
+        if v == "after" { 0 } else { 1 }
     });
     // LUTs applied before the tone mapper are always sampled with HDR
     // extrapolation so they can act on scene-linear values above 1.0.

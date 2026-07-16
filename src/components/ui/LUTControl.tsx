@@ -47,7 +47,7 @@ export default function LUTControl({
   lutPath,
   lutName,
   lutIntensity,
-  lutTiming = 'after',
+  lutTiming = 'before',
   lutInputRange = 6,
   lutInputOffset = 0,
   onLutSelect,
@@ -229,7 +229,7 @@ export default function LUTControl({
         {t('ui.lut.mode')}
       </Text>
       <div className="flex gap-1">
-        {(['after', 'before'] as const).map((timing) => (
+        {(['before', 'after'] as const).map((timing) => (
           <button
             key={timing}
             className={clsx(
