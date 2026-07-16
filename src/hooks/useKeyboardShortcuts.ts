@@ -266,7 +266,11 @@ export const useKeyboardShortcuts = ({
         shouldFire: (s: any) => !!s.editor.selectedImage,
         execute: (e: any, s: any) => {
           e.preventDefault();
-          s.ui.setRightPanel(Panel.Crop);
+          if (s.ui.activeRightPanel === Panel.Crop) {
+            s.ui.setRightPanel(s.ui.panelBeforeCrop === undefined ? Panel.Adjustments : s.ui.panelBeforeCrop);
+          } else {
+            s.ui.setRightPanel(Panel.Crop);
+          }
         },
       },
       toggle_masks: {
@@ -464,6 +468,14 @@ export const useKeyboardShortcuts = ({
 
     const builtinShortcuts = [
       {
+        match: (e: KeyboardEvent, s: any) =>
+          e.code === 'Enter' && !!s.editor.selectedImage && s.ui.activeRightPanel === Panel.Crop,
+        execute: (e: KeyboardEvent, s: any) => {
+          e.preventDefault();
+          s.ui.setRightPanel(s.ui.panelBeforeCrop === undefined ? Panel.Adjustments : s.ui.panelBeforeCrop);
+        },
+      },
+      {
         match: (e: KeyboardEvent) => e.code === 'Escape',
         execute: (e: KeyboardEvent, s: any) => {
           e.preventDefault();
@@ -473,8 +485,15 @@ export const useKeyboardShortcuts = ({
           else if (s.editor.activeAiPatchContainerId) s.editor.setEditor({ activeAiPatchContainerId: null });
           else if (s.editor.activeMaskId) s.editor.setEditor({ activeMaskId: null });
           else if (s.editor.activeMaskContainerId) s.editor.setEditor({ activeMaskContainerId: null });
-          else if (s.ui.activeRightPanel === Panel.Crop) s.ui.setRightPanel(Panel.Adjustments);
-          else if (s.ui.isFullScreen) handleToggleFullScreen();
+          else if (s.ui.activeRightPanel === Panel.Crop) {
+            const snapshot = s.ui.cropSessionSnapshot;
+            if (snapshot && snapshot.imagePath === (s.editor.selectedImage?.path ?? null)) {
+              const newAdjustments = { ...s.editor.adjustments, ...snapshot.adjustments };
+              s.editor.setEditor({ adjustments: newAdjustments });
+              debouncedSetHistory(newAdjustments);
+            }
+            s.ui.setRightPanel(s.ui.panelBeforeCrop === undefined ? Panel.Adjustments : s.ui.panelBeforeCrop);
+          } else if (s.ui.isFullScreen) handleToggleFullScreen();
           else if (s.editor.selectedImage) handleBackToLibrary();
         },
       },

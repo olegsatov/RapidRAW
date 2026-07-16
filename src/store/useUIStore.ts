@@ -7,6 +7,8 @@ import {
   CullingSuggestions,
   LeftPanelTab,
 } from '../components/ui/AppProperties';
+import { Adjustments } from '../utils/adjustments';
+import { useEditorStore } from './useEditorStore';
 
 const RIGHT_PANEL_ORDER = [
   Panel.Metadata,
@@ -85,6 +87,11 @@ export interface CullingModalState {
   pathsToCull: Array<string>;
 }
 
+export interface CropSessionSnapshot {
+  imagePath: string | null;
+  adjustments: Partial<Adjustments>;
+}
+
 interface UIState {
   // View & Layout
   activeView: string;
@@ -107,6 +114,8 @@ interface UIState {
   renderedRightPanel: Panel | null;
   slideDirection: number;
   collapsibleSectionsState: CollapsibleSectionsState;
+  panelBeforeCrop: Panel | null | undefined;
+  cropSessionSnapshot: CropSessionSnapshot | null;
 
   // Left Bottom Panel
   activeLeftBottomTab: LeftPanelTab;
@@ -172,6 +181,8 @@ export const useUIStore = create<UIState>((set, get) => ({
   activeRightPanel: Panel.Adjustments,
   renderedRightPanel: Panel.Adjustments,
   slideDirection: 1,
+  panelBeforeCrop: undefined,
+  cropSessionSnapshot: null,
   collapsibleSectionsState: {
     basic: true,
     blackAndWhite: false,
@@ -235,17 +246,34 @@ export const useUIStore = create<UIState>((set, get) => ({
   setRightPanel: (panelId) => {
     if (panelId && !RIGHT_PANEL_ORDER.includes(panelId)) return;
     const current = get().activeRightPanel;
-    if (panelId === current) {
-      set({ activeRightPanel: null });
-    } else {
-      const currentIndex = current ? RIGHT_PANEL_ORDER.indexOf(current) : -1;
-      const newIndex = panelId ? RIGHT_PANEL_ORDER.indexOf(panelId) : -1;
+    const next = panelId === current ? null : panelId;
+
+    if (next === Panel.Crop && current !== Panel.Crop) {
+      const { adjustments, selectedImage } = useEditorStore.getState();
+      const { crop, aspectRatio, rotation, orientationSteps, flipHorizontal, flipVertical } = adjustments;
       set({
-        slideDirection: newIndex > currentIndex ? 1 : -1,
-        activeRightPanel: panelId,
-        renderedRightPanel: panelId,
+        panelBeforeCrop: current,
+        cropSessionSnapshot: {
+          imagePath: selectedImage?.path ?? null,
+          adjustments: { crop, aspectRatio, rotation, orientationSteps, flipHorizontal, flipVertical },
+        },
       });
+    } else if (current === Panel.Crop && next !== Panel.Crop) {
+      set({ cropSessionSnapshot: null });
     }
+
+    if (next === null) {
+      set({ activeRightPanel: null });
+      return;
+    }
+
+    const currentIndex = current ? RIGHT_PANEL_ORDER.indexOf(current) : -1;
+    const newIndex = RIGHT_PANEL_ORDER.indexOf(next);
+    set({
+      slideDirection: newIndex > currentIndex ? 1 : -1,
+      activeRightPanel: next,
+      renderedRightPanel: next,
+    });
   },
 
   customEscapeHandler: null,
