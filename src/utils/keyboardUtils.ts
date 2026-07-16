@@ -158,6 +158,24 @@ export const KEYBIND_DEFINITIONS: KeybindDefinition[] = [
     section: 'rating',
   },
   {
+    action: 'flag_pick',
+    description: 'settings.keybinds.actions.flag_pick',
+    defaultCombo: ['KeyZ'],
+    section: 'rating',
+  },
+  {
+    action: 'flag_reject',
+    description: 'settings.keybinds.actions.flag_reject',
+    defaultCombo: ['KeyX'],
+    section: 'rating',
+  },
+  {
+    action: 'flag_clear',
+    description: 'settings.keybinds.actions.flag_clear',
+    defaultCombo: ['KeyU'],
+    section: 'rating',
+  },
+  {
     action: 'toggle_adjustments',
     description: 'settings.keybinds.actions.toggle_adjustments',
     defaultCombo: ['KeyD'],

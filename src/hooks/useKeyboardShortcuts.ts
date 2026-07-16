@@ -31,7 +31,7 @@ export const useKeyboardShortcuts = ({
   handleZoomChange,
 }: KeyboardShortcutsProps) => {
   const { handleRotate, handleCopyAdjustments, handlePasteAdjustments } = useEditorActions();
-  const { handleRate, handleSetColorLabel } = useLibraryActions();
+  const { handleRate, handleSetColorLabel, handleSetFlag } = useLibraryActions();
 
   const sortedListRef = useRef(sortedImageList);
   useEffect(() => {
@@ -46,6 +46,24 @@ export const useKeyboardShortcuts = ({
       settings: useSettingsStore.getState(),
       process: useProcessStore.getState(),
     });
+
+    const handleFlagAutoAdvance = (s: any) => {
+      if (s.settings.appSettings?.flagAutoAdvance === false) return;
+      const list = sortedListRef.current;
+      if (list.length === 0) return;
+
+      if (s.editor.selectedImage) {
+        const currentIndex = list.findIndex((img) => img.path === s.editor.selectedImage!.path);
+        if (currentIndex === -1 || currentIndex + 1 >= list.length) return;
+        handleImageSelect(list[currentIndex + 1].path);
+      } else {
+        const activePath = s.library.libraryActivePath;
+        const currentIndex = list.findIndex((img) => img.path === activePath);
+        if (currentIndex === -1 || currentIndex + 1 >= list.length) return;
+        const next = list[currentIndex + 1];
+        s.library.setLibrary({ libraryActivePath: next.path, multiSelectedPaths: [next.path] });
+      }
+    };
 
     const actions: Record<string, any> = {
       open_image: {
@@ -437,6 +455,29 @@ export const useKeyboardShortcuts = ({
           handleSetColorLabel('purple');
         },
       },
+      flag_pick: {
+        shouldFire: () => true,
+        execute: (e: any, s: any) => {
+          e.preventDefault();
+          handleSetFlag(1);
+          handleFlagAutoAdvance(s);
+        },
+      },
+      flag_reject: {
+        shouldFire: () => true,
+        execute: (e: any, s: any) => {
+          e.preventDefault();
+          handleSetFlag(-1);
+          handleFlagAutoAdvance(s);
+        },
+      },
+      flag_clear: {
+        shouldFire: () => true,
+        execute: (e: any) => {
+          e.preventDefault();
+          handleSetFlag(0);
+        },
+      },
       toggle_proof_margin: {
         shouldFire: (s: any) => !!s.editor.selectedImage,
         execute: (e: any, s: any) => {
@@ -637,5 +678,6 @@ export const useKeyboardShortcuts = ({
     handlePasteAdjustments,
     handleRate,
     handleSetColorLabel,
+    handleSetFlag,
   ]);
 };
