@@ -36,6 +36,7 @@ export const parseFocalLength = (val: string | undefined): number => {
 
 export function computeSortedLibrary(libraryState: any, settingsState: any): ImageFile[] {
   const { imageList, imageRatings, filterCriteria, searchCriteria, sortCriteria } = libraryState;
+  const flagMap: Record<string, number> = libraryState.imageFlags || {};
   const { appSettings, supportedTypes } = settingsState;
 
   const getParentDir = (filePath: string): string => {
@@ -95,6 +96,13 @@ export function computeSortedLibrary(libraryState: any, settingsState: any): Ima
       if (filterCriteria.rating === -1 && rating !== 0) return false;
       if (filterCriteria.rating === 5 && rating !== 5) return false;
       if (filterCriteria.rating > 0 && filterCriteria.rating < 5 && rating < filterCriteria.rating) return false;
+    }
+
+    if (filterCriteria.flag && filterCriteria.flag !== 'all') {
+      const flag = flagMap[image.path] || 0;
+      if (filterCriteria.flag === 'flagged' && flag !== 1) return false;
+      if (filterCriteria.flag === 'rejected' && flag !== -1) return false;
+      if (filterCriteria.flag === 'unflagged' && flag !== 0) return false;
     }
 
     if (
@@ -283,6 +291,7 @@ export function computeSortedLibrary(libraryState: any, settingsState: any): Ima
 export function useSortedLibrary() {
   const imageList = useLibraryStore((state) => state.imageList);
   const imageRatings = useLibraryStore((state) => state.imageRatings);
+  const imageFlags = useLibraryStore((state) => state.imageFlags);
   const filterCriteria = useLibraryStore((state) => state.filterCriteria);
   const searchCriteria = useLibraryStore((state) => state.searchCriteria);
   const sortCriteria = useLibraryStore((state) => state.sortCriteria);
@@ -292,10 +301,10 @@ export function useSortedLibrary() {
 
   const sortedImageList = useMemo(() => {
     return computeSortedLibrary(
-      { imageList, imageRatings, filterCriteria, searchCriteria, sortCriteria },
+      { imageList, imageRatings, imageFlags, filterCriteria, searchCriteria, sortCriteria },
       { appSettings, supportedTypes },
     );
-  }, [imageList, sortCriteria, imageRatings, filterCriteria, supportedTypes, searchCriteria, appSettings]);
+  }, [imageList, sortCriteria, imageRatings, imageFlags, filterCriteria, supportedTypes, searchCriteria, appSettings]);
 
   return sortedImageList;
 }

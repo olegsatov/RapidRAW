@@ -308,6 +308,7 @@ export function ViewOptionsDropdown({
   thumbnailSizeOptions,
   thumbnailAspectRatioOptions,
   ratingFilterOptions,
+  flagFilterOptions,
   rawStatusOptions,
   editedStatusOptions,
   sortOptions,
@@ -332,6 +333,7 @@ export function ViewOptionsDropdown({
   const isFilterActive =
     filterCriteria.rating !== 0 ||
     (filterCriteria.rawStatus && filterCriteria.rawStatus !== RawStatus.All) ||
+    (filterCriteria.flag && filterCriteria.flag !== 'all') ||
     (filterCriteria.colors && filterCriteria.colors.length > 0);
 
   const [lastClickedColor, setLastClickedColor] = useState<string | null>(null);
@@ -594,6 +596,37 @@ export function ViewOptionsDropdown({
                 </div>
                 {filterCriteria.rating > 0 && <Check size={16} className={TEXT_COLOR_KEYS[TextColors.primary]} />}
               </div>
+            </div>
+
+            <div>
+              <Text as="div" variant={TextVariants.small} weight={TextWeights.semibold} className="px-3 py-2 uppercase">
+                {t('library.header.viewOptions.filterByFlag')}
+              </Text>
+
+              {flagFilterOptions.map((option: any) => {
+                const isSelected = (filterCriteria.flag ?? 'all') === option.value;
+                return (
+                  <button
+                    className={`w-full text-left px-3 py-2 rounded-md flex items-center justify-between transition-colors duration-150 ${
+                      isSelected ? 'bg-card-active' : 'hover:bg-bg-primary'
+                    }`}
+                    key={option.value}
+                    onClick={() =>
+                      setFilterCriteria((prev: Partial<FilterCriteria>) => ({ ...prev, flag: option.value }))
+                    }
+                    role="menuitem"
+                  >
+                    <Text
+                      variant={TextVariants.label}
+                      color={TextColors.primary}
+                      weight={isSelected ? TextWeights.semibold : TextWeights.normal}
+                    >
+                      {option.label}
+                    </Text>
+                    {isSelected && <Check size={16} className={TEXT_COLOR_KEYS[TextColors.primary]} />}
+                  </button>
+                );
+              })}
             </div>
 
             <div>

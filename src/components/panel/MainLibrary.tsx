@@ -111,6 +111,16 @@ export default function MainLibrary(props: MainLibraryProps) {
     [t],
   );
 
+  const translatedFlagFilterOptions = useMemo(
+    () => [
+      { value: 'all', label: t('library.filters.flag.all') },
+      { value: 'flagged', label: t('library.filters.flag.flagged') },
+      { value: 'unflagged', label: t('library.filters.flag.unflagged') },
+      { value: 'rejected', label: t('library.filters.flag.rejected') },
+    ],
+    [t],
+  );
+
   const translatedRawStatusOptions = useMemo(
     () => [
       { key: RawStatus.All, label: t('library.filters.raw.all') },
@@ -481,6 +491,7 @@ export default function MainLibrary(props: MainLibraryProps) {
             thumbnailSizeOptions={translatedThumbnailSizeOptions}
             thumbnailAspectRatioOptions={translatedThumbnailAspectRatioOptions}
             ratingFilterOptions={translatedRatingFilterOptions}
+            flagFilterOptions={translatedFlagFilterOptions}
             rawStatusOptions={translatedRawStatusOptions}
             editedStatusOptions={translatedEditedStatusOptions}
             sortOptions={translatedSortOptions}
