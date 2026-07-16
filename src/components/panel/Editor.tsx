@@ -10,7 +10,7 @@ import { ImageDimensions, useImageRenderSize } from '../../hooks/useImageRenderS
 import { Adjustments, AiPatch, MaskContainer } from '../../utils/adjustments';
 import { calculateCenteredCrop } from '../../utils/cropUtils';
 import EditorToolbar from './editor/EditorToolbar';
-import ImageCanvas from './editor/ImageCanvas';
+import ImageCanvas, { CropDragInfo } from './editor/ImageCanvas';
 import { Mask, SubMask } from './right/Masks';
 import { Panel, TransformState, Invokes } from '../ui/AppProperties';
 import Text from '../ui/Text';
@@ -1607,7 +1607,7 @@ export default function Editor({ onBackToLibrary, onContextMenu, transformWrappe
   }, [isCropping, adjustments.crop, adjustments.orientationSteps, selectedImage, liveRotation]);
 
   const handleCropChange = useCallback(
-    (_pixelCrop: Crop, percentCrop: PercentCrop) => {
+    (_pixelCrop: Crop, percentCrop: PercentCrop, dragInfo?: CropDragInfo | null) => {
       if (!selectedImage) return;
 
       const orientationSteps = adjustments.orientationSteps || 0;
@@ -1631,6 +1631,82 @@ export default function Editor({ onBackToLibrary, onContextMenu, transformWrappe
         width: (pc.width / 100) * W,
         height: (pc.height / 100) * H,
       });
+
+      const isEdgeDrag =
+        dragInfo?.ord === 'n' || dragInfo?.ord === 'e' || dragInfo?.ord === 's' || dragInfo?.ord === 'w';
+      if (isEdgeDrag && dragInfo && adjustments.aspectRatio && lastValidCropRef.current) {
+        // Lightroom-style edge resize: pin the opposite edge, scale the frame
+        // proportionally, expanding symmetrically around the pinned edge's midpoint.
+        // The dragged edge position comes from our own pointer tracking — the
+        // library's locked-aspect output mis-tracks it (see ImageCanvas).
+        const ratio = adjustments.aspectRatio;
+        const start = toPixel(lastValidCropRef.current);
+        const startCx = start.x + start.width / 2;
+        const startCy = start.y + start.height / 2;
+        const ord = dragInfo.ord;
+
+        let { x, y, width, height } = start;
+        if (ord === 'e' || ord === 'w') {
+          if (dragInfo.boxWidth <= 0) {
+            return;
+          }
+          const edgeX = ((dragInfo.clientX - dragInfo.grabOffsetX - dragInfo.boxLeft) / dragInfo.boxWidth) * W;
+          const right = start.x + start.width;
+          width = ord === 'e' ? edgeX - start.x : right - edgeX;
+          height = width / ratio;
+          x = ord === 'e' ? start.x : right - width;
+          y = startCy - height / 2;
+        } else {
+          if (dragInfo.boxHeight <= 0) {
+            return;
+          }
+          const edgeY = ((dragInfo.clientY - dragInfo.grabOffsetY - dragInfo.boxTop) / dragInfo.boxHeight) * H;
+          const bottom = start.y + start.height;
+          height = ord === 's' ? edgeY - start.y : bottom - edgeY;
+          width = height * ratio;
+          x = startCx - width / 2;
+          y = ord === 's' ? start.y : bottom - height;
+        }
+
+        if (width < MIN_CROP_PX || height < MIN_CROP_PX) {
+          return;
+        }
+
+        let target: Crop = { unit: 'px', x, y, width, height };
+        if (!checkCropValid(target, W, H, rotation)) {
+          let low = 0;
+          let high = 1;
+          let best = start;
+          for (let i = 0; i < 15; i++) {
+            const mid = (low + high) / 2;
+            const test = {
+              unit: 'px' as const,
+              x: start.x + (target.x - start.x) * mid,
+              y: start.y + (target.y - start.y) * mid,
+              width: start.width + (target.width - start.width) * mid,
+              height: start.height + (target.height - start.height) * mid,
+            };
+            if (checkCropValid(test, W, H, rotation)) {
+              best = test;
+              low = mid;
+            } else {
+              high = mid;
+            }
+          }
+          target = best;
+        }
+
+        const pc: PercentCrop = {
+          unit: '%',
+          x: (target.x / W) * 100,
+          y: (target.y / H) * 100,
+          width: (target.width / W) * 100,
+          height: (target.height / H) * 100,
+        };
+        setCrop(pc);
+        lastValidCropRef.current = pc;
+        return;
+      }
 
       if (checkCropValid(toPixel(percentCrop), W, H, rotation)) {
         setCrop(percentCrop);

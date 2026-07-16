@@ -27,6 +27,18 @@ interface DrawnLine {
   tool: ToolType;
 }
 
+export interface CropDragInfo {
+  ord: string | null;
+  clientX: number;
+  clientY: number;
+  grabOffsetX: number;
+  grabOffsetY: number;
+  boxLeft: number;
+  boxTop: number;
+  boxWidth: number;
+  boxHeight: number;
+}
+
 interface ImageCanvasProps {
   appSettings: AppSettings | null;
   activeAiPatchContainerId: string | null;
@@ -58,7 +70,7 @@ interface ImageCanvasProps {
   onSelectMaskContainer?: (id: string | null) => void;
   onStraighten(val: number): void;
   selectedImage: SelectedImage;
-  setCrop(crop: Crop, perfentCrop: PercentCrop): void;
+  setCrop(crop: Crop, perfentCrop: PercentCrop, dragInfo?: CropDragInfo | null): void;
   setIsMaskHovered(isHovered: boolean): void;
   setIsMaskTouchInteracting(isInteracting: boolean): void;
   showOriginal: boolean;
@@ -1189,6 +1201,31 @@ const ImageCanvas = memo(
   }: ImageCanvasProps) => {
     const [isCropViewVisible, setIsCropViewVisible] = useState(false);
     const cropImageRef = useRef<HTMLImageElement>(null);
+    const cropDragInfoRef = useRef<CropDragInfo>({
+      ord: null,
+      clientX: 0,
+      clientY: 0,
+      grabOffsetX: 0,
+      grabOffsetY: 0,
+      boxLeft: 0,
+      boxTop: 0,
+      boxWidth: 0,
+      boxHeight: 0,
+    });
+
+    // The crop library derives edge resizes from its own corner-emulation
+    // (which mis-tracks the pointer and collapses at box boundaries when
+    // aspect is locked), so track the real pointer position ourselves
+    // (capture phase runs before its document-level handler).
+    useEffect(() => {
+      const handlePointerMove = (e: PointerEvent) => {
+        const info = cropDragInfoRef.current;
+        info.clientX = e.clientX;
+        info.clientY = e.clientY;
+      };
+      window.addEventListener('pointermove', handlePointerMove, { capture: true });
+      return () => window.removeEventListener('pointermove', handlePointerMove, { capture: true });
+    }, []);
     const [displayedMaskUrl, setDisplayedMaskUrl] = useState<string | null>(null);
     const [originalLoaded, setOriginalLoaded] = useState<boolean>(false);
     const [localInitialDrawParams, setLocalInitialDrawParams] = useState<any>(null);
@@ -2973,12 +3010,45 @@ const ImageCanvas = memo(
                 position: 'relative',
                 width: uncroppedImageRenderSize.width,
               }}
+              onPointerDown={(e) => {
+                const ord = (e.target as HTMLElement).dataset?.ord ?? null;
+                const info = cropDragInfoRef.current;
+                info.ord = ord;
+                info.clientX = e.clientX;
+                info.clientY = e.clientY;
+                info.grabOffsetX = 0;
+                info.grabOffsetY = 0;
+                info.boxWidth = 0;
+                info.boxHeight = 0;
+                const isEdge = ord === 'n' || ord === 'e' || ord === 's' || ord === 'w';
+                if (isEdge && crop) {
+                  const rect = e.currentTarget.getBoundingClientRect();
+                  info.boxLeft = rect.left;
+                  info.boxTop = rect.top;
+                  info.boxWidth = rect.width;
+                  info.boxHeight = rect.height;
+                  if (ord === 'n' || ord === 's') {
+                    const edge = ord === 's' ? crop.y + crop.height : crop.y;
+                    const edgePct = crop.unit === '%' ? edge : (edge / effectiveImageDimensions.height) * 100;
+                    info.grabOffsetY = e.clientY - (rect.top + (edgePct / 100) * rect.height);
+                  } else {
+                    const edge = ord === 'e' ? crop.x + crop.width : crop.x;
+                    const edgePct = crop.unit === '%' ? edge : (edge / effectiveImageDimensions.width) * 100;
+                    info.grabOffsetX = e.clientX - (rect.left + (edgePct / 100) * rect.width);
+                  }
+                }
+              }}
             >
               <ReactCrop
                 aspect={adjustments.aspectRatio ?? undefined}
                 crop={crop ?? undefined}
-                onChange={setCrop}
+                onChange={(pixelCrop, percentCrop) =>
+                  setCrop(pixelCrop, percentCrop, cropDragInfoRef.current.ord ? { ...cropDragInfoRef.current } : null)
+                }
                 onComplete={handleCropComplete}
+                onDragEnd={() => {
+                  cropDragInfoRef.current.ord = null;
+                }}
                 ruleOfThirds={false}
                 renderSelectionAddon={() => {
                   const { width, height } = getCropDimensions();

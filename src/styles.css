@@ -441,3 +441,13 @@
     text-shadow: 0 0 18px rgba(255, 255, 255, 0.3);
   }
 }
+
+/* Lightroom-style edge resize: keep edge drag targets visible in fixed-aspect
+   crop mode (default ReactCrop.css hides them unless aspect is unset). */
+.ReactCrop.ReactCrop--fixed-aspect .ReactCrop__drag-bar,
+.ReactCrop.ReactCrop--fixed-aspect .ReactCrop__drag-handle.ord-n,
+.ReactCrop.ReactCrop--fixed-aspect .ReactCrop__drag-handle.ord-e,
+.ReactCrop.ReactCrop--fixed-aspect .ReactCrop__drag-handle.ord-s,
+.ReactCrop.ReactCrop--fixed-aspect .ReactCrop__drag-handle.ord-w {
+  display: block;
+}
