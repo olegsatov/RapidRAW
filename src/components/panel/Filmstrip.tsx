@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo, memo } from 'react';
-import { Image as ImageIcon, Star, SlidersHorizontal } from 'lucide-react';
+import { Image as ImageIcon, Star, SlidersHorizontal, Flag, FlagOff } from 'lucide-react';
 import clsx from 'clsx';
 import { Grid, useGridCallbackRef } from 'react-window';
 import { useTranslation } from 'react-i18next';
@@ -22,6 +22,7 @@ interface ImageLayer {
 interface ItemData {
   imageList: ImageFile[];
   imageRatings: any;
+  imageFlags: any;
   selectedPath: string | undefined;
   multiSelectedPaths: string[];
   thumbnailAspectRatio: ThumbnailAspectRatio;
@@ -36,6 +37,7 @@ const FilmstripThumbnail = memo(
   ({
     imageFile,
     imageRatings,
+    imageFlags,
     isActive,
     isSelected,
     onContextMenu,
@@ -47,6 +49,7 @@ const FilmstripThumbnail = memo(
   }: {
     imageFile: ImageFile;
     imageRatings: any;
+    imageFlags: any;
     isActive: boolean;
     isSelected: boolean;
     onContextMenu?: (event: any, path: string) => void;
@@ -79,6 +82,7 @@ const FilmstripThumbnail = memo(
 
     const { path, tags, is_edited: isEdited } = imageFile;
     const rating = imageRatings?.[path] || 0;
+    const flag = imageFlags?.[path] || 0;
     const colorTag = tags?.find((t: string) => t.startsWith('color:'))?.substring(6);
     const colorLabel = COLOR_LABELS.find((c: Color) => c.name === colorTag);
     const isVirtualCopy = path.includes('?vc=');
@@ -88,7 +92,8 @@ const FilmstripThumbnail = memo(
     const hasEditIcon = !!showEditIcon;
     const hasColorLabel = !!colorLabel;
     const hasRating = rating > 0;
-    const hasAnyOverlay = hasEditIcon || hasColorLabel || hasRating;
+    const hasFlag = flag !== 0;
+    const hasAnyOverlay = hasEditIcon || hasColorLabel || hasRating || hasFlag;
 
     const cleanPath = path.split('?')[0];
     const filename = cleanPath.split(/[\\/]/).pop() || '';
@@ -177,7 +182,7 @@ const FilmstripThumbnail = memo(
         data-tooltip={truncatedTitle}
       >
         {layers.length > 0 ? (
-          <div className="absolute inset-0 w-full h-full">
+          <div className={clsx('absolute inset-0 w-full h-full', flag === -1 && 'opacity-50')}>
             {layers.map((layer) => (
               <div
                 key={layer.id}
@@ -262,6 +267,20 @@ const FilmstripThumbnail = memo(
               </Text>
               <Star size={12} className="text-white fill-white" />
             </div>
+
+            <div
+              className={clsx(
+                'flex items-center justify-center shrink-0 transition-all duration-200 ease-out overflow-hidden',
+                hasFlag ? 'max-w-3 opacity-100 scale-100' : 'max-w-0 opacity-0 scale-75 pointer-events-none',
+                hasFlag && (hasEditIcon || hasColorLabel || hasRating) ? 'ml-1.5' : 'ml-0',
+              )}
+            >
+              {flag === 1 ? (
+                <Flag size={12} className="text-white fill-white" />
+              ) : (
+                <FlagOff size={12} className="text-white" />
+              )}
+            </div>
           </div>
         </div>
 
@@ -293,6 +312,7 @@ const FilmstripCell = ({
   style,
   imageList,
   imageRatings,
+  imageFlags,
   selectedPath,
   multiSelectedPaths,
   thumbnailAspectRatio,
@@ -320,6 +340,7 @@ const FilmstripCell = ({
         <FilmstripThumbnail
           imageFile={imageFile}
           imageRatings={imageRatings}
+          imageFlags={imageFlags}
           isActive={selectedPath === imageFile.path}
           isSelected={multiSelectedPaths.includes(imageFile.path)}
           onContextMenu={onContextMenu}
@@ -607,6 +628,7 @@ const FilmstripList = ({
 interface FilmStripProps {
   imageList: Array<ImageFile>;
   imageRatings: any;
+  imageFlags: any;
   isLoading: boolean;
   multiSelectedPaths: Array<string>;
   onClearSelection?(): void;
@@ -621,6 +643,7 @@ interface FilmStripProps {
 export default function Filmstrip({
   imageList,
   imageRatings,
+  imageFlags,
   isLoading: _isLoading,
   multiSelectedPaths,
   onClearSelection,
@@ -664,6 +687,7 @@ export default function Filmstrip({
           data={{
             imageList,
             imageRatings,
+            imageFlags,
             selectedPath: selectedImage?.path,
             multiSelectedPaths,
             thumbnailAspectRatio,
