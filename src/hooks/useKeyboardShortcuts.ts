@@ -290,7 +290,7 @@ export const useKeyboardShortcuts = ({
           s.ui.setUI({
             uiVisibility: {
               ...s.ui.uiVisibility,
-              leftBottomPanel: !s.ui.uiVisibility.leftBottomPanel,
+              leftBottomPanel: true,
             },
             activeLeftBottomTab: LeftPanelTab.Presets,
           });
