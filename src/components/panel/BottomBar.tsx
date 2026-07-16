@@ -1,5 +1,18 @@
 import { useState, useEffect, useRef } from 'react';
-import { Star, Copy, ClipboardPaste, ChevronUp, ChevronDown, Check, FileInput, Settings, Filter } from 'lucide-react';
+import {
+  Star,
+  Copy,
+  ClipboardPaste,
+  ChevronUp,
+  ChevronDown,
+  Check,
+  FileInput,
+  Settings,
+  Filter,
+  Flag,
+  FlagOff,
+  FastForward,
+} from 'lucide-react';
 import clsx from 'clsx';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useShallow } from 'zustand/react/shallow';
@@ -11,6 +24,8 @@ import Text from '../ui/Text';
 import { useEditorStore } from '../../store/useEditorStore';
 import { useLibraryStore } from '../../store/useLibraryStore';
 import { COLOR_LABELS } from '../../utils/adjustments';
+import { useSettingsStore } from '../../store/useSettingsStore';
+import { useLibraryActions } from '../../hooks/useLibraryActions';
 
 interface BottomBarProps {
   filmstripHeight?: number;
@@ -91,6 +106,57 @@ const StarRating = ({ rating, onRate, disabled }: StarRatingProps) => {
   );
 };
 
+interface FlagControlProps {
+  disabled: boolean;
+  flag: number;
+  onFlag(flag: number): void;
+}
+
+const FlagControl = ({ flag, onFlag, disabled }: FlagControlProps) => {
+  const { t } = useTranslation();
+
+  return (
+    <div className={clsx('flex items-center gap-1', disabled && 'cursor-not-allowed')}>
+      <button
+        className="disabled:cursor-not-allowed"
+        disabled={disabled}
+        onClick={() => !disabled && onFlag(1)}
+        data-tooltip={disabled ? t('ui.bottomBar.tooltips.selectToRate') : t('ui.bottomBar.tooltips.flagPick')}
+      >
+        <Flag
+          size={18}
+          className={clsx(
+            'transition-colors duration-150',
+            disabled
+              ? 'text-text-secondary opacity-40'
+              : flag === 1
+                ? 'fill-accent text-accent'
+                : 'text-text-secondary hover:text-accent',
+          )}
+        />
+      </button>
+      <button
+        className="disabled:cursor-not-allowed"
+        disabled={disabled}
+        onClick={() => !disabled && onFlag(-1)}
+        data-tooltip={disabled ? t('ui.bottomBar.tooltips.selectToRate') : t('ui.bottomBar.tooltips.flagReject')}
+      >
+        <FlagOff
+          size={18}
+          className={clsx(
+            'transition-colors duration-150',
+            disabled
+              ? 'text-text-secondary opacity-40'
+              : flag === -1
+                ? 'fill-accent text-accent'
+                : 'text-text-secondary hover:text-accent',
+          )}
+        />
+      </button>
+    </div>
+  );
+};
+
 export default function BottomBar({
   filmstripHeight,
   imageList = [],
@@ -155,12 +221,26 @@ export default function BottomBar({
   const showSelectionCounter = numSelected > 1;
 
   const [isFilterExpanded, setIsFilterExpanded] = useState(false);
-  const { filterCriteria, setFilterCriteria } = useLibraryStore(
+  const { filterCriteria, setFilterCriteria, imageFlags, libraryActivePath } = useLibraryStore(
     useShallow((state) => ({
       filterCriteria: state.filterCriteria,
       setFilterCriteria: state.setFilterCriteria,
+      imageFlags: state.imageFlags,
+      libraryActivePath: state.libraryActivePath,
     })),
   );
+
+  const { appSettings, handleSettingsChange } = useSettingsStore(
+    useShallow((state) => ({
+      appSettings: state.appSettings,
+      handleSettingsChange: state.handleSettingsChange,
+    })),
+  );
+
+  const { handleSetFlag } = useLibraryActions();
+  const flagAutoAdvance = appSettings?.flagAutoAdvance ?? true;
+  const flagPath = selectedImage?.path ?? libraryActivePath ?? '';
+  const flag = imageFlags[flagPath] || 0;
 
   const allColors = [...COLOR_LABELS, { name: 'none', color: '#9ca3af' }];
 
@@ -268,6 +348,7 @@ export default function BottomBar({
             <Filmstrip
               imageList={imageList}
               imageRatings={imageRatings}
+              imageFlags={imageFlags}
               isLoading={isLoading}
               multiSelectedPaths={multiSelectedPaths}
               onClearSelection={onClearSelection}
@@ -290,6 +371,21 @@ export default function BottomBar({
       >
         <div className="flex items-center gap-4">
           <StarRating rating={rating} onRate={onRate} disabled={isRatingDisabled} />
+          <FlagControl flag={flag} onFlag={handleSetFlag} disabled={isRatingDisabled} />
+          {!isLibraryView && (
+            <button
+              className={clsx(
+                'w-8 h-8 flex items-center justify-center rounded-md transition-colors',
+                flagAutoAdvance
+                  ? 'text-accent bg-surface'
+                  : 'text-text-secondary hover:bg-surface hover:text-text-primary',
+              )}
+              onClick={() => appSettings && handleSettingsChange({ ...appSettings, flagAutoAdvance: !flagAutoAdvance })}
+              data-tooltip={t('ui.bottomBar.tooltips.autoAdvance')}
+            >
+              <FastForward size={18} />
+            </button>
+          )}
           <div className="h-5 w-px bg-surface"></div>
           <div className="flex items-center gap-2">
             <button
