@@ -1,5 +1,14 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { Image as ImageIcon, Folder, FolderOpen, Star as StarIcon, SlidersHorizontal, CloudOff } from 'lucide-react';
+import {
+  Image as ImageIcon,
+  Folder,
+  FolderOpen,
+  Star as StarIcon,
+  SlidersHorizontal,
+  CloudOff,
+  Flag,
+  FlagOff,
+} from 'lucide-react';
 import clsx from 'clsx';
 import { useTranslation } from 'react-i18next';
 import { COLOR_LABELS, Color } from '../../../utils/adjustments';
@@ -26,6 +35,7 @@ const ThumbnailComponent = ({
   onLoad,
   path,
   rating,
+  flag,
   tags,
   aspectRatio: thumbnailAspectRatio,
   isEdited,
@@ -141,7 +151,8 @@ const ThumbnailComponent = ({
   const hasEditIcon = !!showEditIcon;
   const hasColorLabel = !!colorLabel;
   const hasRating = rating > 0;
-  const hasAnyOverlay = hasEditIcon || hasColorLabel || hasRating;
+  const hasFlag = (flag || 0) !== 0;
+  const hasAnyOverlay = hasEditIcon || hasColorLabel || hasRating || hasFlag;
 
   return (
     <div
@@ -155,7 +166,7 @@ const ThumbnailComponent = ({
     >
       <div className="relative w-full flex-1 min-h-0 z-0 bg-surface">
         {layers.length > 0 && (
-          <div className="absolute inset-0 w-full h-full">
+          <div className={clsx('absolute inset-0 w-full h-full', flag === -1 && 'opacity-50')}>
             {layers.map((layer) => (
               <div
                 key={layer.id}
@@ -253,6 +264,20 @@ const ThumbnailComponent = ({
               {rating}
             </Text>
             <StarIcon size={12} className="text-white fill-white" />
+          </div>
+
+          <div
+            className={clsx(
+              'flex items-center justify-center shrink-0 transition-all duration-200 ease-out overflow-hidden',
+              hasFlag ? 'max-w-3 opacity-100 scale-100' : 'max-w-0 opacity-0 scale-75 pointer-events-none',
+              hasFlag && (hasEditIcon || hasColorLabel || hasRating) ? 'ml-1.5' : 'ml-0',
+            )}
+          >
+            {flag === 1 ? (
+              <Flag size={12} className="text-white fill-white" />
+            ) : (
+              <FlagOff size={12} className="text-white" />
+            )}
           </div>
         </div>
       </div>
@@ -425,6 +450,7 @@ const ListItemComponent = ({
   onLoad,
   path,
   rating,
+  flag,
   tags,
   modified,
   aspectRatio: thumbnailAspectRatio,
@@ -639,12 +665,18 @@ const ListItemComponent = ({
       </div>
 
       <div style={{ width: getW('rating') }} className="flex items-center px-3 h-full overflow-hidden">
-        {rating > 0 && (
+        {(rating > 0 || (flag || 0) !== 0) && (
           <div className="flex items-center gap-1">
-            <StarIcon size={12} className="text-accent fill-accent" />
-            <Text variant={TextVariants.small} color={TextColors.primary} weight={TextWeights.medium}>
-              {rating}
-            </Text>
+            {flag === 1 && <Flag size={12} className="text-accent fill-accent shrink-0" />}
+            {flag === -1 && <FlagOff size={12} className="text-text-secondary shrink-0" />}
+            {rating > 0 && (
+              <>
+                <StarIcon size={12} className="text-accent fill-accent" />
+                <Text variant={TextVariants.small} color={TextColors.primary} weight={TextWeights.medium}>
+                  {rating}
+                </Text>
+              </>
+            )}
           </div>
         )}
       </div>
@@ -708,6 +740,7 @@ const RowComponent = ({
   thumbnailAspectRatio,
   onImageLoad,
   imageRatings,
+  imageFlags,
   baseFolderPath,
   itemWidth,
   itemHeight,
@@ -821,6 +854,7 @@ const RowComponent = ({
               onLoad={onImageLoad}
               path={imageFile.path}
               rating={imageRatings?.[imageFile.path] || 0}
+              flag={imageFlags?.[imageFile.path] || 0}
               tags={imageFile.tags}
               exif={imageFile.exif}
               aspectRatio={thumbnailAspectRatio}
@@ -838,6 +872,7 @@ const RowComponent = ({
               onLoad={onImageLoad}
               path={imageFile.path}
               rating={imageRatings?.[imageFile.path] || 0}
+              flag={imageFlags?.[imageFile.path] || 0}
               tags={imageFile.tags}
               exif={imageFile.exif}
               isEdited={imageFile.is_edited}

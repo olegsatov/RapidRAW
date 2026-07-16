@@ -172,7 +172,7 @@ export default function LibraryGrid(props: any) {
     thumbnailSizeOptions,
     onThumbnailSizeChange,
   } = props;
-  const { listColumnWidths, setLibrary, sortCriteria, setSortCriteria } = useLibraryStore();
+  const { listColumnWidths, setLibrary, sortCriteria, setSortCriteria, imageFlags } = useLibraryStore();
   const [gridSize, setGridSize] = useState({ height: 0, width: 0 });
   const [listHandle, setListHandle] = useListCallbackRef();
   const [collapsedRecursiveFolders, setCollapsedRecursiveFolders] = useState<Set<string>>(new Set());
@@ -433,6 +433,7 @@ export default function LibraryGrid(props: any) {
       thumbnailAspectRatio,
       onImageLoad: handleImageLoad,
       imageRatings,
+      imageFlags,
       baseFolderPath: currentFolderPath,
       itemWidth: gridData.itemWidth,
       itemHeight: gridData.isListView ? gridData.listRowHeight : gridData.itemWidth,
@@ -453,6 +454,7 @@ export default function LibraryGrid(props: any) {
     thumbnailAspectRatio,
     handleImageLoad,
     imageRatings,
+    imageFlags,
     currentFolderPath,
     listColumnWidths,
     queueThumbnailRequest,
