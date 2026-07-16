@@ -9,6 +9,7 @@ import {
   Edit,
   FileEdit,
   FileInput,
+  Flag,
   Folder,
   FolderInput,
   FolderPlus,
@@ -50,7 +51,16 @@ import { useLibraryStore } from '../store/useLibraryStore';
 import { useProcessStore } from '../store/useProcessStore';
 import { useUIStore } from '../store/useUIStore';
 import { useSettingsStore } from '../store/useSettingsStore';
-import { Invokes, Option, OPTION_SEPARATOR, Panel, AlbumItem, Album, AlbumGroup } from '../components/ui/AppProperties';
+import {
+  Invokes,
+  Option,
+  OPTION_SEPARATOR,
+  Panel,
+  AlbumItem,
+  Album,
+  AlbumGroup,
+  ImageFile,
+} from '../components/ui/AppProperties';
 import { Color, COLOR_LABELS, INITIAL_ADJUSTMENTS, normalizeLoadedAdjustments } from '../utils/adjustments';
 import TaggingSubMenu from '../context/TaggingSubMenu';
 import { useEditorActions } from './useEditorActions';
@@ -76,7 +86,7 @@ export function useAppContextMenus(props: UseAppContextMenusProps) {
 
   const { handleAutoAdjustments, handleResetAdjustments, handleCopyAdjustments, handlePasteAdjustments } =
     useEditorActions();
-  const { handleRate, handleSetColorLabel, handleTagsChanged } = useLibraryActions();
+  const { handleRate, handleSetColorLabel, handleTagsChanged, handleSetFlag } = useLibraryActions();
 
   const albumIcons = useMemo(
     () => [
@@ -341,6 +351,7 @@ export function useAppContextMenus(props: UseAppContextMenusProps) {
       handleAutoAdjustments,
       handleRate,
       handleSetColorLabel,
+      handleSetFlag,
       handleTagsChanged,
       showContextMenu,
       t,
@@ -353,7 +364,7 @@ export function useAppContextMenus(props: UseAppContextMenusProps) {
       event.stopPropagation();
 
       const { selectedImage, copiedAdjustments, setEditor } = useEditorStore.getState();
-      const { multiSelectedPaths, imageList, libraryActivePath, albumTree, activeAlbumId, setLibrary } =
+      const { multiSelectedPaths, imageList, libraryActivePath, albumTree, activeAlbumId, setLibrary, imageFlags } =
         useLibraryStore.getState();
       const { appSettings } = useSettingsStore.getState();
       const { setUI, setRightPanel } = useUIStore.getState();
@@ -391,6 +402,10 @@ export function useAppContextMenus(props: UseAppContextMenusProps) {
         const basePath = selectedPath.substring(0, lastDotIndex);
         return imageList.some((image) => image.path.startsWith(basePath + '.') && image.path !== selectedPath);
       });
+
+      const rejectedPaths = imageList
+        .filter((image: ImageFile) => (imageFlags[image.path] || 0) === -1)
+        .map((image: ImageFile) => image.path);
 
       let deleteSubmenu;
       if (selectionHasVirtualCopies) {
@@ -738,6 +753,15 @@ export function useAppContextMenus(props: UseAppContextMenusProps) {
             },
           ],
         },
+        {
+          icon: Flag,
+          label: t('contextMenus.editor.flag'),
+          submenu: [
+            { label: t('contextMenus.editor.flagPick'), onClick: () => handleSetFlag(1, finalSelection) },
+            { label: t('contextMenus.editor.flagReject'), onClick: () => handleSetFlag(-1, finalSelection) },
+            { label: t('contextMenus.editor.flagClear'), onClick: () => handleSetFlag(0, finalSelection) },
+          ],
+        },
         { type: OPTION_SEPARATOR },
         {
           label: t('contextMenus.thumbnail.addToAlbum'),
@@ -787,6 +811,23 @@ export function useAppContextMenus(props: UseAppContextMenusProps) {
           isDestructive: true,
           submenu: deleteSubmenu,
         },
+        {
+          icon: Trash2,
+          label: t('contextMenus.thumbnail.deleteRejected', { count: rejectedPaths.length }),
+          isDestructive: true,
+          disabled: rejectedPaths.length === 0,
+          onClick: () =>
+            setUI({
+              confirmModalState: {
+                confirmText: 'Delete',
+                confirmVariant: 'destructive',
+                isOpen: true,
+                message: `Are you sure you want to permanently delete ${rejectedPaths.length} rejected photo(s)? This action cannot be undone.`,
+                onConfirm: () => props.executeDelete(rejectedPaths, { includeAssociated: false }),
+                title: 'Delete Rejected Photos',
+              },
+            }),
+        },
       ];
       showContextMenu(event.clientX, event.clientY, options);
     },
@@ -797,6 +838,7 @@ export function useAppContextMenus(props: UseAppContextMenusProps) {
       handlePasteAdjustments,
       handleRate,
       handleSetColorLabel,
+      handleSetFlag,
       handleTagsChanged,
       handleResetAdjustments,
       showContextMenu,
