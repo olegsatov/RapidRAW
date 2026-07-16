@@ -787,7 +787,90 @@ export default function FilmPanel() {
           onToggle={() => setAdvancedOpen((v) => !v)}
           title={t('editor.film.advanced')}
         >
-          {' '}
+          {ADV_SLIDERS.slice(0, 10).map(({ key, label, min, max, step }) => (
+            <Slider
+              key={key}
+              defaultValue={INITIAL_ADJUSTMENTS[key]}
+              label={t(`editor.film.adv.${label}`)}
+              max={max}
+              min={min}
+              onChange={(e: any) => handleAdvChange(key, e.target.value)}
+              step={step}
+              value={adjustments[key] ?? INITIAL_ADJUSTMENTS[key]}
+              onDragStateChange={onDragStateChange}
+            />
+          ))}
+
+          <label className="flex items-center gap-2 mb-2 text-sm text-text-secondary cursor-pointer select-none">
+            <input
+              type="checkbox"
+              className="accent-accent"
+              checked={blackAuto}
+              onChange={(e) => handleAdvChange('flimAdvBlackAuto', e.target.checked ? 1 : 0)}
+            />
+            {t('editor.film.adv.blackAuto')}
+          </label>
+          <div className={blackAuto ? 'opacity-40 pointer-events-none' : ''}>
+            <Slider
+              defaultValue={INITIAL_ADJUSTMENTS.flimAdvBlackPoint}
+              label={t('editor.film.adv.blackPoint')}
+              max={10}
+              min={-10}
+              onChange={(e: any) => handleAdvChange('flimAdvBlackPoint', e.target.value)}
+              step={0.1}
+              value={adjustments.flimAdvBlackPoint ?? 0}
+              onDragStateChange={onDragStateChange}
+            />
+          </div>
+
+          {ADV_SLIDERS.slice(10).map(({ key, label, min, max, step }) => (
+            <Slider
+              key={key}
+              defaultValue={INITIAL_ADJUSTMENTS[key]}
+              label={t(`editor.film.adv.${label}`)}
+              max={max}
+              min={min}
+              onChange={(e: any) => handleAdvChange(key, e.target.value)}
+              step={step}
+              value={adjustments[key] ?? INITIAL_ADJUSTMENTS[key]}
+              onDragStateChange={onDragStateChange}
+            />
+          ))}
+
+          {savingPreset ? (
+            <div className="flex items-center gap-2 mt-3">
+              <input
+                type="text"
+                autoFocus
+                className="grow text-sm bg-card-active border border-gray-500 rounded-sm px-2 py-1 outline-none focus:ring-1 focus:ring-blue-500 text-text-primary"
+                placeholder={t('editor.film.presetNamePlaceholder')}
+                value={presetName}
+                onChange={(e) => setPresetName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    handleSavePreset();
+                  } else if (e.key === 'Escape') {
+                    setSavingPreset(false);
+                    setPresetName('');
+                  }
+                }}
+              />
+              <button
+                className="shrink-0 px-2 py-1 text-sm rounded-md bg-accent text-white disabled:opacity-40"
+                disabled={!presetName.trim()}
+                onClick={handleSavePreset}
+              >
+                {t('editor.film.savePresetConfirm')}
+              </button>
+            </div>
+          ) : (
+            <button
+              className="w-full mt-3 py-1.5 text-sm rounded-md bg-card-active hover:bg-surface text-text-primary"
+              onClick={() => setSavingPreset(true)}
+            >
+              {t('editor.film.savePreset')}
+            </button>
+          )}
         </CollapsibleSection>
       </div>
     </div>
