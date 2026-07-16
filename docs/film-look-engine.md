@@ -301,12 +301,17 @@ backlight_ext, white/black cap, develop-параметры, фильтры, midt
 `FilmPanel.tsx`: селектор тон-маппера (Standard/AgX/Flim → существующий
 `toneMapper`), preset dropdown (default/nostalgia/silver), EV ±3, Strength.
 Любое движение flim-контрола авто-активирует тон-маппер Flim.
-i18n en/ru. Старый Krea-модуль (секция Film в Adjustments) не тронут.
+i18n en/ru. Старый Krea-модуль (секция Film в Adjustments) удалён целиком
+(2026-07-16): шейдерные копии `apply_film_look` в обоих шейдерах, uniform-поля
+`film_*` (включая 4 КБ `film_curves`), `parse_film_curves`, пост-проходный
+blur эмульсии и дубль flim-функций в `pre_tone.wgsl`. История — в git.
 
 **Бегунки Look (2026-07-13):** Contrast (50–150, мультипликатор обеих dye
 densities), Saturation (0–200, мультипликатор midtone-keyed sat), Shoulder
 (±100 → ±4 стопа верха сигмоидного окна, сворачивание светов), Toe
-(±100 → ±0.1 luma сдвиг black cap: + глубже тени, − fade), Warmth
+(±100 → ±0.01 luma аддитивный сдвиг black cap: + глубже тени, − fade;
+отрицательный black point пресета — напр. nostalgia −0.005 — доходит до
+uniform без клиппа), Warmth
 (±100 → ±15% per-channel gain R/B вдоль daylight-локуса, до сигмоиды —
 не клиппит). Все параметры, кроме Warmth, фолдятся в Rust при выпеке
 uniforms (`compute_flim_uniforms`); Warmth — новый uniform `flim_warmth`
@@ -316,8 +321,9 @@ uniforms (`compute_flim_uniforms`); Warmth — новый uniform `flim_warmth`
 → `COPYABLE_ADJUSTMENT_KEYS` + `toneMapper`).
 Замечание по чувствительности: Contrast работает в density-домене обеих
 стадий (negative+print), поэтому ×1.3 уже ощутимо темнит средние тона —
-это S-кривая, якоренная на black/white cap; Toe на тёмных кадрах крут
-(сдвиг black point глобален), рабочий диапазон ±10–20.
+это S-кривая, якоренная на black/white cap; Toe тонкий (±0.01 luma на
+полный ход), на тёмных кадрах black point глобален — крутить небольшими
+значениями.
 
 **Adjacency / микроконтраст (2026-07-13):** стационарная аппроксимация
 модели Filmulator (CarVac, GPLv3 — только модель): проявитель перетекает из

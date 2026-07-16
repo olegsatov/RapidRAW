@@ -2502,7 +2502,7 @@ fn compute_flim_uniforms(
                 + black_cap[1] * FLIM_LUMA_WEIGHTS[1]
                 + black_cap[2] * FLIM_LUMA_WEIGHTS[2]
         }
-        Some(bp) => (bp / 1000.0).max(0.0),
+        Some(bp) => bp / 1000.0,
     };
     // Apply toe as an absolute offset to the black cap. Positive toe raises the
     // black point and crushes shadows; negative toe lowers it below zero and
@@ -4440,5 +4440,29 @@ mod film_layout_tests {
         panel_off["toneMapper"] = serde_json::json!("basic");
         let gated = get_global_adjustments_from_json(&panel_off, true, None);
         assert_eq!(gated.crystal_grain_amount, 0.0, "flim panel off must gate grain");
+    }
+
+    #[test]
+    fn flim_negative_black_point_reaches_uniform() {
+        // nostalgia (preset 1) sets black_point = -5, i.e. a black cap below
+        // zero (shadow fade). The downstream math supports negative caps (the
+        // toe clamp allows -0.03); clamping the base at zero would silently
+        // kill the preset's signature black lift.
+        let js = serde_json::json!({ "toneMapper": "flim", "flimPreset": 1 });
+        let adj = get_global_adjustments_from_json(&js, true, None);
+        assert!(
+            (adj.flim_black_cap_luma - (-0.005)).abs() < 1e-6,
+            "negative black point must reach the uniform, got {}",
+            adj.flim_black_cap_luma
+        );
+
+        // Explicit negative toe shifts the cap further below zero.
+        let js = serde_json::json!({ "toneMapper": "flim", "flimPreset": 1, "flimToe": -100 });
+        let adj = get_global_adjustments_from_json(&js, true, None);
+        assert!(
+            (adj.flim_black_cap_luma - (-0.015)).abs() < 1e-6,
+            "toe must shift the negative cap additively, got {}",
+            adj.flim_black_cap_luma
+        );
     }
 }

@@ -1535,15 +1535,19 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
     let sharp = textureLoad(pre_tone_linear_texture, id.xy, 0).rgb;
     var composite_rgb_linear = sharp;
 
-    // Reconstruct masked exposure/brightness for the FLIM transform.
+    // Reconstruct masked exposure/brightness for the FLIM transform. Only the
+    // flim adjacency branch consumes these, so skip the per-pixel mask loop
+    // in every other mode.
     var t_exposure = adjustments.global.exposure;
     var t_brightness = adjustments.global.brightness;
-    for (var i = 0u; i < adjustments.mask_count; i = i + 1u) {
-        let influence = get_mask_influence(i, absolute_coord);
-        if (influence > 0.001) {
-            let m = adjustments.mask_adjustments[i];
-            t_exposure += m.exposure * influence;
-            t_brightness += m.brightness * influence;
+    if (adjustments.global.tonemapper_mode == 2u && adjustments.global.flim_adjacency > 0.0) {
+        for (var i = 0u; i < adjustments.mask_count; i = i + 1u) {
+            let influence = get_mask_influence(i, absolute_coord);
+            if (influence > 0.001) {
+                let m = adjustments.mask_adjustments[i];
+                t_exposure += m.exposure * influence;
+                t_brightness += m.brightness * influence;
+            }
         }
     }
 
@@ -1559,13 +1563,19 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
 
     // Pre-tone emulsion diffusion: screen-blend the sharp linear tile with its
     // blurred copy. Amount is 0..1; radius was baked into the pre-blur pass.
-    // Applied after soft blur so both effects remain visible.
+    // Applied after soft blur so both effects remain visible. The screen runs
+    // in the soft-normalized domain n(x) = x/(1+x): a hard clamp(0,1) here
+    // would destroy the scene-referred range before the flim shoulder gets to
+    // roll it off.
     let pre_amount = adjustments.global.film_blur_pre_amount;
     let pre_compensation = adjustments.global.film_blur_pre_compensation;
     if (pre_amount > 0.0) {
-        let blurred = clamp(pre_blur_sample.rgb, vec3<f32>(0.0), vec3<f32>(1.0));
-        let s = clamp(sharp, vec3<f32>(0.0), vec3<f32>(1.0));
-        let screen = 1.0 - (1.0 - s) * (1.0 - blurred * pre_amount);
+        let blurred = max(pre_blur_sample.rgb, vec3<f32>(0.0));
+        let s = max(sharp, vec3<f32>(0.0));
+        let s_n = s / (vec3<f32>(1.0) + s);
+        let b_n = blurred / (vec3<f32>(1.0) + blurred);
+        let screen_n = vec3<f32>(1.0) - (vec3<f32>(1.0) - s_n) * (vec3<f32>(1.0) - b_n * pre_amount);
+        let screen = screen_n / max(vec3<f32>(1.0) - screen_n, vec3<f32>(1e-6));
         if (pre_compensation > 0.0) {
             let luma_in = dot(s, FLIM_LUMA);
             let luma_screen = dot(screen, FLIM_LUMA);
@@ -1607,8 +1617,13 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
         } else {
             flim_base = linear_to_srgb(composite_rgb_linear);
         }
-        let flim_srgb = linear_to_srgb(flim_transform(composite_rgb_linear, clarity_blurred, t_exposure, t_brightness, is_raw));
-        base_srgb = mix(flim_base, flim_srgb, adjustments.global.flim_strength);
+        let flim_strength = clamp(adjustments.global.flim_strength, 0.0, 1.0);
+        if (flim_strength <= 0.0) {
+            base_srgb = flim_base;
+        } else {
+            let flim_srgb = linear_to_srgb(flim_transform(composite_rgb_linear, clarity_blurred, t_exposure, t_brightness, is_raw));
+            base_srgb = mix(flim_base, flim_srgb, flim_strength);
+        }
     } else if (is_raw == 1u) {
         var srgb_emulated = linear_to_srgb(composite_rgb_linear);
         const BRIGHTNESS_GAMMA: f32 = 1.1;

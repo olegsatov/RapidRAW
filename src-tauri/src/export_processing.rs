@@ -685,6 +685,12 @@ fn apply_export_grain_cpu(
         return Ok(image);
     }
 
+    // Same gate as the preview and the fast GPU path: grain modules live in
+    // the Film tab and stay off while the flim panel is off.
+    if !flim_panel_on(js_adjustments) {
+        return Ok(image);
+    }
+
     // Strength follows the editor's Amount slider; a missing key means the
     // image never had grain configured — no grain, even with the export
     // toggle on (WYSIWYG: the preview showed none either).
@@ -710,6 +716,10 @@ fn apply_export_grain_cpu(
             let mut opts = crate::film_grain::options_from_adjustments(js_adjustments);
             opts.monochrome |= grain_mono;
             opts.mu_r = (opts.mu_r * grain_px_scale).max(0.05);
+            // The log-normal shape depends on sigma_r/mu_r, so scale the
+            // spread too — keeps it matching the full-res render + downscale
+            // reference.
+            opts.sigma_r *= grain_px_scale;
             opts.sigma_filter *= grain_px_scale;
             crate::film_grain::apply_film_grain_rgb(&rgb, &opts, None, None)
         }
