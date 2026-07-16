@@ -116,36 +116,18 @@ struct GlobalAdjustments {
     flare_amount: f32,
     sharpness_threshold: f32,
 
-    // Film simulation (Krea port). film_curves is chunked 16x16 to keep the
-    // Rust mirror Pod/Default-friendly (fixed arrays > 32 lack Default).
-    film_strength: f32,
-    film_contrast: f32,
-    film_saturation: f32,
-    film_rolloff: f32,
-    film_bleed: f32,
-    film_cross: f32,
-    _pad_film1: f32,
-    _pad_film2: f32,
-    film_base_color: vec3<f32>,
-    _pad_film3: f32,
-    film_shadow_tint: vec3<f32>,
-    _pad_film4: f32,
-    film_curves: array<array<vec3<f32>, 16>, 16>,
-
-    // Film simulation — extended dials (Krea PoC "Film look" group).
-    // shadows/highlights are applied per-pixel in apply_film_look; blur is
-    // spatial and drives the film post-pass (film_post.wgsl).
-    film_shadows: f32,    // -100..100
-    film_highlights: f32, // -100..100
-    film_blur: f32,                      // 0..1 (emulsion blur, sigma = film_blur * 3 px)
+    // Pre-tone emulsion diffusion/soft blur (Film tab).
     film_blur_pre_amount: f32,            // 0..1 pre-tone diffusion strength
     film_blur_pre_radius: f32,            // 0.5..4 px (pre-tone blur radius)
     film_blur_pre_compensation: f32,      // 0..1 luma-preservation for diffusion
     film_blur_pre_soft_amount: f32,       // 0..1 pre-tone soft blur mix
     film_blur_pre_soft_radius: f32,       // 0.5..4 px (pre-tone soft blur radius)
+    _pad_film1: f32,
+    _pad_film2: f32,
+    _pad_film3: f32,
 
     // Black & white conversion: weighted channel mix, weights normalized at
-    // use. xyz = weights, w = enabled flag (vec3+pad idiom, see film_base_color).
+    // use. xyz = weights, w = enabled flag (vec3+pad idiom).
     bw_weights: vec3<f32>,
     bw_enabled: f32,
 
@@ -1297,224 +1279,6 @@ fn sample_hdr_lut_tetrahedral(hdr: vec3<f32>) -> vec3<f32> {
     return pow(vec3(2.0), log_out);
 }
 
-fn apply_glow_bloom(
-    color: vec3<f32>,
-    blurred_color_input_space: vec3<f32>,
-    amount: f32,
-    is_raw: u32,
-    exp: f32, bright: f32, con: f32, wh: f32
-) -> vec3<f32> {
-    if (amount <= 0.0) {
-        return color;
-    }
-
-    var blurred_linear: vec3<f32>;
-    if (is_raw == 1u) {
-        blurred_linear = blurred_color_input_space;
-    } else {
-        blurred_linear = srgb_to_linear(blurred_color_input_space);
-    }
-
-    blurred_linear = apply_linear_exposure(blurred_linear, exp);
-    blurred_linear = apply_filmic_exposure(blurred_linear, bright);
-    blurred_linear = apply_tonal_adjustments(blurred_linear, blurred_color_input_space, is_raw, 0.0, 0.0, wh, 0.0);
-
-    let linear_luma = get_luma(max(blurred_linear, vec3<f32>(0.0)));
-
-    var perceptual_luma: f32;
-    if (linear_luma <= 1.0) {
-        perceptual_luma = pow(max(linear_luma, 0.0), 1.0 / 2.2);
-    } else {
-        perceptual_luma = 1.0 + pow(linear_luma - 1.0, 1.0 / 2.2);
-    }
-
-    let luma_cutoff = mix(0.75, 0.08, clamp(amount, 0.0, 1.0));
-
-    let cutoff_fade = smoothstep(
-        luma_cutoff,
-        luma_cutoff + 0.15,
-        perceptual_luma
-    );
-
-    let excess = max(perceptual_luma - luma_cutoff, 0.0);
-
-    let falloff_range = 5.5;
-    let normalized = excess / falloff_range;
-
-    let bloom_intensity =
-        pow(smoothstep(0.0, 1.0, normalized), 0.45);
-
-    var bloom_color: vec3<f32>;
-    if (linear_luma > 0.01) {
-        let color_ratio = blurred_linear / linear_luma;
-        let warm_tint = vec3<f32>(1.03, 1.0, 0.97);
-        bloom_color = color_ratio * warm_tint;
-    } else {
-        bloom_color = vec3<f32>(1.0, 0.99, 0.98);
-    }
-
-    let luma_factor = pow(linear_luma, 0.6);
-
-    let black_gate_width = 0.5;
-    let black_gate_raw = smoothstep(0.0, black_gate_width, linear_luma);
-    let black_gate = pow(black_gate_raw, 0.5);
-
-    bloom_color *= bloom_intensity * luma_factor * cutoff_fade * black_gate;
-
-    let current_luma = get_luma(max(color, vec3<f32>(0.0)));
-    let protection = 1.0 - smoothstep(1.0, 2.2, current_luma);
-
-    return color + bloom_color * amount * 3.8 * protection;
-}
-
-// Halation: light scattered through the film base re-exposes the red-sensitive
-// layer, forming a red-orange halo around highlights. Two-component PSF
-// approximation: sharp core (clarity blur, r≈8) + long tail (structure blur,
-// r≈40); threshold in stops above middle grey (prior art: halation-dctl,
-// realbloom — idea only).
-fn apply_halation(
-    color: vec3<f32>,
-    blurred_core_input_space: vec3<f32>,
-    blurred_tail_input_space: vec3<f32>,
-    amount: f32,
-    is_raw: u32,
-    exp: f32, bright: f32
-) -> vec3<f32> {
-    if (amount <= 0.0) { return color; }
-
-    // The blur textures are computed on the pre-grade input; approximate the
-    // graded linear space by re-applying the exposure adjustments.
-    var core_lin = blurred_core_input_space;
-    var tail_lin = blurred_tail_input_space;
-    if (is_raw == 0u) {
-        core_lin = srgb_to_linear(core_lin);
-        tail_lin = srgb_to_linear(tail_lin);
-    }
-    core_lin = apply_filmic_exposure(apply_linear_exposure(core_lin, exp), bright);
-    tail_lin = apply_filmic_exposure(apply_linear_exposure(tail_lin, exp), bright);
-
-    // Threshold in stops above middle grey (0.18 scene-referred convention):
-    // the core reacts only to strong highlights, the tail reaches further down.
-    let core_stops = log2(max(get_luma(max(core_lin, vec3<f32>(0.0))), 1e-6) / 0.18);
-    let tail_stops = log2(max(get_luma(max(tail_lin, vec3<f32>(0.0))), 1e-6) / 0.18);
-    let core_w = smoothstep(2.5, 4.0, core_stops);
-    let tail_w = smoothstep(1.5, 3.5, tail_stops);
-
-    // The core keeps part of the source hue; the tail is deep red-orange.
-    let core_glow = core_lin * mix(vec3<f32>(1.0), vec3<f32>(1.0, 0.45, 0.25), 0.6) * core_w;
-    let tail_glow = tail_lin * vec3<f32>(1.0, 0.20, 0.06) * tail_w;
-
-    return color + (core_glow * 0.8 + tail_glow * 0.5) * amount * 2.0;
-}
-
-// --- Film simulation (ported from the Krea WebGL2 film PoC) ---
-// sRGB in -> sRGB out. Chain: sRGB->linear -> highlight rolloff -> per-channel
-// dye curves -> shadow tint (base fog) -> color bleed -> linear->sRGB ->
-// contrast/saturation -> base blend -> optional cross-process -> strength blend
-// against the untouched input. Inserted right after the tonemapper, so user
-// curves/LUT/grain apply on top of the film look.
-fn film_curve_lookup(idx: u32) -> vec3<f32> {
-    return adjustments.global.film_curves[idx >> 4u][idx & 15u];
-}
-
-fn apply_film_look(color_in: vec3<f32>) -> vec3<f32> {
-    let strength = adjustments.global.film_strength;
-    if (strength <= 0.0) {
-        return color_in;
-    }
-
-    var c = srgb_to_linear(clamp(color_in, vec3<f32>(0.0), vec3<f32>(1.0)));
-
-    // Highlight rolloff: per-channel soft shoulder above 0.6.
-    let rolloff = adjustments.global.film_rolloff;
-    if (rolloff > 0.0) {
-        let hm = clamp((c - vec3<f32>(0.6)) / 0.4, vec3<f32>(0.0), vec3<f32>(1.0));
-        let d = max(c - vec3<f32>(0.6), vec3<f32>(0.0));
-        let comp = vec3<f32>(0.6) + vec3<f32>(0.4) * (vec3<f32>(1.0) - exp(-5.0 * d * (1.0 - rolloff)));
-        c = mix(c, comp, hm);
-    }
-
-    // Dye response curves: 256-entry LUT per channel, manual linear interp.
-    let t = clamp(c, vec3<f32>(0.0), vec3<f32>(1.0)) * 255.0;
-    let fl = floor(t);
-    let f = t - fl;
-    let i = vec3<u32>(fl);
-    let j = min(i + vec3<u32>(1u), vec3<u32>(255u));
-    let cr0 = film_curve_lookup(i.x);
-    let cr1 = film_curve_lookup(j.x);
-    let cg0 = film_curve_lookup(i.y);
-    let cg1 = film_curve_lookup(j.y);
-    let cb0 = film_curve_lookup(i.z);
-    let cb1 = film_curve_lookup(j.z);
-    c = vec3<f32>(mix(cr0.x, cr1.x, f.x), mix(cg0.y, cg1.y, f.y), mix(cb0.z, cb1.z, f.z));
-
-    // Shadow tint (film base fog), fixed strength 0.2 as in the PoC.
-    let st = adjustments.global.film_shadow_tint;
-    if (max(st.x, max(st.y, st.z)) > 0.0) {
-        let lt = dot(c, vec3<f32>(0.299, 0.587, 0.114));
-        var sm = clamp(1.0 - lt * 2.0, 0.0, 1.0);
-        sm = pow(sm, 1.5);
-        c = clamp(c + sm * 0.2 * st, vec3<f32>(0.0), vec3<f32>(1.0));
-    }
-
-    // Color bleed (dye crosstalk), computed from the pre-bleed value.
-    let bleed = adjustments.global.film_bleed;
-    if (bleed > 0.0) {
-        let o = c;
-        c = clamp(vec3<f32>(
-            o.x + o.z * bleed * 0.15,
-            o.y + (o.x + o.z) * bleed * 0.05,
-            o.z + o.x * bleed * 0.10,
-        ), vec3<f32>(0.0), vec3<f32>(1.0));
-    }
-
-    // Back to sRGB: contrast (pivot 0.5) + saturation.
-    c = linear_to_srgb(c);
-    c = (c - vec3<f32>(0.5)) * adjustments.global.film_contrast + vec3<f32>(0.5);
-    let ld = dot(c, vec3<f32>(0.299, 0.587, 0.114));
-    c = clamp(mix(vec3<f32>(ld), c, adjustments.global.film_saturation), vec3<f32>(0.0), vec3<f32>(1.0));
-
-    // Base fog blend.
-    c = mix(c, adjustments.global.film_base_color, 0.03);
-
-    // Optional cross-process.
-    if (adjustments.global.film_cross > 0.5) {
-        c = (c - vec3<f32>(0.5)) * 1.5 + vec3<f32>(0.5);
-        c = vec3<f32>(min(1.0, c.x * 1.2), c.y * 0.9, min(1.0, c.z * 1.1));
-        let lx = dot(c, vec3<f32>(0.299, 0.587, 0.114));
-        c = mix(vec3<f32>(lx), c, 1.3);
-    }
-
-    // Film shadows / highlights (sRGB, luma-masked, same math as the PoC).
-    let fsh = adjustments.global.film_shadows;
-    let fhi = adjustments.global.film_highlights;
-    if (fsh != 0.0 || fhi != 0.0) {
-        let lf = dot(c, LUMA_COEFF);
-        if (fsh != 0.0) {
-            let s = fsh / 100.0;
-            var sm = clamp(1.0 - lf * 2.0, 0.0, 1.0);
-            sm = sm * sm;
-            if (s < 0.0) {
-                c = c * (1.0 - (-s) * sm);
-            } else {
-                c = c + s * sm * (vec3<f32>(1.0) - c);
-            }
-        }
-        if (fhi != 0.0) {
-            let h = fhi / 100.0;
-            var hm = clamp((lf - 0.5) * 2.0, 0.0, 1.0);
-            hm = hm * hm;
-            if (h < 0.0) {
-                c = c - (-h) * hm * clamp(c - vec3<f32>(0.5), vec3<f32>(0.0), vec3<f32>(1.0));
-            } else {
-                c = c + h * hm * (vec3<f32>(1.0) - c);
-            }
-        }
-    }
-
-    return mix(color_in, clamp(c, vec3<f32>(0.0), vec3<f32>(1.0)), clamp(strength, 0.0, 1.0));
-}
-
 @compute @workgroup_size(8, 8, 1)
 fn main(@builtin(global_invocation_id) id: vec3<u32>) {
     let out_dims = vec2<u32>(textureDimensions(output_texture));
@@ -1644,10 +1408,6 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
         let bw_wn = select(LUMA_COEFF, bw_w / bw_s, bw_s > 0.0001);
         base_srgb = vec3<f32>(dot(base_srgb, bw_wn));
     }
-
-    // Film simulation (Krea): applied to the tonemapped sRGB image, before the
-    // user's curves/LUT/grain so they stack on top of the film look.
-    base_srgb = apply_film_look(base_srgb);
 
     var final_rgb = apply_all_curves(base_srgb,
         adjustments.global.luma_curve, adjustments.global.luma_curve_count,

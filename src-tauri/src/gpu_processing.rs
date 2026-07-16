@@ -574,7 +574,7 @@ struct FilmPostParams {
     grain_mono: f32,   // 1 = single shared field (B&W), 0 = per-channel
     grain_level: f32,  // mip level matching the render downscale (log2(full/processed))
     grain_coord_scale: f32, // full-res px per processed px (grain sampled in full-image coords)
-    blur_amount: f32,  // post-tone emulsion diffusion strength 0..1
+    _pad2: f32,
     _pad3: f32,
     _pad4: f32,
     _pad5: f32,
@@ -628,7 +628,6 @@ pub struct GpuProcessor {
     film_post_bgl: wgpu::BindGroupLayout,
     film_post_pipeline: wgpu::ComputePipeline,
     film_post_params_buffer: wgpu::Buffer,
-    film_blur_view: wgpu::TextureView,
     pre_tone_linear_view: wgpu::TextureView,
     pre_blur_view: wgpu::TextureView,
     pre_soft_blur_view: wgpu::TextureView,
@@ -735,16 +734,6 @@ impl GpuProcessor {
             entries: &[
                 wgpu::BindGroupLayoutEntry {
                     binding: 0,
-                    visibility: wgpu::ShaderStages::COMPUTE,
-                    ty: wgpu::BindingType::Texture {
-                        sample_type: wgpu::TextureSampleType::Float { filterable: false },
-                        view_dimension: wgpu::TextureViewDimension::D2,
-                        multisampled: false,
-                    },
-                    count: None,
-                },
-                wgpu::BindGroupLayoutEntry {
-                    binding: 1,
                     visibility: wgpu::ShaderStages::COMPUTE,
                     ty: wgpu::BindingType::Texture {
                         sample_type: wgpu::TextureSampleType::Float { filterable: false },
@@ -1250,12 +1239,6 @@ impl GpuProcessor {
         });
         let structure_blur_view = structure_blur_texture.create_view(&Default::default());
 
-        let film_blur_texture = device.create_texture(&wgpu::TextureDescriptor {
-            label: Some("Film Blur Texture"),
-            ..reusable_texture_desc
-        });
-        let film_blur_view = film_blur_texture.create_view(&Default::default());
-
         let pre_tone_linear_texture = device.create_texture(&wgpu::TextureDescriptor {
             label: Some("Pre-tone Linear Texture"),
             ..reusable_texture_desc
@@ -1416,7 +1399,6 @@ impl GpuProcessor {
             film_post_bgl,
             film_post_pipeline,
             film_post_params_buffer,
-            film_blur_view,
             pre_tone_linear_view,
             pre_blur_view,
             pre_soft_blur_view,
@@ -2096,106 +2078,13 @@ impl GpuProcessor {
                     );
                 }
 
-                // Film post-pass: emulsion blur + crystal grain on the graded
-                // tile. Runs only when the film dials are active; the result
+                // Film post-pass: crystal grain on the graded tile. Runs only
+                // when crystal grain is active; the result
                 // lands in film_post_texture (rgba8), which then replaces
-                // tile_output_texture as the copy/readback source. Blur
-                // offsets stay well inside the 128 px tile overlap, so the
-                // cropped center has no seams.
-                let film_blur = adjustments.global.film_blur;
+                // tile_output_texture as the copy/readback source.
                 let crystal_grain = adjustments.global.crystal_grain_amount;
-                let film_post_active = film_blur > 0.0 || crystal_grain > 0.0;
+                let film_post_active = crystal_grain > 0.0;
                 if film_post_active {
-                    if film_blur > 0.0 {
-                        // Gaussian blur of the graded tile. The source is
-                        // tile-local, so offsets are 0 and the clamp is the
-                        // content width (unlike the input blurs above).
-                        let sigma = film_blur * 3.0 * scale;
-                        let radius = (sigma * 2.0).ceil().clamp(1.0, 96.0) as u32;
-                        let params = BlurParams {
-                            radius,
-                            tile_offset_x: 0,
-                            tile_offset_y: 0,
-                            input_width,
-                            input_height,
-                            clamp_x_max: input_width - 1,
-                            _pad2: 0,
-                            _pad3: 0,
-                        };
-                        queue.write_buffer(
-                            &self.blur_params_buffer,
-                            0,
-                            bytemuck::bytes_of(&params),
-                        );
-
-                        let h_blur_bg = device.create_bind_group(&wgpu::BindGroupDescriptor {
-                            label: Some("Film H-Blur BG"),
-                            layout: &self.blur_bgl,
-                            entries: &[
-                                wgpu::BindGroupEntry {
-                                    binding: 0,
-                                    resource: wgpu::BindingResource::TextureView(
-                                        &self.tile_output_texture_view,
-                                    ),
-                                },
-                                wgpu::BindGroupEntry {
-                                    binding: 1,
-                                    resource: wgpu::BindingResource::TextureView(
-                                        &self.ping_pong_view,
-                                    ),
-                                },
-                                wgpu::BindGroupEntry {
-                                    binding: 2,
-                                    resource: self.blur_params_buffer.as_entire_binding(),
-                                },
-                            ],
-                        });
-
-                        let v_blur_bg = device.create_bind_group(&wgpu::BindGroupDescriptor {
-                            label: Some("Film V-Blur BG"),
-                            layout: &self.blur_bgl,
-                            entries: &[
-                                wgpu::BindGroupEntry {
-                                    binding: 0,
-                                    resource: wgpu::BindingResource::TextureView(
-                                        &self.ping_pong_view,
-                                    ),
-                                },
-                                wgpu::BindGroupEntry {
-                                    binding: 1,
-                                    resource: wgpu::BindingResource::TextureView(
-                                        &self.film_blur_view,
-                                    ),
-                                },
-                                wgpu::BindGroupEntry {
-                                    binding: 2,
-                                    resource: self.blur_params_buffer.as_entire_binding(),
-                                },
-                            ],
-                        });
-
-                        {
-                            let mut cpass = main_encoder.begin_compute_pass(&Default::default());
-                            cpass.set_pipeline(&self.h_blur_pipeline);
-                            cpass.set_bind_group(0, &h_blur_bg, &[]);
-                            cpass.dispatch_workgroups(
-                                input_width.div_ceil(256),
-                                input_height,
-                                1,
-                            );
-                        }
-                        {
-                            let mut cpass = main_encoder.begin_compute_pass(&Default::default());
-                            cpass.set_pipeline(&self.v_blur_pipeline);
-                            cpass.set_bind_group(0, &v_blur_bg, &[]);
-                            cpass.dispatch_workgroups(
-                                input_width,
-                                input_height.div_ceil(256),
-                                1,
-                            );
-                        }
-                    }
-
                     let post_params = FilmPostParams {
                         clamp_w: (input_width - 1) as f32,
                         clamp_h: (input_height - 1) as f32,
@@ -2206,7 +2095,7 @@ impl GpuProcessor {
                         grain_mono: adjustments.global.crystal_grain_mono,
                         grain_level: request.grain_mip_level,
                         grain_coord_scale: request.grain_coord_scale,
-                        blur_amount: film_blur,
+                        _pad2: 0.0,
                         _pad3: 0.0,
                         _pad4: 0.0,
                         _pad5: 0.0,
@@ -2243,14 +2132,6 @@ impl GpuProcessor {
                             wgpu::BindGroupEntry {
                                 binding: 0,
                                 resource: wgpu::BindingResource::TextureView(&self.tile_output_texture_view),
-                            },
-                            wgpu::BindGroupEntry {
-                                binding: 1,
-                                resource: wgpu::BindingResource::TextureView(if film_blur > 0.0 {
-                                    &self.film_blur_view
-                                } else {
-                                    &self.dummy_blur_view
-                                }),
                             },
                             wgpu::BindGroupEntry {
                                 binding: 2,

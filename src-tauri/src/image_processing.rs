@@ -1509,33 +1509,17 @@ pub struct GlobalAdjustments {
     pub flare_amount: f32,
     pub sharpness_threshold: f32,
 
-    // Film simulation (Krea port) — layout MUST match shader.wgsl GlobalAdjustments.
-    pub film_strength: f32,
-    pub film_contrast: f32,
-    pub film_saturation: f32,
-    pub film_rolloff: f32,
-    pub film_bleed: f32,
-    pub film_cross: f32,
-    _pad_film1: f32,
-    _pad_film2: f32,
-    pub film_base_color: [f32; 4],
-    pub film_shadow_tint: [f32; 4],
-    pub film_curves: [[[f32; 4]; 16]; 16],
-
-    // Film simulation — extended dials. Layout MUST match shader.wgsl.
-    // shadows/highlights are applied per-pixel in the film block; blur drives
-    // the film post-pass.
-    pub film_shadows: f32,
-    pub film_highlights: f32,
-    pub film_blur: f32,
+    // Pre-tone emulsion diffusion/soft blur (Film tab). Layout MUST match
+    // shader.wgsl GlobalAdjustments.
     pub film_blur_pre_amount: f32,
     pub film_blur_pre_radius: f32,
     pub film_blur_pre_compensation: f32,
     pub film_blur_pre_soft_amount: f32,
     pub film_blur_pre_soft_radius: f32,
-
-    // No explicit padding needed: 8 f32s (32 bytes) already place bw_weights
-    // on a 16-byte boundary, matching WGSL vec3<f32> alignment.
+    // Pad to a 16-byte boundary so bw_weights (WGSL vec3<f32>) stays aligned.
+    _pad_film1: f32,
+    _pad_film2: f32,
+    _pad_film3: f32,
 
     // Black & white conversion — layout MUST match shader.wgsl.
     // xyz = channel weights (0..1, normalized in the shader), w = enabled flag.
@@ -2110,29 +2094,6 @@ pub fn is_image_edited(
         get_all_adjustments_from_json(&serde_json::json!({}), is_raw, tonemapper_override);
 
     bytemuck::bytes_of(&current_adj) != bytemuck::bytes_of(&default_adj)
-}
-
-// Film curves: flat 768-entry array (r,g,b interleaved, 0..1) -> 16x16 chunks of
-// padded vec3 (arrays > 32 lack Default, hence the chunking). Falls back to the
-// identity curve so a stale/partial sidecar can never black out the image.
-fn parse_film_curves(value: &serde_json::Value) -> [[[f32; 4]; 16]; 16] {
-    let mut out = [[[0.0f32; 4]; 16]; 16];
-    for (i, chunk) in out.iter_mut().flatten().enumerate() {
-        let v = i as f32 / 255.0;
-        *chunk = [v, v, v, 0.0];
-    }
-    if let Some(arr) = value.as_array() {
-        if arr.len() == 768 {
-            for i in 0..256 {
-                let d = i as f32 / 255.0;
-                let r = arr[i * 3].as_f64().map(|v| v as f32).unwrap_or(d);
-                let g = arr[i * 3 + 1].as_f64().map(|v| v as f32).unwrap_or(d);
-                let b = arr[i * 3 + 2].as_f64().map(|v| v as f32).unwrap_or(d);
-                out[i / 16][i % 16] = [r, g, b, 0.0];
-            }
-        }
-    }
-    out
 }
 
 // ---------------------------------------------------------------------------
@@ -2934,27 +2895,7 @@ fn get_global_adjustments_from_json(
             Some(15.0),
         ),
 
-        // Old Film Simulation (Krea port) keys were removed from the frontend
-        // after the Looks panel was deleted. The section is never visible now,
-        // so these fields are kept at their "off" defaults to preserve the
-        // GPU uniform layout without reading deleted JSON keys.
-        film_strength: 0.0,
-        film_contrast: 1.0,
-        film_saturation: 1.0,
-        film_rolloff: 0.0,
-        film_bleed: 0.0,
-        film_cross: 0.0,
-        _pad_film1: 0.0,
-        _pad_film2: 0.0,
-        film_base_color: [1.0, 1.0, 1.0, 0.0],
-        film_shadow_tint: [0.0, 0.0, 0.0, 0.0],
-        film_curves: parse_film_curves(&serde_json::Value::Null),
-
-        // Extended film dials. shadows/highlights raw -100..100;
-        // blur 0..1 (sigma = *3 px in the post-pass).
-        film_shadows: 1.0,
-        film_highlights: 1.0,
-        film_blur: 0.0,
+        // Pre-tone emulsion diffusion/soft blur (Film tab).
         film_blur_pre_amount: if tone_mapper == "flim" && film_effects_on {
             js_adjustments["filmBlurPreAmount"].as_f64().unwrap_or(0.0) as f32 / 100.0
         } else {
@@ -2980,6 +2921,9 @@ fn get_global_adjustments_from_json(
         } else {
             0.5
         },
+        _pad_film1: 0.0,
+        _pad_film2: 0.0,
+        _pad_film3: 0.0,
 
         // Black & white channel weights (frontend 0..100 -> 0..1, normalized
         // in the shader) with the section-enabled flag packed into w.
@@ -4204,22 +4148,30 @@ mod film_layout_tests {
     // The Rust GlobalAdjustments is uploaded to the GPU with bytemuck; its byte
     // layout MUST equal the WGSL struct of the same name. Catch drift here.
     // Size-only check: append new uniform fields at the struct tail on both sides.
+    // Both compute passes bind the same uniform buffer, so both WGSL mirrors
+    // are checked (pre_tone.wgsl's mirror once silently dropped a field — the
+    // offsets only stayed correct by alignment luck).
     #[test]
     fn global_adjustments_layout_matches_wgsl() {
-        let module = parse_main_shader();
-        let mut layouter = naga::proc::Layouter::default();
-        layouter.update(module.to_ctx()).unwrap();
-        let (handle, _) = module
-            .types
-            .iter()
-            .find(|(_, t)| t.name.as_deref() == Some("GlobalAdjustments"))
-            .expect("GlobalAdjustments struct in WGSL");
-        let wgsl_size = layouter[handle].size as usize;
-        let rust_size = std::mem::size_of::<GlobalAdjustments>();
-        assert_eq!(
-            rust_size, wgsl_size,
-            "Rust GlobalAdjustments ({rust_size} bytes) != WGSL ({wgsl_size} bytes)"
-        );
+        for (name, src) in [
+            ("shader.wgsl", include_str!("shaders/shader.wgsl")),
+            ("pre_tone.wgsl", include_str!("shaders/pre_tone.wgsl")),
+        ] {
+            let module = naga::front::wgsl::parse_str(src).expect("shader must parse");
+            let mut layouter = naga::proc::Layouter::default();
+            layouter.update(module.to_ctx()).unwrap();
+            let (handle, _) = module
+                .types
+                .iter()
+                .find(|(_, t)| t.name.as_deref() == Some("GlobalAdjustments"))
+                .expect("GlobalAdjustments struct in WGSL");
+            let wgsl_size = layouter[handle].size as usize;
+            let rust_size = std::mem::size_of::<GlobalAdjustments>();
+            assert_eq!(
+                rust_size, wgsl_size,
+                "Rust GlobalAdjustments ({rust_size} bytes) != {name} ({wgsl_size} bytes)"
+            );
+        }
     }
 
     // Advanced flim panel: absolute preset knobs arrive as flimAdv* JSON keys.

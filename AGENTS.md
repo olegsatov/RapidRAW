@@ -48,14 +48,17 @@ violate them.
 Changes concentrated in these areas are ours — resolve upstream conflicts here
 with extra care, and keep this list current as features are added:
 
-- Film simulation & grain: `src/components/adjustments/Film.tsx`,
-  `src/components/adjustments/Grain.tsx`,
-  `src/components/panel/right/FilmPanel.tsx`, `src/utils/filmProfiles.ts`,
+- Film look (flim) & grain: `src/components/adjustments/Grain.tsx`,
+  `src/components/panel/right/FilmPanel.tsx`,
   `src/hooks/useExportSettings.ts`, grain parts of
   `src/components/panel/right/ExportPanel.tsx`,
-  `src-tauri/src/shaders/film_post.wgsl`, film/grain parts of
+  `src-tauri/src/shaders/film_post.wgsl`, flim cluster of
+  `src-tauri/src/shaders/shader.wgsl`, halation in
+  `src-tauri/src/shaders/pre_tone.wgsl`, film/grain parts of
   `src-tauri/src/gpu_processing.rs` / `image_processing.rs` /
-  `export_processing.rs` (`crystal_grain.rs`, `film_grain.rs`).
+  `export_processing.rs` (`crystal_grain.rs`, `film_grain.rs`). The legacy
+  Krea film module (`apply_film_look`, dye-curve LUTs, stock profiles) was
+  removed in 2026-07 — restore from git history if ever needed.
 - LUT engine (pre/post-tonemapper timing + HDR normalization; per-LUT saved
   application params restored on select/hover and used for list thumbnails):
   `src/components/ui/LUTControl.tsx`, `src/utils/lutSettings.ts`, LUT parts of
