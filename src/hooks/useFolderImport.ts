@@ -14,11 +14,12 @@ const isTerminalPhase = (phase: FolderImportJob['phase']): boolean =>
 // ("path|recursive", path normalized by normalize_folder_path). When it
 // differs from the optimistic raw-path key, re-home the job so the optimistic
 // entry does not shadow the real one the folder-import-* event listeners
-// update. A sync re-emits the folder's files, so any stale job at the
-// canonical key is dropped first to avoid appendBatch duplicating its files;
-// an import drops it only when terminal (an active one keeps streaming).
-// The subsequent startJob then no-ops only if listeners already created a
-// fresh entry there.
+// update. A stale finished job at the canonical key is dropped first so a
+// re-import's batches do not append duplicates to its file list; a
+// non-terminal job there IS the current stream (the backend emits
+// folder-import-started, and possibly early batches, before the invoke
+// resolves), so it is never cleared. The subsequent startJob then no-ops
+// only if listeners already created a fresh entry there.
 function rehomeJob(returnedKey: string, optimisticKey: string, recursive: boolean, kind?: 'import' | 'sync') {
   if (returnedKey === optimisticKey) {
     return;
@@ -26,7 +27,7 @@ function rehomeJob(returnedKey: string, optimisticKey: string, recursive: boolea
   const store = useFolderImportStore.getState();
   store.clearJob(optimisticKey);
   const existing = store.jobs[returnedKey];
-  if (kind === 'sync' || (existing && isTerminalPhase(existing.phase))) {
+  if (existing && isTerminalPhase(existing.phase)) {
     store.clearJob(returnedKey);
   }
   const separator = returnedKey.lastIndexOf('|');
