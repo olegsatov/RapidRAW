@@ -684,8 +684,8 @@ fn relocate_folder_in_conn(
     new_path: &str,
 ) -> Result<(), String> {
     // Stored folder paths never carry a trailing separator; accept one anyway.
-    let old_trimmed = old_path.trim_end_matches('/');
-    let new_trimmed = new_path.trim_end_matches('/');
+    let old_trimmed = old_path.trim_end_matches(&['/', '\\'][..]);
+    let new_trimmed = new_path.trim_end_matches(&['/', '\\'][..]);
     let tx = conn.unchecked_transaction().map_err(|e| e.to_string())?;
 
     tx.execute(

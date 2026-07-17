@@ -895,13 +895,13 @@ async fn run_import_job(
 /// source file, `sidecar_modified` of the matching `.rrdata`), so an
 /// unchanged file compares equal and is never re-upserted.
 ///
-/// Virtual-copy rows: a VC's catalog path (`path?vc=id`) reaches the disk set
-/// only through its sidecar file in the walk. A VC row missing from the walk
-/// is double-checked on disk before being removed — kept when both source
-/// file and VC sidecar still exist (the walk's `filter_map` silently swallows
-/// per-entry IO errors, so the walk alone is not proof of absence), removed
-/// when either is gone. A VC sidecar whose source file disappeared is an
-/// orphan: its row is removed together with the source row.
+/// Rows missing from the walk are double-checked on disk before being
+/// removed: the walk's `filter_map` silently swallows per-entry IO errors
+/// (in recursive mode one unreadable subdirectory skips the whole subtree),
+/// so absence from the walk is not proof of absence on disk. A base row is
+/// kept while its file exists, a VC row (`path?vc=id`) while both its source
+/// file and VC sidecar exist — a VC sidecar whose source disappeared is an
+/// orphan and is removed together with the source row.
 fn compute_sync_delta(
     entries: Vec<ScanEntry>,
     fingerprints: &HashMap<String, library_db::FileFingerprint>,
@@ -958,6 +958,9 @@ fn compute_sync_delta(
             if source_path.exists() && sidecar_path.exists() {
                 continue;
             }
+        // `exists()` is also false when the metadata is unreadable.
+        } else if Path::new(path).exists() {
+            continue;
         }
         removed.push(path.clone());
     }
@@ -1186,5 +1189,42 @@ mod tests {
         let cancel = Arc::new(AtomicBool::new(false));
         let result = collect_image_paths("/nonexistent/path/that/does/not/exist", false, &cancel);
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn sync_delta_confirms_on_disk_before_removing() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        // Present on disk but missing from the walk (e.g. a subtree skipped
+        // on an IO error): both rows must survive the sync.
+        fs::write(root.join("skipped.jpg"), b"x").unwrap();
+        fs::write(root.join("skipped.jpg.abc123.rrdata"), b"{}").unwrap();
+        let kept = root.join("skipped.jpg").to_string_lossy().into_owned();
+        let kept_vc = format!("{}?vc=abc123", kept);
+        // Truly gone: base row and its VC row are removed.
+        let gone = root.join("gone.jpg").to_string_lossy().into_owned();
+        let gone_vc = format!("{}?vc=def456", gone);
+        // Orphan VC: sidecar exists but the source file is gone.
+        fs::write(root.join("orphan.jpg.999999.rrdata"), b"{}").unwrap();
+        let orphan_vc = root
+            .join("orphan.jpg?vc=999999")
+            .to_string_lossy()
+            .into_owned();
+
+        let fingerprints: HashMap<String, library_db::FileFingerprint> = [
+            (kept.clone(), (Some(1), Some(1), None)),
+            (kept_vc.clone(), (Some(1), Some(1), Some(2))),
+            (gone.clone(), (Some(1), Some(1), None)),
+            (gone_vc.clone(), (Some(1), Some(1), Some(3))),
+            (orphan_vc.clone(), (Some(1), Some(1), Some(4))),
+        ]
+        .into_iter()
+        .collect();
+
+        // An empty walk stands in for the partial-walk case.
+        let cancel = Arc::new(AtomicBool::new(false));
+        let (to_upsert, removed) = compute_sync_delta(Vec::new(), &fingerprints, &cancel);
+        assert!(to_upsert.is_empty());
+        assert_eq!(removed, vec![gone, gone_vc, orphan_vc]);
     }
 }
