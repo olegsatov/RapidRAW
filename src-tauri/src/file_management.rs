@@ -61,7 +61,11 @@ fn emit_thumbnail_cache_setup_error(app_handle: &AppHandle, path: &str, reason: 
     );
 }
 
-fn compute_thumbnail_cache_hash(path_str: &str, adjustments_bytes: &[u8]) -> Option<String> {
+fn compute_thumbnail_cache_hash(
+    path_str: &str,
+    file_id: Option<i64>,
+    adjustments_bytes: &[u8],
+) -> Option<String> {
     let (source_path, _) = parse_virtual_path(path_str);
 
     let img_mod_time = fs::metadata(&source_path)
@@ -73,7 +77,11 @@ fn compute_thumbnail_cache_hash(path_str: &str, adjustments_bytes: &[u8]) -> Opt
         .as_secs();
 
     let mut hasher = blake3::Hasher::new();
-    hasher.update(path_str.as_bytes());
+    if let Some(id) = file_id {
+        hasher.update(&id.to_le_bytes());
+    } else {
+        hasher.update(path_str.as_bytes());
+    }
     hasher.update(&img_mod_time.to_le_bytes());
     hasher.update(adjustments_bytes);
     Some(hasher.finalize().to_hex().to_string())
@@ -1500,6 +1508,7 @@ fn generate_single_thumbnail_and_cache(
     force_regenerate: bool,
     app_handle: &AppHandle,
     settings: &AppSettings,
+    file_id: Option<i64>,
 ) -> Option<(String, u8, bool)> {
     let (source_path, sidecar_path) = parse_virtual_path(path_str);
 
@@ -1528,7 +1537,7 @@ fn generate_single_thumbnail_and_cache(
         (0, false, Vec::new())
     };
 
-    let cache_hash = compute_thumbnail_cache_hash(path_str, &adjustments_bytes)?;
+    let cache_hash = compute_thumbnail_cache_hash(path_str, file_id, &adjustments_bytes)?;
 
     let cache_filename = format!("{}.jpg", cache_hash);
     let cache_path = thumb_cache_dir.join(cache_filename);
@@ -1596,6 +1605,7 @@ pub fn start_thumbnail_workers(app_handle: tauri::AppHandle) {
                         false,
                         &app_clone,
                         &worker_settings,
+                        None,
                     );
 
                     if let Some((thumbnail_path, rating, is_edited)) = result {
@@ -2255,6 +2265,7 @@ pub fn save_metadata_and_update_thumbnail(
             true,
             &app_handle_clone,
             &settings,
+            None,
         );
 
         if let Some((thumbnail_path, rating, is_edited)) = result {
@@ -2356,6 +2367,7 @@ pub async fn apply_adjustments_to_paths(
                 true,
                 &app_handle,
                 &settings,
+                None,
             );
 
             if let Some((thumbnail_path, rating, is_edited)) = result {
@@ -2425,6 +2437,7 @@ pub async fn reset_adjustments_for_paths(
                 true,
                 &app_handle,
                 &settings,
+                None,
             );
 
             if let Some((thumbnail_path, rating, is_edited)) = result {
@@ -2535,6 +2548,7 @@ pub async fn apply_auto_adjustments_to_paths(
                 true,
                 &app_handle,
                 &settings,
+                None,
             );
 
             if let Some((thumbnail_path, rating, is_edited)) = result {
@@ -3206,7 +3220,7 @@ pub fn get_thumb_cache_dir(app_handle: &AppHandle) -> Result<PathBuf, String> {
     Ok(thumb_cache_dir)
 }
 
-pub fn get_cache_key_hash(path_str: &str) -> Option<String> {
+pub fn get_cache_key_hash(path_str: &str, file_id: Option<i64>) -> Option<String> {
     let (_, sidecar_path) = parse_virtual_path(path_str);
 
     let adjustments_bytes = if let Ok(content) = fs::read_to_string(&sidecar_path) {
@@ -3219,7 +3233,7 @@ pub fn get_cache_key_hash(path_str: &str) -> Option<String> {
         Vec::new()
     };
 
-    compute_thumbnail_cache_hash(path_str, &adjustments_bytes)
+    compute_thumbnail_cache_hash(path_str, file_id, &adjustments_bytes)
 }
 
 pub fn get_cached_or_generate_thumbnail_image(
@@ -3231,7 +3245,7 @@ pub fn get_cached_or_generate_thumbnail_image(
     let settings = load_settings(app_handle.clone()).unwrap_or_default();
     let target_width = settings.thumbnail_resolution.unwrap_or(720);
 
-    if let Some(cache_hash) = get_cache_key_hash(path_str) {
+    if let Some(cache_hash) = get_cache_key_hash(path_str, None) {
         let cache_filename = format!("{}.jpg", cache_hash);
         let cache_path = thumb_cache_dir.join(cache_filename);
 
