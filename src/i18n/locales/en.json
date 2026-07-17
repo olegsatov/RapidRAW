@@ -142,6 +142,17 @@
         "pierre": "Pierre",
         "ipol": "IPOL"
       },
+      "grainPreviewLook": "Preview look",
+      "grainPreviewLooks": {
+        "crisp": "Crisp",
+        "balanced": "Balanced",
+        "accurate": "Accurate"
+      },
+      "grainPreviewLookHints": {
+        "crisp": "Full-contrast crystal texture at any zoom — like the export viewed at 100%. May shimmer when zoomed far out.",
+        "balanced": "Zoom-aware averaging with the lost contrast added back. No shimmer, slightly blocky.",
+        "accurate": "Strictly how the export looks when viewed at the same window size. Grain fades when zoomed out — physically honest."
+      },
       "grainAmountPierreHint": "Realtime preview strength; also applied at export.",
       "grainAmountIpolHint": "Applied at export — this engine has no realtime preview.",
       "grainCancel": "Cancel",

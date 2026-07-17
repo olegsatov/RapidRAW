@@ -687,6 +687,7 @@ fn render_lut_swatch(
             roi: None,
             grain_mip_level: 0.0,
             grain_coord_scale: 1.0,
+            grain_boost: 1.0,
             grain_view: None,
         },
         "generate_lut_previews",

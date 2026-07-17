@@ -10,6 +10,7 @@ import { Adjustments, FilmAdjustment } from '../../utils/adjustments';
 import Switch from '../ui/Switch';
 import Button from '../ui/Button';
 import { useEditorStore } from '../../store/useEditorStore';
+import { useSettingsStore } from '../../store/useSettingsStore';
 
 interface GrainPanelProps {
   adjustments: Adjustments;
@@ -35,6 +36,19 @@ export default function GrainPanel({ adjustments, setAdjustments, onDragStateCha
 
   const grainEngine = adjustments.grainEngine === 'ipol' ? 'ipol' : 'pierre';
   const grainVisible = adjustments.sectionVisibility?.grain !== false;
+
+  // Preview-only grain display mode (global app setting, not per-image — the
+  // export always renders full quality regardless). Switching it must
+  // re-render the canvas: bump the store's renderGeneration (same trick as
+  // the crystal-grain-baked listener — no undo-history pollution).
+  const appSettings = useSettingsStore((s) => s.appSettings);
+  const handleSettingsChange = useSettingsStore((s) => s.handleSettingsChange);
+  const grainPreviewMode = appSettings?.grainPreviewMode ?? 'crisp';
+  const handleGrainPreviewModeChange = (mode: 'crisp' | 'balanced' | 'accurate') => {
+    if (!appSettings) return;
+    handleSettingsChange({ ...appSettings, grainPreviewMode: mode });
+    useEditorStore.getState().setEditor((s: any) => ({ renderGeneration: s.renderGeneration + 1 }));
+  };
 
   // Grain engine parameters live in the adjustments (persisted to the sidecar)
   // so the export pipeline can reproduce them without the editor being open.
@@ -209,6 +223,32 @@ export default function GrainPanel({ adjustments, setAdjustments, onDragStateCha
             ? t('adjustments.effects.grainAmountPierreHint')
             : t('adjustments.effects.grainAmountIpolHint')}
         </p>
+        {grainEngine === 'pierre' && (
+          <>
+            <Text variant={TextVariants.heading} className="mb-2 mt-3">
+              {t('adjustments.effects.grainPreviewLook')}
+            </Text>
+            <div className="flex gap-1">
+              {(['crisp', 'balanced', 'accurate'] as const).map((mode) => (
+                <button
+                  key={mode}
+                  className={clsx(
+                    'flex-1 px-2 py-1 text-sm font-medium rounded-md transition-colors',
+                    grainPreviewMode === mode
+                      ? 'bg-accent text-button-text'
+                      : 'bg-card-active text-text-secondary hover:bg-surface',
+                  )}
+                  onClick={() => handleGrainPreviewModeChange(mode)}
+                >
+                  {t(`adjustments.effects.grainPreviewLooks.${mode}`)}
+                </button>
+              ))}
+            </div>
+            <p className="text-xs text-text-secondary mt-1">
+              {t(`adjustments.effects.grainPreviewLookHints.${grainPreviewMode}`)}
+            </p>
+          </>
+        )}
       </div>
 
       {grainEngine === 'ipol' ? (

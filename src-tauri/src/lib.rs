@@ -501,6 +501,33 @@ fn process_preview_job(
         None
     };
 
+    // Crystal grain preview display mode (app setting; export unaffected):
+    //   crisp    — sample mip 0: the real crystal texture at full contrast on
+    //              every zoom (nearest sampler subsamples it, like the export
+    //              viewed at 100%);
+    //   balanced — display-matched mip + the baked field's measured
+    //              std(mip 0)/std(mip λ) ratio as the contrast boost;
+    //   accurate — display-matched mip, boost 1: strict WYSIWYG (the export
+    //              viewed at the same window size).
+    let base_grain_level = grain_mip_level.unwrap_or_else(|| {
+        crate::image_processing::grain_mip_level_from_scale(effective_scale)
+    });
+    let (req_grain_level, req_grain_boost) = match settings.grain_preview_mode.as_deref() {
+        Some("accurate") => (base_grain_level, 1.0),
+        Some("balanced") => {
+            let idx = base_grain_level.round().max(0.0) as usize;
+            let boost = context
+                .crystal_grain_slot
+                .lock()
+                .ok()
+                .and_then(|slot| slot.contrast_ratios.get(idx).copied())
+                .unwrap_or(1.0);
+            (base_grain_level, boost)
+        }
+        // "crisp" (default): full-contrast crystal texture, mip 0.
+        _ => (0.0, 1.0),
+    };
+
     let final_processed_image_result =
         crate::image_processing::process_and_get_dynamic_image_with_analytics(
             &context,
@@ -512,14 +539,13 @@ fn process_preview_job(
                 mask_bitmaps: &mask_bitmaps,
                 lut,
                 roi: pixel_roi,
-                grain_mip_level: grain_mip_level.unwrap_or_else(|| {
-                    crate::image_processing::grain_mip_level_from_scale(effective_scale)
-                }),
+                grain_mip_level: req_grain_level,
                 grain_coord_scale: if effective_scale > 0.0 {
                     1.0 / effective_scale
                 } else {
                     1.0
                 },
+                grain_boost: req_grain_boost,
                 grain_view: None,
             },
             "apply_adjustments",
@@ -837,6 +863,7 @@ fn generate_uncropped_preview(
                 } else {
                     1.0
                 },
+                grain_boost: 1.0,
                 grain_view: None,
             },
             "generate_uncropped_preview",
@@ -1005,6 +1032,7 @@ async fn preview_geometry_transform(
                     roi: None,
                     grain_mip_level: 0.0,
                     grain_coord_scale: 1.0,
+                    grain_boost: 1.0,
                     grain_view: None,
                 },
                 "preview_geometry_transform_base_gen",
@@ -1190,6 +1218,7 @@ fn generate_preset_preview(
             roi: None,
             grain_mip_level: 0.0,
             grain_coord_scale: 1.0,
+            grain_boost: 1.0,
             grain_view: None,
         },
         "generate_preset_preview",
@@ -1288,6 +1317,7 @@ fn compute_bw_weights(
             roi: None,
             grain_mip_level: 0.0,
             grain_coord_scale: 1.0,
+            grain_boost: 1.0,
             grain_view: None,
         },
         "compute_bw_weights",
@@ -1441,6 +1471,7 @@ async fn generate_all_community_previews(
                     roi: None,
                     grain_mip_level: 0.0,
                     grain_coord_scale: 1.0,
+                    grain_boost: 1.0,
                     grain_view: None,
                 },
                 "generate_all_community_previews",
@@ -1705,6 +1736,7 @@ fn generate_preview_for_path(
             roi: None,
             grain_mip_level: 0.0,
             grain_coord_scale: 1.0,
+            grain_boost: 1.0,
             grain_view: None,
         },
         "generate_preview_for_path",

@@ -196,6 +196,7 @@ export interface AppSettings {
   highResZoomMultiplier?: number;
   enableLivePreviews?: boolean;
   livePreviewQuality?: string;
+  grainPreviewMode?: 'crisp' | 'balanced' | 'accurate';
   enableAiTagging?: boolean;
   filterCriteria?: FilterCriteria;
   lastFolderState?: LastFolderState | null;

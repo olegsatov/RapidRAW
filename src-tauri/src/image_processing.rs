@@ -3151,18 +3151,41 @@ pub fn get_all_adjustments_from_json(
     }
 }
 
+/// Shared slot for the baked crystal grain coverage field (Pierre,
+/// mean-normalized), uploaded by `bake_crystal_grain_field`. Shared via
+/// Arc<Mutex>: the GpuProcessor holds a CLONE of this context taken at
+/// creation time, so a plain field would freeze at its initial state — the
+/// bake must be visible to already-created processors.
+pub struct GrainFieldSlot {
+    /// The baked field texture view; None until the first bake lands (the
+    /// film post-pass binds a 1×1 G = 1 dummy then).
+    pub view: Option<wgpu::TextureView>,
+    /// Per-mip-level contrast ratios std(level 0)/std(level λ) measured on
+    /// the baked field — the "balanced" preview mode's boost. The crystal
+    /// field is spatially correlated, so box averaging retains far more
+    /// contrast than white noise would; a measured ratio beats any 2^λ
+    /// heuristic. `[1.0]` until the first bake.
+    pub contrast_ratios: Vec<f32>,
+}
+
+impl Default for GrainFieldSlot {
+    fn default() -> Self {
+        Self {
+            view: None,
+            contrast_ratios: vec![1.0],
+        }
+    }
+}
+
 #[derive(Clone)]
 pub struct GpuContext {
     pub device: Arc<wgpu::Device>,
     pub queue: Arc<wgpu::Queue>,
     pub limits: wgpu::Limits,
     pub display: Arc<std::sync::Mutex<Option<WgpuDisplay>>>,
-    /// Baked crystal grain coverage field (Pierre, mean-normalized),
-    /// uploaded by `bake_crystal_grain_field`. Shared via Arc<Mutex>: the
-    /// GpuProcessor holds a CLONE of this context taken at creation time,
-    /// so a plain field would freeze at its initial None — the bake must
-    /// be visible to already-created processors.
-    pub crystal_grain_view: Arc<std::sync::Mutex<Option<wgpu::TextureView>>>,
+    /// Baked crystal grain coverage field + measured mip contrast ratios
+    /// (see GrainFieldSlot docs).
+    pub crystal_grain_slot: Arc<std::sync::Mutex<GrainFieldSlot>>,
 }
 
 /// Mip level of the baked crystal grain field matching a render downscale:

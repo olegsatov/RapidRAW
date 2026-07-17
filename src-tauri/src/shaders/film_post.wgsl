@@ -16,7 +16,7 @@ struct FilmPostParams {
     grain_mono: f32,   // 1 = single shared field (B&W), 0 = per-channel
     grain_level: f32,  // mip level matching the render downscale (log2(full/processed))
     grain_coord_scale: f32, // full-res px per processed px (grain sampled in full-image coords)
-    _pad2: f32,
+    grain_boost: f32,  // coverage-field contrast boost: G' = 1 + (G − 1)·boost (1.0 = as baked)
     _pad3: f32,
     _pad4: f32,
     _pad5: f32,
@@ -60,7 +60,14 @@ fn film_post(@builtin(global_invocation_id) id: vec3<u32>) {
         // downscale and mip averaging would smear it into blotches.
         // The sampler's mirror-repeat wrap keeps the tile seamless.
         let uv = (vec2<f32>(params.origin_x, params.origin_y) + coord + 0.5) * params.grain_coord_scale / params.grain_tile;
-        let G = textureSampleLevel(grain_texture, grain_sampler, uv, params.grain_level);
+        let G_raw = textureSampleLevel(grain_texture, grain_sampler, uv, params.grain_level);
+        // Preview-only contrast boost (the editor's "balanced" mode): undo
+        // the contrast the mip box-averaging removes. boost = 1 is the
+        // identity; the [0, 32] clamp re-applies the bake's own clamp.
+        let G = vec4<f32>(
+            clamp(vec3<f32>(1.0) + (G_raw.rgb - vec3<f32>(1.0)) * params.grain_boost, vec3<f32>(0.0), vec3<f32>(32.0)),
+            G_raw.a,
+        );
 
         var grained = vec3<f32>(r, g, b);
         if (params.grain_mono > 0.5) {

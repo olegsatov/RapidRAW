@@ -687,6 +687,37 @@ pub fn bake_grain_field(opts: &CrystalGrainOptions, tile: usize) -> Vec<Vec<half
     mips
 }
 
+/// Per-mip contrast ratios std(level 0)/std(level λ) of a baked field,
+/// pooled over the RGB channels (alpha ignored); level 0 maps to 1.0 by
+/// construction, clamped to [1, 3]. The crystal field is spatially
+/// correlated, so box averaging retains far more contrast than the 1/2^λ of
+/// white noise — the editor's "balanced" preview mode boosts by this
+/// measured ratio instead of a heuristic.
+pub fn mip_contrast_ratios(mips: &[Vec<half::f16>]) -> Vec<f32> {
+    let stds: Vec<f32> = mips
+        .iter()
+        .map(|buf| {
+            let n = (buf.len() / 4 * 3) as f32;
+            let mut mean = 0.0f32;
+            for px in buf.chunks_exact(4) {
+                mean += px[0].to_f32() + px[1].to_f32() + px[2].to_f32();
+            }
+            let mean = mean / n.max(1.0);
+            let mut var = 0.0f32;
+            for px in buf.chunks_exact(4) {
+                for c in 0..3 {
+                    var += (px[c].to_f32() - mean).powi(2);
+                }
+            }
+            (var / n.max(1.0)).sqrt()
+        })
+        .collect();
+    let base = stds.first().copied().unwrap_or(1.0).max(1e-6);
+    stds.iter()
+        .map(|&s| (base / s.max(1e-6)).clamp(1.0, 3.0))
+        .collect()
+}
+
 /// Tauri command: bake the crystal grain field on the CPU and upload it as
 /// an RGBA16F texture into the shared GPU context. Emits
 /// Upload a baked grain field (mips from `bake_grain_field`) into a GPU
@@ -767,8 +798,10 @@ pub async fn bake_crystal_grain_field(
         let ctx = lock.as_mut().ok_or("GPU context not initialized")?;
 
         let texture = upload_grain_field(&ctx.device, &ctx.queue, &mips, tile);
-        *ctx.crystal_grain_view.lock().map_err(|e| e.to_string())? =
-            Some(texture.create_view(&Default::default()));
+        let mut slot = ctx.crystal_grain_slot.lock().map_err(|e| e.to_string())?;
+        slot.view = Some(texture.create_view(&Default::default()));
+        slot.contrast_ratios = mip_contrast_ratios(&mips);
+        drop(slot);
         drop(lock);
 
         let _ = app_handle.emit("crystal-grain-baked", "");
@@ -1013,6 +1046,32 @@ mod tests {
                 assert!((0.0..=32.0).contains(&f), "out of range: {f}");
             }
         }
+    }
+
+    #[test]
+    fn mip_contrast_ratios_are_sane() {
+        let opts = CrystalGrainOptions {
+            layers: 5,
+            size: 3.0,
+            filling: 0.3,
+            seed: 7,
+            ..Default::default()
+        };
+        let mips = bake_grain_field(&opts, 64);
+        let ratios = mip_contrast_ratios(&mips);
+        assert_eq!(ratios.len(), 64usize.ilog2() as usize + 1);
+        assert!((ratios[0] - 1.0).abs() < 1e-6, "level 0 maps to 1.0");
+        for w in ratios.windows(2) {
+            assert!(w[1] >= w[0] - 1e-3, "ratios must be non-decreasing: {ratios:?}");
+        }
+        for &r in &ratios {
+            assert!((1.0..=3.0).contains(&r), "ratio out of clamp range: {r}");
+        }
+        // The crystal field is spatially correlated, so box averaging retains
+        // far more contrast than white noise (which would give ratio = 2 at
+        // level 1): the measured ratio must stay well below the 2^λ heuristic
+        // the "balanced" preview mode replaced.
+        assert!(ratios[1] < 1.9, "ratio[1] = {} (expected < 1.9)", ratios[1]);
     }
 
     #[test]

@@ -51,12 +51,16 @@ with extra care, and keep this list current as features are added:
 - Film look (flim) & grain: `src/components/adjustments/Grain.tsx`,
   `src/components/panel/right/FilmPanel.tsx`,
   `src/hooks/useExportSettings.ts`, grain parts of
-  `src/components/panel/right/ExportPanel.tsx`,
+  `src/components/panel/right/ExportPanel.tsx`, grain mip/boost parts of
+  `src/hooks/useImageProcessing.ts` (incl. the `grainPreviewMode`
+  crisp/balanced/accurate display switch; nearest-only grain sampler),
   `src-tauri/src/shaders/film_post.wgsl`, flim cluster of
   `src-tauri/src/shaders/shader.wgsl`, halation in
   `src-tauri/src/shaders/pre_tone.wgsl`, film/grain parts of
   `src-tauri/src/gpu_processing.rs` / `image_processing.rs` /
-  `export_processing.rs` (`crystal_grain.rs`, `film_grain.rs`). The legacy
+  `export_processing.rs` (`crystal_grain.rs`, `film_grain.rs`),
+  `src-tauri/examples/crystal_grain_check.rs` /
+  `grain_preview_modes.rs`. The legacy
   Krea film module (`apply_film_look`, dye-curve LUTs, stock profiles) was
   removed in 2026-07 — restore from git history if ever needed.
 - LUT engine (pre/post-tonemapper timing + HDR normalization; per-LUT saved

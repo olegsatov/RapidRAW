@@ -366,6 +366,12 @@ pub struct AppSettings {
     pub enable_live_previews: Option<bool>,
     #[serde(default)]
     pub live_preview_quality: Option<String>,
+    /// Crystal grain (Pierre) realtime preview display mode: "crisp" (mip 0,
+    /// full contrast — the default), "balanced" (downscale-matched mip +
+    /// capped contrast boost), "accurate" (strict WYSIWYG vs the export
+    /// viewed at the same size). Preview-only; export is unaffected.
+    #[serde(default)]
+    pub grain_preview_mode: Option<String>,
     pub sort_criteria: Option<SortCriteria>,
     pub filter_criteria: Option<FilterCriteria>,
     pub theme: Option<String>,
@@ -490,6 +496,7 @@ impl Default for AppSettings {
             use_full_dpi_rendering: Some(false),
             enable_live_previews: Some(true),
             live_preview_quality: Some("high".to_string()),
+            grain_preview_mode: Some("crisp".to_string()),
             sort_criteria: None,
             filter_criteria: None,
             theme: Some("dark".to_string()),

@@ -9,7 +9,7 @@ use std::num::NonZero;
 use tauri::Manager;
 use wgpu::util::{DeviceExt, TextureDataOrder};
 
-use crate::image_processing::{AllAdjustments, GpuContext, MAX_MASKS};
+use crate::image_processing::{AllAdjustments, GpuContext, GrainFieldSlot, MAX_MASKS};
 use crate::lut_processing::Lut;
 use crate::{AppState, GpuImageCache};
 
@@ -38,8 +38,14 @@ pub struct RenderRequest<'a> {
     /// full-image coordinates — otherwise the grain pattern stretches with
     /// the downscale and mip averaging produces blotches instead of grain.
     pub grain_coord_scale: f32,
+    /// Contrast boost applied to the sampled coverage field:
+    /// G' = 1 + (G − 1)·boost. 1.0 = use the field as baked (all export and
+    /// offline renders); the editor's "balanced" preview mode passes the
+    /// baked field's measured std(mip 0)/std(mip λ) ratio to undo the
+    /// contrast the mip averaging removes.
+    pub grain_boost: f32,
     /// Per-request grain field. When set, the film post-pass samples this
-    /// view instead of the shared `context.crystal_grain_view` — export jobs
+    /// view instead of the shared `context.crystal_grain_slot` — export jobs
     /// use it so concurrent renders with different grain parameters don't
     /// race on the shared slot.
     pub grain_view: Option<wgpu::TextureView>,
@@ -424,7 +430,7 @@ pub fn get_or_init_gpu_context(
         queue: Arc::new(queue),
         limits,
         display: Arc::new(std::sync::Mutex::new(display_opt)),
-        crystal_grain_view: Arc::new(std::sync::Mutex::new(None)),
+        crystal_grain_slot: Arc::new(std::sync::Mutex::new(GrainFieldSlot::default())),
     };
     *context_lock = Some(new_context.clone());
     Ok(new_context)
@@ -467,7 +473,7 @@ pub(crate) fn init_headless_gpu_context() -> Result<GpuContext, String> {
         queue: Arc::new(queue),
         limits,
         display: Arc::new(std::sync::Mutex::new(None)),
-        crystal_grain_view: Arc::new(std::sync::Mutex::new(None)),
+        crystal_grain_slot: Arc::new(std::sync::Mutex::new(GrainFieldSlot::default())),
     })
 }
 
@@ -574,7 +580,7 @@ struct FilmPostParams {
     grain_mono: f32,   // 1 = single shared field (B&W), 0 = per-channel
     grain_level: f32,  // mip level matching the render downscale (log2(full/processed))
     grain_coord_scale: f32, // full-res px per processed px (grain sampled in full-image coords)
-    _pad2: f32,
+    grain_boost: f32,  // coverage-field contrast boost: G' = 1 + (G − 1)·boost (1.0 = as baked)
     _pad3: f32,
     _pad4: f32,
     _pad5: f32,
@@ -634,9 +640,9 @@ pub struct GpuProcessor {
     pub film_post_texture: wgpu::Texture,
     film_post_view: wgpu::TextureView,
     /// 1×1 fallback grain field (G = 1 = no-op), used until the first
-    /// crystal grain bake lands in `context.crystal_grain_view`.
+    /// crystal grain bake lands in `context.crystal_grain_slot`.
     dummy_grain_view: wgpu::TextureView,
-    /// Linear + mirror-repeat sampler for the mipmapped grain field.
+    /// Nearest + mirror-repeat sampler for the mipmapped grain field.
     grain_sampler: wgpu::Sampler,
 
     pub tile_output_texture: wgpu::Texture,
@@ -1309,17 +1315,23 @@ impl GpuProcessor {
         );
         let dummy_grain_view = dummy_grain_texture.create_view(&Default::default());
 
-        // Grain field sampler: linear + mirror repeat + full mip range.
-        // Mirror wrap matches the old manual mirror_idx (numpy 'symm');
-        // trilinear across mips keeps zoom changes smooth.
+        // Grain field sampler: NEAREST + mirror repeat + full mip range.
+        // Mirror wrap matches the old manual mirror_idx (numpy 'symm').
+        // Nearest is deliberate: bilinear/trilinear reconstruction of the
+        // (possibly mip-averaged) coverage field interpolates between texels
+        // and turns stochastic grain into smooth blurry blotches. Nearest
+        // keeps each texel's value intact, so a mip level reads as per-pixel
+        // noise (the editor preview's crisp/balanced/accurate modes all rely
+        // on this) — and at mip 0 with texel-center sampling (export, offline
+        // renders) nearest is bit-identical to linear.
         let grain_sampler = device.create_sampler(&wgpu::SamplerDescriptor {
             label: Some("Crystal Grain Sampler"),
             address_mode_u: wgpu::AddressMode::MirrorRepeat,
             address_mode_v: wgpu::AddressMode::MirrorRepeat,
             address_mode_w: wgpu::AddressMode::MirrorRepeat,
-            mag_filter: wgpu::FilterMode::Linear,
-            min_filter: wgpu::FilterMode::Linear,
-            mipmap_filter: wgpu::MipmapFilterMode::Linear,
+            mag_filter: wgpu::FilterMode::Nearest,
+            min_filter: wgpu::FilterMode::Nearest,
+            mipmap_filter: wgpu::MipmapFilterMode::Nearest,
             ..Default::default()
         });
 
@@ -2095,7 +2107,7 @@ impl GpuProcessor {
                         grain_mono: adjustments.global.crystal_grain_mono,
                         grain_level: request.grain_mip_level,
                         grain_coord_scale: request.grain_coord_scale,
-                        _pad2: 0.0,
+                        grain_boost: request.grain_boost,
                         _pad3: 0.0,
                         _pad4: 0.0,
                         _pad5: 0.0,
@@ -2118,10 +2130,11 @@ impl GpuProcessor {
                         grain_view_lock = None;
                         v
                     } else {
-                        grain_view_lock = Some(self.context.crystal_grain_view.lock().unwrap());
+                        grain_view_lock = Some(self.context.crystal_grain_slot.lock().unwrap());
                         grain_view_lock
                             .as_ref()
                             .unwrap()
+                            .view
                             .as_ref()
                             .unwrap_or(&self.dummy_grain_view)
                     };

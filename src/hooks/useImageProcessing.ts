@@ -178,6 +178,9 @@ export function useImageProcessing(
       // in PHYSICAL pixels: the export viewed in the same window is also
       // downscaled to DPR-scaled pixels, so the mip divisor must include the
       // device pixel ratio or the preview grain comes out too coarse.
+      // The backend maps this level to the app-wide grain preview mode
+      // (crisp/balanced/accurate) — the policy lives server-side, where the
+      // baked field's measured contrast ratios are available.
       const { originalSize: orig, displaySize: disp } = useEditorStore.getState();
       const origMax = Math.max(orig.width, orig.height);
       const dpr = typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1;
