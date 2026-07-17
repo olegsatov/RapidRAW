@@ -5,13 +5,19 @@ import { useSettingsStore } from '../store/useSettingsStore';
 import { folderJobKey, useFolderImportStore, type FolderImportJob } from '../store/useFolderImportStore';
 import { LibraryViewMode } from '../components/ui/AppProperties';
 
+// A job in one of these phases no longer receives events and only lingers
+// for the auto-dismiss window, so it is safe to drop before a fresh import.
+const isTerminalPhase = (phase: FolderImportJob['phase']): boolean =>
+  phase === 'complete' || phase === 'cancelled' || phase === 'error';
+
 // The start/sync invokes return the backend's canonical job key
 // ("path|recursive", path normalized by normalize_folder_path). When it
 // differs from the optimistic raw-path key, re-home the job so the optimistic
 // entry does not shadow the real one the folder-import-* event listeners
 // update. A sync re-emits the folder's files, so any stale job at the
 // canonical key is dropped first to avoid appendBatch duplicating its files;
-// the subsequent startJob then no-ops only if listeners already created a
+// an import drops it only when terminal (an active one keeps streaming).
+// The subsequent startJob then no-ops only if listeners already created a
 // fresh entry there.
 function rehomeJob(returnedKey: string, optimisticKey: string, recursive: boolean, kind?: 'import' | 'sync') {
   if (returnedKey === optimisticKey) {
@@ -19,7 +25,8 @@ function rehomeJob(returnedKey: string, optimisticKey: string, recursive: boolea
   }
   const store = useFolderImportStore.getState();
   store.clearJob(optimisticKey);
-  if (kind === 'sync') {
+  const existing = store.jobs[returnedKey];
+  if (kind === 'sync' || (existing && isTerminalPhase(existing.phase))) {
     store.clearJob(returnedKey);
   }
   const separator = returnedKey.lastIndexOf('|');
@@ -51,6 +58,14 @@ export function useFolderImport() {
   const openFolder = useCallback(async (path: string, recursive: boolean) => {
     const store = useFolderImportStore.getState();
     const optimisticKey = folderJobKey(path, recursive);
+    // A finished job lingers for the auto-dismiss window; if the folder is
+    // re-opened meanwhile, drop it first or the fresh import's batches would
+    // append duplicates to its stale file list. Never clear an active job —
+    // the backend would keep streaming to it and its files would be lost.
+    const existing = store.jobs[optimisticKey];
+    if (existing && isTerminalPhase(existing.phase)) {
+      store.clearJob(optimisticKey);
+    }
     store.startJob(path, recursive, 'import');
     try {
       // Returns the canonical job key immediately; progress and file batches
