@@ -4,18 +4,20 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::{
     Arc,
-    atomic::{AtomicBool, Ordering},
+    atomic::{AtomicBool, AtomicUsize, Ordering},
 };
 
 use tauri::{AppHandle, Emitter, Manager, State};
+use tokio::sync::Semaphore;
 use tokio::task::JoinHandle;
 use walkdir::WalkDir;
 
 use crate::app_settings::load_settings;
 use crate::app_state::{AppState, FolderImportHandle};
-use crate::file_management::{self, ImageFile};
+use crate::exif_processing;
+use crate::file_management::{self, ImageFile, ReadFileError};
 use crate::formats::{is_raw_file, is_supported_image_file};
-use crate::library_db::{self, FileRowInput};
+use crate::library_db::{self, FileRowInput, StructuredExif};
 use crate::tagging::{COLOR_TAG_PREFIX, USER_TAG_PREFIX};
 
 #[tauri::command]
@@ -338,6 +340,169 @@ async fn process_scan_chunk(
     Ok((image_files, entries_processed))
 }
 
+/// Outcome of reading one file's EXIF, distinguished so the caller can decide
+/// whether the row should be retried on a later run.
+enum ExifReadOutcome {
+    /// EXIF map (possibly empty when the file simply has no EXIF).
+    Read(HashMap<String, String>),
+    /// File is gone, empty, or a cloud placeholder: a terminal state, so the
+    /// row is marked scanned (with cleared columns) instead of being retried
+    /// forever. The sync/prune job (Task 9) removes orphans from the catalog.
+    Missing,
+    /// Transient read failure: `exif_scanned` stays 0 so the next run retries.
+    Failed(String),
+    Cancelled,
+}
+
+/// Reads and stores the EXIF of one catalog row. The read/parsing runs on the
+/// blocking pool; the DB write happens inline (a single small transaction).
+/// Returns `Ok(true)` when the row was marked scanned, `Ok(false)` when
+/// cancelled, and `Err` when the file or the DB write failed (the row stays
+/// pending in that case).
+async fn process_exif_file(
+    app_handle: &AppHandle,
+    file_id: i64,
+    file_path: &str,
+    cancel: &Arc<AtomicBool>,
+) -> Result<bool, String> {
+    let (source_path, _) = file_management::parse_virtual_path(file_path);
+    let source_str = source_path.to_string_lossy().into_owned();
+
+    let cancel_inner = cancel.clone();
+    let read_path = source_path.clone();
+    let read_str = source_str.clone();
+    let outcome = tauri::async_runtime::spawn_blocking(move || {
+        if cancel_inner.load(Ordering::Relaxed) {
+            return ExifReadOutcome::Cancelled;
+        }
+        if file_management::is_cloud_placeholder(&read_path) {
+            return ExifReadOutcome::Missing;
+        }
+        match file_management::read_file_bytes(&read_path) {
+            Ok(bytes) => {
+                // `read_exif_data` also caches the map into the `.rrdata`
+                // sidecar, matching the interactive `read_exif_for_paths`
+                // flow.
+                ExifReadOutcome::Read(exif_processing::read_exif_data(&read_str, &bytes))
+            }
+            Err(ReadFileError::NotFound | ReadFileError::Invalid | ReadFileError::Empty) => {
+                ExifReadOutcome::Missing
+            }
+            Err(e) => ExifReadOutcome::Failed(e.to_string()),
+        }
+    })
+    .await
+    .unwrap_or_else(|e| ExifReadOutcome::Failed(e.to_string()));
+
+    match outcome {
+        ExifReadOutcome::Read(map) => {
+            let structured = StructuredExif::from_exif_map(&map);
+            library_db::mark_exif_scanned(
+                app_handle,
+                file_id,
+                &source_str,
+                Some(&map),
+                &structured,
+            )?;
+            Ok(true)
+        }
+        ExifReadOutcome::Missing => {
+            library_db::mark_exif_scanned(
+                app_handle,
+                file_id,
+                &source_str,
+                None,
+                &StructuredExif::default(),
+            )?;
+            Ok(true)
+        }
+        ExifReadOutcome::Failed(e) => Err(e),
+        ExifReadOutcome::Cancelled => Ok(false),
+    }
+}
+
+/// Phase 2: EXIF scan for catalog rows with `exif_scanned = 0`. Only pending
+/// rows are processed, so a re-run after cancel (or after new files were
+/// scanned in) resumes where the previous run stopped.
+async fn run_exif_phase(
+    app_handle: &AppHandle,
+    path: &str,
+    folder_id: i64,
+    cancel: &Arc<AtomicBool>,
+) {
+    let pending = match library_db::get_files_needing_exif(app_handle, folder_id) {
+        Ok(pending) => pending,
+        Err(e) => {
+            emit_error(app_handle, path, &e);
+            return;
+        }
+    };
+    if pending.is_empty() {
+        return;
+    }
+
+    let total_exif = pending.len();
+    let _ = app_handle.emit(
+        "folder-import-exif-started",
+        serde_json::json!({ "path": path, "total": total_exif }),
+    );
+
+    // Two files at a time: EXIF parsing of RAWs is CPU-heavy and the reads
+    // may hit slow external volumes.
+    let semaphore = Arc::new(Semaphore::new(2));
+    let processed = Arc::new(AtomicUsize::new(0));
+    let failed = Arc::new(AtomicUsize::new(0));
+    let mut handles = Vec::new();
+
+    for (file_id, file_path) in pending {
+        if cancel.load(Ordering::SeqCst) {
+            break;
+        }
+        let Ok(permit) = semaphore.clone().acquire_owned().await else {
+            break;
+        };
+        let app = app_handle.clone();
+        let cancel_task = cancel.clone();
+        let processed_task = processed.clone();
+        let failed_task = failed.clone();
+        let path_for_event = path.to_string();
+        handles.push(tokio::spawn(async move {
+            let _permit = permit;
+            match process_exif_file(&app, file_id, &file_path, &cancel_task).await {
+                Ok(true) => {}
+                Ok(false) => return,
+                Err(e) => {
+                    failed_task.fetch_add(1, Ordering::Relaxed);
+                    log::warn!("EXIF scan failed for {}: {}", file_path, e);
+                }
+            }
+            let current = processed_task.fetch_add(1, Ordering::Relaxed) + 1;
+            let _ = app.emit(
+                "folder-import-exif-progress",
+                serde_json::json!({
+                    "path": path_for_event,
+                    "current": current,
+                    "total": total_exif,
+                }),
+            );
+        }));
+    }
+
+    for h in handles {
+        let _ = h.await;
+    }
+
+    let failed_count = failed.load(Ordering::Relaxed);
+    if failed_count > 0 {
+        log::warn!(
+            "folder import EXIF phase: {} of {} files failed for {}",
+            failed_count,
+            total_exif,
+            path
+        );
+    }
+}
+
 async fn run_import_job(
     app_handle: AppHandle,
     path: String,
@@ -415,7 +580,13 @@ async fn run_import_job(
         }
     }
 
-    // Phase 2 (Task 7): EXIF scan for catalog rows with exif_scanned = 0.
+    // Phase 2: EXIF scan for catalog rows with exif_scanned = 0 (resumable:
+    // only pending rows are processed).
+    if cancel.load(Ordering::SeqCst) {
+        return;
+    }
+    run_exif_phase(&app_handle, &path, folder_id, &cancel).await;
+
     // Phase 3 (Task 8): thumbnail generation.
 }
 

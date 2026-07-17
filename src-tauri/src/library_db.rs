@@ -1,4 +1,5 @@
-use rusqlite::{params, Connection, OptionalExtension};
+use rusqlite::{Connection, OptionalExtension, params};
+use std::collections::HashMap;
 use std::path::PathBuf;
 use tauri::{AppHandle, Manager};
 
@@ -247,6 +248,269 @@ fn upsert_files_in_conn(
     tx.commit().map_err(|e| e.to_string())
 }
 
+/// Structured EXIF values matching the dedicated `files` columns, derived
+/// from the formatted EXIF map produced by `exif_processing::read_exif_data`.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct StructuredExif {
+    pub date_taken: Option<String>,
+    pub iso: Option<u32>,
+    pub aperture: Option<f32>,
+    pub shutter: Option<f32>,
+    pub focal_length: Option<f32>,
+    pub focal_length_35: Option<f32>,
+    pub make: Option<String>,
+    pub model: Option<String>,
+    pub lens_make: Option<String>,
+    pub lens_model: Option<String>,
+    pub orientation: Option<u32>,
+}
+
+fn clean_exif_str(s: &str) -> &str {
+    s.trim().trim_matches('"').trim()
+}
+
+fn parse_exif_u32(value: Option<&String>) -> Option<u32> {
+    // Orientation values may be descriptive ("1 (Horizontal)"); take the
+    // leading numeric token.
+    clean_exif_str(value?)
+        .split_whitespace()
+        .next()?
+        .parse()
+        .ok()
+}
+
+fn parse_exif_f32(value: Option<&String>) -> Option<f32> {
+    clean_exif_str(value?)
+        .trim_start_matches("f/")
+        .trim_end_matches(" mm")
+        .trim()
+        .parse()
+        .ok()
+}
+
+fn parse_exif_shutter(value: Option<&String>) -> Option<f32> {
+    let cleaned = clean_exif_str(value?).trim_end_matches(" s").trim();
+    if let Some((num, den)) = cleaned.split_once('/') {
+        let num: f32 = num.trim().parse().ok()?;
+        let den: f32 = den.trim().parse().ok()?;
+        (den != 0.0).then_some(num / den)
+    } else {
+        cleaned.parse().ok()
+    }
+}
+
+impl StructuredExif {
+    pub fn from_exif_map(map: &HashMap<String, String>) -> Self {
+        let get = |keys: &[&str]| keys.iter().find_map(|k| map.get(*k));
+        let get_string = |keys: &[&str]| {
+            get(keys).and_then(|v| {
+                let cleaned = clean_exif_str(v);
+                (!cleaned.is_empty()).then(|| cleaned.to_string())
+            })
+        };
+        StructuredExif {
+            date_taken: get_string(&["DateTimeOriginal", "CreateDate"]),
+            iso: parse_exif_u32(get(&[
+                "ISOSpeed",
+                "PhotographicSensitivity",
+                "ISOSpeedRatings",
+            ])),
+            aperture: parse_exif_f32(get(&["FNumber", "ApertureValue"])),
+            shutter: parse_exif_shutter(get(&["ExposureTime", "ShutterSpeedValue"])),
+            focal_length: parse_exif_f32(get(&["FocalLength"])),
+            focal_length_35: parse_exif_f32(get(&["FocalLengthIn35mmFilm"])),
+            make: get_string(&["Make"]),
+            model: get_string(&["Model"]),
+            lens_make: get_string(&["LensMake"]),
+            lens_model: get_string(&["LensModel"]),
+            orientation: parse_exif_u32(get(&["Orientation"])),
+        }
+    }
+}
+
+/// Returns `(id, path)` for real-file rows in `folder_id` whose EXIF has not
+/// been scanned yet. Virtual-copy rows (`path?vc=id`) are excluded: they
+/// share the source file's EXIF and are filled by `mark_exif_scanned`.
+pub fn get_files_needing_exif(
+    app_handle: &AppHandle,
+    folder_id: i64,
+) -> Result<Vec<(i64, String)>, String> {
+    let conn = open_connection(app_handle)?;
+    get_files_needing_exif_in_conn(&conn, folder_id)
+}
+
+fn get_files_needing_exif_in_conn(
+    conn: &Connection,
+    folder_id: i64,
+) -> Result<Vec<(i64, String)>, String> {
+    let mut stmt = conn
+        .prepare(
+            "SELECT id, path FROM files
+             WHERE folder_id = ?1 AND exif_scanned = 0 AND path NOT LIKE '%?vc=%'
+             ORDER BY id",
+        )
+        .map_err(|e| e.to_string())?;
+    let rows = stmt
+        .query_map(params![folder_id], |row| Ok((row.get(0)?, row.get(1)?)))
+        .map_err(|e| e.to_string())?;
+    rows.collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())
+}
+
+/// Sets the `exif` field of the serialized `ImageFile` stored in
+/// `metadata_json` without touching anything else, so catalog loads return
+/// fully-populated `ImageFile`s. Falls back to the original string when it is
+/// not a JSON object, so a corrupt row is never made worse.
+fn merge_exif_into_metadata_json(
+    metadata_json: &str,
+    exif_map: &HashMap<String, String>,
+) -> String {
+    let Ok(mut value) = serde_json::from_str::<serde_json::Value>(metadata_json) else {
+        return metadata_json.to_string();
+    };
+    let Some(obj) = value.as_object_mut() else {
+        return metadata_json.to_string();
+    };
+    let exif_value = serde_json::to_value(exif_map).unwrap_or(serde_json::Value::Null);
+    obj.insert("exif".to_string(), exif_value);
+    serde_json::to_string(&value).unwrap_or_else(|_| metadata_json.to_string())
+}
+
+/// Writes the post-EXIF state of one row. With `metadata_json`/`structured`
+/// the full column set is stored; with both `None` (missing file, cloud
+/// placeholder) the row is only marked scanned and its structured columns are
+/// cleared, so the row is not retried forever (the sync/prune job removes
+/// orphans). `metadata_json` is left untouched in that case.
+fn update_exif_row(
+    conn: &Connection,
+    file_id: i64,
+    metadata_json: Option<&str>,
+    structured: Option<&StructuredExif>,
+) -> Result<(), String> {
+    match (metadata_json, structured) {
+        (Some(json), Some(s)) => conn
+            .execute(
+                "UPDATE files SET
+                    exif_scanned = 1,
+                    metadata_json = ?2,
+                    date_taken = ?3,
+                    iso = ?4,
+                    aperture = ?5,
+                    shutter = ?6,
+                    focal_length = ?7,
+                    focal_length_35 = ?8,
+                    make = ?9,
+                    model = ?10,
+                    lens_make = ?11,
+                    lens_model = ?12,
+                    orientation = ?13
+                 WHERE id = ?1",
+                params![
+                    file_id,
+                    json,
+                    s.date_taken,
+                    s.iso,
+                    s.aperture,
+                    s.shutter,
+                    s.focal_length,
+                    s.focal_length_35,
+                    s.make,
+                    s.model,
+                    s.lens_make,
+                    s.lens_model,
+                    s.orientation
+                ],
+            )
+            .map_err(|e| e.to_string())?,
+        _ => conn
+            .execute(
+                "UPDATE files SET
+                    exif_scanned = 1,
+                    date_taken = NULL, iso = NULL, aperture = NULL, shutter = NULL,
+                    focal_length = NULL, focal_length_35 = NULL, make = NULL,
+                    model = NULL, lens_make = NULL, lens_model = NULL, orientation = NULL
+                 WHERE id = ?1",
+                params![file_id],
+            )
+            .map_err(|e| e.to_string())?,
+    };
+    Ok(())
+}
+
+/// Marks a file's EXIF as scanned: stores the structured columns and merges
+/// the formatted EXIF map into the stored `metadata_json`. Virtual-copy rows
+/// of the same source file (`source_path?vc=id`) get the same values in the
+/// same transaction. Pass `exif_map = None` for files that could not be read
+/// at all (missing, empty, cloud placeholder): the row is marked scanned with
+/// cleared columns instead of being retried on every run.
+pub fn mark_exif_scanned(
+    app_handle: &AppHandle,
+    file_id: i64,
+    source_path: &str,
+    exif_map: Option<&HashMap<String, String>>,
+    structured: &StructuredExif,
+) -> Result<(), String> {
+    let conn = open_connection(app_handle)?;
+    mark_exif_scanned_in_conn(&conn, file_id, source_path, exif_map, structured)
+}
+
+fn mark_exif_scanned_in_conn(
+    conn: &Connection,
+    file_id: i64,
+    source_path: &str,
+    exif_map: Option<&HashMap<String, String>>,
+    structured: &StructuredExif,
+) -> Result<(), String> {
+    let tx = conn.unchecked_transaction().map_err(|e| e.to_string())?;
+
+    let merged = match exif_map {
+        Some(map) => {
+            let current: Option<String> = tx
+                .query_row(
+                    "SELECT metadata_json FROM files WHERE id = ?1",
+                    params![file_id],
+                    |row| row.get(0),
+                )
+                .optional()
+                .map_err(|e| e.to_string())?;
+            current.map(|json| merge_exif_into_metadata_json(&json, map))
+        }
+        None => None,
+    };
+    update_exif_row(
+        &tx,
+        file_id,
+        merged.as_deref(),
+        exif_map.map(|_| structured),
+    )?;
+
+    // Virtual copies share the source file's EXIF. `instr(...) = 1` is an
+    // exact prefix match, unlike LIKE which would treat `%`/`_` in paths as
+    // wildcards.
+    let vc_prefix = format!("{}?vc=", source_path);
+    let vc_rows: Vec<(i64, String)> = {
+        let mut stmt = tx
+            .prepare("SELECT id, metadata_json FROM files WHERE instr(path, ?1) = 1")
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map(params![vc_prefix], |row| Ok((row.get(0)?, row.get(1)?)))
+            .map_err(|e| e.to_string())?;
+        rows.collect::<Result<Vec<_>, _>>()
+            .map_err(|e| e.to_string())?
+    };
+    for (vc_id, vc_json) in vc_rows {
+        let merged_vc = exif_map.map(|map| merge_exif_into_metadata_json(&vc_json, map));
+        update_exif_row(
+            &tx,
+            vc_id,
+            merged_vc.as_deref(),
+            exif_map.map(|_| structured),
+        )?;
+    }
+
+    tx.commit().map_err(|e| e.to_string())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -342,7 +606,16 @@ mod tests {
                 "SELECT name, rating, flag, color, exif_scanned, is_edited
                  FROM files WHERE path = '/tmp/x/a.jpg'",
                 [],
-                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?, r.get(5)?)),
+                |r| {
+                    Ok((
+                        r.get(0)?,
+                        r.get(1)?,
+                        r.get(2)?,
+                        r.get(3)?,
+                        r.get(4)?,
+                        r.get(5)?,
+                    ))
+                },
             )
             .unwrap();
         assert_eq!(name, "a.jpg");
@@ -371,14 +644,19 @@ mod tests {
         let (mut conn, folder_id) = setup_conn();
         upsert_files_in_conn(&mut conn, folder_id, std::slice::from_ref(&sample_file())).unwrap();
         let file_id: i64 = conn
-            .query_row("SELECT id FROM files WHERE path = '/tmp/x/a.jpg'", [], |r| {
-                r.get(0)
-            })
+            .query_row(
+                "SELECT id FROM files WHERE path = '/tmp/x/a.jpg'",
+                [],
+                |r| r.get(0),
+            )
             .unwrap();
 
         // Simulate the EXIF phase having processed this file.
-        conn.execute("UPDATE files SET exif_scanned = 1 WHERE id = ?1", params![file_id])
-            .unwrap();
+        conn.execute(
+            "UPDATE files SET exif_scanned = 1 WHERE id = ?1",
+            params![file_id],
+        )
+        .unwrap();
 
         // Re-scan with unchanged modified/size: exif_scanned is preserved and
         // the row keeps its id.
@@ -398,7 +676,8 @@ mod tests {
     fn test_upsert_files_conflict_resets_exif_scanned_and_replaces_tags() {
         let (mut conn, folder_id) = setup_conn();
         upsert_files_in_conn(&mut conn, folder_id, std::slice::from_ref(&sample_file())).unwrap();
-        conn.execute("UPDATE files SET exif_scanned = 1", []).unwrap();
+        conn.execute("UPDATE files SET exif_scanned = 1", [])
+            .unwrap();
 
         let mut changed = sample_file();
         changed.modified = Some(200);
@@ -423,5 +702,168 @@ mod tests {
                 .collect()
         };
         assert_eq!(tags, vec!["dog".to_string()]);
+    }
+
+    fn exif_test_map() -> HashMap<String, String> {
+        HashMap::from([
+            ("Make".to_string(), "Canon".to_string()),
+            ("Model".to_string(), "\"EOS R5\"".to_string()),
+            ("LensModel".to_string(), "RF 50mm F1.2L".to_string()),
+            ("ISOSpeed".to_string(), "400".to_string()),
+            ("FNumber".to_string(), "f/2.8".to_string()),
+            ("ExposureTime".to_string(), "1/125 s".to_string()),
+            ("FocalLength".to_string(), "50 mm".to_string()),
+            ("FocalLengthIn35mmFilm".to_string(), "50".to_string()),
+            ("Orientation".to_string(), "1".to_string()),
+            (
+                "DateTimeOriginal".to_string(),
+                "2024-05-01 12:30:00".to_string(),
+            ),
+        ])
+    }
+
+    #[test]
+    fn test_structured_exif_from_exif_map() {
+        let structured = StructuredExif::from_exif_map(&exif_test_map());
+        assert_eq!(structured.make.as_deref(), Some("Canon"));
+        // Quotes are stripped.
+        assert_eq!(structured.model.as_deref(), Some("EOS R5"));
+        assert_eq!(structured.lens_model.as_deref(), Some("RF 50mm F1.2L"));
+        assert_eq!(structured.iso, Some(400));
+        assert_eq!(structured.aperture, Some(2.8));
+        assert!((structured.shutter.unwrap() - 1.0 / 125.0).abs() < 1e-9);
+        assert_eq!(structured.focal_length, Some(50.0));
+        assert_eq!(structured.focal_length_35, Some(50.0));
+        assert_eq!(structured.orientation, Some(1));
+        assert_eq!(
+            structured.date_taken.as_deref(),
+            Some("2024-05-01 12:30:00")
+        );
+
+        // Long exposures and missing keys.
+        let map = HashMap::from([("ExposureTime".to_string(), "2 s".to_string())]);
+        let structured = StructuredExif::from_exif_map(&map);
+        assert_eq!(structured.shutter, Some(2.0));
+        assert_eq!(structured.iso, None);
+        assert_eq!(structured.make, None);
+    }
+
+    #[test]
+    fn test_get_files_needing_exif_excludes_scanned_and_virtual_copies() {
+        let (mut conn, folder_id) = setup_conn();
+        let mut vc = sample_file();
+        vc.path = "/tmp/x/a.jpg?vc=abc123".to_string();
+        vc.is_virtual_copy = true;
+        upsert_files_in_conn(&mut conn, folder_id, &[sample_file(), vc]).unwrap();
+
+        let pending = get_files_needing_exif_in_conn(&conn, folder_id).unwrap();
+        assert_eq!(pending.len(), 1);
+        assert_eq!(pending[0].1, "/tmp/x/a.jpg");
+
+        mark_exif_scanned_in_conn(
+            &conn,
+            pending[0].0,
+            "/tmp/x/a.jpg",
+            None,
+            &StructuredExif::default(),
+        )
+        .unwrap();
+        assert!(
+            get_files_needing_exif_in_conn(&conn, folder_id)
+                .unwrap()
+                .is_empty()
+        );
+    }
+
+    #[test]
+    fn test_mark_exif_scanned_stores_columns_merges_metadata_and_fills_vcs() {
+        let (mut conn, folder_id) = setup_conn();
+        let mut vc = sample_file();
+        vc.path = "/tmp/x/a.jpg?vc=abc123".to_string();
+        vc.is_virtual_copy = true;
+        upsert_files_in_conn(&mut conn, folder_id, &[sample_file(), vc]).unwrap();
+        let base_id: i64 = conn
+            .query_row(
+                "SELECT id FROM files WHERE path = '/tmp/x/a.jpg'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+
+        let map = exif_test_map();
+        let structured = StructuredExif::from_exif_map(&map);
+        mark_exif_scanned_in_conn(&conn, base_id, "/tmp/x/a.jpg", Some(&map), &structured).unwrap();
+
+        for path in ["/tmp/x/a.jpg", "/tmp/x/a.jpg?vc=abc123"] {
+            let (exif_scanned, iso, aperture, make, metadata_json): (
+                i64,
+                Option<i64>,
+                Option<f64>,
+                Option<String>,
+                String,
+            ) = conn
+                .query_row(
+                    "SELECT exif_scanned, iso, aperture, make, metadata_json
+                     FROM files WHERE path = ?1",
+                    params![path],
+                    |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?)),
+                )
+                .unwrap();
+            assert_eq!(
+                (exif_scanned, iso, make.as_deref()),
+                (1, Some(400), Some("Canon"))
+            );
+            // f32 is stored as SQLite REAL (f64); allow round-trip precision loss.
+            assert!((aperture.unwrap() - 2.8).abs() < 1e-6);
+            // The EXIF map is merged into the stored ImageFile JSON.
+            let parsed: serde_json::Value = serde_json::from_str(&metadata_json).unwrap();
+            assert_eq!(parsed["exif"]["Make"], "Canon");
+            assert_eq!(parsed["exif"]["ISOSpeed"], "400");
+        }
+    }
+
+    #[test]
+    fn test_mark_exif_scanned_without_map_clears_columns_and_keeps_metadata_json() {
+        let (mut conn, folder_id) = setup_conn();
+        upsert_files_in_conn(&mut conn, folder_id, std::slice::from_ref(&sample_file())).unwrap();
+        let base_id: i64 = conn
+            .query_row(
+                "SELECT id FROM files WHERE path = '/tmp/x/a.jpg'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+
+        // First a successful scan, then the file disappears: the row is
+        // marked scanned with cleared columns and metadata_json untouched.
+        let map = exif_test_map();
+        let structured = StructuredExif::from_exif_map(&map);
+        mark_exif_scanned_in_conn(&conn, base_id, "/tmp/x/a.jpg", Some(&map), &structured).unwrap();
+        let json_before: String = conn
+            .query_row(
+                "SELECT metadata_json FROM files WHERE id = ?1",
+                params![base_id],
+                |r| r.get(0),
+            )
+            .unwrap();
+
+        mark_exif_scanned_in_conn(
+            &conn,
+            base_id,
+            "/tmp/x/a.jpg",
+            None,
+            &StructuredExif::default(),
+        )
+        .unwrap();
+
+        let (exif_scanned, iso, make, json_after): (i64, Option<i64>, Option<String>, String) =
+            conn.query_row(
+                "SELECT exif_scanned, iso, make, metadata_json FROM files WHERE id = ?1",
+                params![base_id],
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)),
+            )
+            .unwrap();
+        assert_eq!((exif_scanned, iso, make), (1, None, None));
+        assert_eq!(json_after, json_before);
     }
 }
