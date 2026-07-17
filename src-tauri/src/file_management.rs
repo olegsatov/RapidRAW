@@ -712,7 +712,7 @@ pub fn add_to_album(
     Ok(())
 }
 
-fn sync_album_path_changes(
+pub(crate) fn sync_album_path_changes(
     app_handle: &AppHandle,
     renames: Option<&HashMap<String, String>>,
     deletions: Option<&HashSet<String>>,

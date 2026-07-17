@@ -1,5 +1,5 @@
-use std::collections::HashMap;
 use std::collections::hash_map::Entry;
+use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::{
@@ -21,6 +21,33 @@ use crate::gpu_processing;
 use crate::library_db::{self, FileRowInput, StructuredExif};
 use crate::tagging::{COLOR_TAG_PREFIX, USER_TAG_PREFIX};
 
+/// Normalizes a folder path the same way for every command: canonicalized
+/// when it exists, raw otherwise, with trailing separators stripped so a
+/// user-supplied "/photos/2024/" matches the stored "/photos/2024".
+fn normalize_folder_path(path: &str) -> String {
+    let normalized = PathBuf::from(path)
+        .canonicalize()
+        .unwrap_or_else(|_| PathBuf::from(path))
+        .to_string_lossy()
+        .into_owned();
+    let trimmed = normalized.trim_end_matches(|c| c == '/' || c == '\\');
+    // Keep a lone root or a drive root ("C:") intact.
+    if trimmed.is_empty() || trimmed.ends_with(':') {
+        normalized
+    } else {
+        trimmed.to_string()
+    }
+}
+
+/// Which body a tracked folder job runs. Both kinds share the job map, the
+/// cancel command, and the `folder-import-*` event stream, so the frontend
+/// store treats a sync exactly like an import.
+#[derive(Clone, Copy)]
+enum FolderJobKind {
+    Import,
+    Sync,
+}
+
 #[tauri::command]
 pub fn start_folder_import(
     app_handle: AppHandle,
@@ -28,11 +55,7 @@ pub fn start_folder_import(
     path: String,
     recursive: bool,
 ) -> Result<String, String> {
-    let normalized = PathBuf::from(&path)
-        .canonicalize()
-        .unwrap_or_else(|_| PathBuf::from(&path))
-        .to_string_lossy()
-        .to_string();
+    let normalized = normalize_folder_path(&path);
     let key = folder_key(&normalized, recursive);
 
     {
@@ -55,6 +78,41 @@ pub fn start_folder_import(
         return Ok(key);
     }
 
+    start_job(&app_handle, &state, normalized, recursive, FolderJobKind::Import)
+}
+
+/// Starts (or attaches to) a delta sync of a cataloged folder: new files are
+/// upserted, changed files re-scanned, missing files removed from the
+/// catalog, then the EXIF and thumbnail phases run like in an import.
+#[tauri::command]
+pub fn sync_folder(
+    app_handle: AppHandle,
+    state: State<AppState>,
+    path: String,
+    recursive: bool,
+) -> Result<String, String> {
+    let normalized = normalize_folder_path(&path);
+    start_job(&app_handle, &state, normalized, recursive, FolderJobKind::Sync)
+}
+
+/// Spawns and tracks a folder job, or attaches to the one already running
+/// for the same (path, recursive) key. Shared by import and sync.
+fn start_job(
+    app_handle: &AppHandle,
+    state: &State<AppState>,
+    normalized: String,
+    recursive: bool,
+    kind: FolderJobKind,
+) -> Result<String, String> {
+    let key = folder_key(&normalized, recursive);
+
+    {
+        let jobs = state.folder_import_jobs.lock().map_err(|e| e.to_string())?;
+        if jobs.contains_key(&key) {
+            return Ok(key);
+        }
+    }
+
     let cancel = Arc::new(AtomicBool::new(false));
     let cancel_clone = cancel.clone();
     let cancel_for_cleanup = cancel.clone();
@@ -64,7 +122,14 @@ pub fn start_folder_import(
     let path_for_job = normalized.clone();
 
     let handle: JoinHandle<()> = tokio::spawn(async move {
-        run_import_job(app_for_job, path_for_job, recursive, cancel_clone).await;
+        match kind {
+            FolderJobKind::Import => {
+                run_import_job(app_for_job, path_for_job, recursive, cancel_clone).await
+            }
+            FolderJobKind::Sync => {
+                run_sync_job(app_for_job, path_for_job, recursive, cancel_clone).await
+            }
+        }
         // Remove the finished job so a later import of the same folder can
         // start fresh. Only remove our own entry: if a duplicate start for the
         // same key raced us, the map may hold a different live job (or our
@@ -120,11 +185,7 @@ pub fn cancel_folder_import(
     path: String,
     recursive: bool,
 ) -> Result<(), String> {
-    let normalized = PathBuf::from(&path)
-        .canonicalize()
-        .unwrap_or_else(|_| PathBuf::from(&path))
-        .to_string_lossy()
-        .to_string();
+    let normalized = normalize_folder_path(&path);
     let key = folder_key(&normalized, recursive);
     let handle = {
         let mut jobs = state.folder_import_jobs.lock().map_err(|e| e.to_string())?;
@@ -133,11 +194,58 @@ pub fn cancel_folder_import(
     if let Some(job) = handle {
         job.cancel.store(true, Ordering::SeqCst);
         // The abort kills the job task, so the cooperative emit_cancelled
-        // checks inside run_import_job never run — emit here, with the
+        // checks inside the job never run — emit here, with the
         // normalized path the frontend store keys on.
         job.handle.abort();
         emit_cancelled(&app_handle, &normalized);
     }
+    Ok(())
+}
+
+/// Points the catalog at a folder's new location without a rescan: rewrites
+/// the `folders` row and every file path under the old prefix, then updates
+/// album memberships the same way an interactive folder rename does.
+/// Rejected while an import/sync job for the old path is still running — the
+/// job would keep writing rows under the old path.
+#[tauri::command]
+pub fn locate_folder(
+    app_handle: AppHandle,
+    state: State<AppState>,
+    old_path: String,
+    new_path: String,
+) -> Result<(), String> {
+    let normalized_old = normalize_folder_path(&old_path);
+    let normalized_new = normalize_folder_path(&new_path);
+    if normalized_old == normalized_new {
+        return Ok(());
+    }
+
+    {
+        let jobs = state.folder_import_jobs.lock().map_err(|e| e.to_string())?;
+        for recursive in [false, true] {
+            if jobs.contains_key(&folder_key(&normalized_old, recursive)) {
+                return Err(format!(
+                    "an import/sync job is still running for {}",
+                    normalized_old
+                ));
+            }
+        }
+    }
+
+    library_db::relocate_folder(&app_handle, &normalized_old, &normalized_new)?;
+    crate::file_management::sync_album_path_changes(
+        &app_handle,
+        None,
+        None,
+        Some((&normalized_old, &normalized_new)),
+    );
+    let _ = app_handle.emit(
+        "folder-located",
+        serde_json::json!({
+            "oldPath": normalized_old,
+            "newPath": normalized_new,
+        }),
+    );
     Ok(())
 }
 
@@ -360,7 +468,7 @@ enum ExifReadOutcome {
     Read(HashMap<String, String>),
     /// File is gone, empty, or a cloud placeholder: a terminal state, so the
     /// row is marked scanned (with cleared columns) instead of being retried
-    /// forever. The sync/prune job (Task 9) removes orphans from the catalog.
+    /// forever. `sync_folder` removes orphans from the catalog.
     Missing,
     /// Transient read failure: `exif_scanned` stays 0 so the next run retries.
     Failed(String),
@@ -672,7 +780,7 @@ async fn run_import_job(
 ) {
     // Phase 1: scan the folder and write every file to the catalog.
     // Note: this phase only upserts. Rows for files deleted from disk stay in
-    // the catalog until the sync/prune job (Task 9) removes them.
+    // the catalog until `sync_folder` removes them.
     let folder_id = match library_db::upsert_folder(&app_handle, &path, recursive) {
         Ok(id) => id,
         Err(e) => {
@@ -767,6 +875,244 @@ async fn run_import_job(
 
     // Reaching here means no systemic failure occurred (those return early
     // above), so the tally is exactly the per-file EXIF/thumbnail failures.
+    let errors = exif_failed + thumbs_failed;
+    if cancel.load(Ordering::SeqCst) {
+        emit_cancelled(&app_handle, &path);
+    } else {
+        let _ = app_handle.emit(
+            "folder-import-complete",
+            serde_json::json!({ "path": &path, "errors": errors }),
+        );
+    }
+}
+
+/// Computes the sync delta between a disk walk and the catalog fingerprints.
+/// Returns the scan entries that need a (re-)upsert — an entry qualifies when
+/// its base path or any of its virtual copies is new or has a changed
+/// fingerprint — plus the catalog paths to delete.
+///
+/// The fingerprint mirrors `file_row_input` exactly (`modified`/`size` of the
+/// source file, `sidecar_modified` of the matching `.rrdata`), so an
+/// unchanged file compares equal and is never re-upserted.
+///
+/// Virtual-copy rows: a VC's catalog path (`path?vc=id`) reaches the disk set
+/// only through its sidecar file in the walk. A VC row missing from the walk
+/// is double-checked on disk before being removed — kept when both source
+/// file and VC sidecar still exist (the walk's `filter_map` silently swallows
+/// per-entry IO errors, so the walk alone is not proof of absence), removed
+/// when either is gone. A VC sidecar whose source file disappeared is an
+/// orphan: its row is removed together with the source row.
+fn compute_sync_delta(
+    entries: Vec<ScanEntry>,
+    fingerprints: &HashMap<String, library_db::FileFingerprint>,
+    cancel: &Arc<AtomicBool>,
+) -> (Vec<ScanEntry>, Vec<String>) {
+    let mut disk_paths: HashSet<String> = HashSet::new();
+    let mut to_upsert: Vec<ScanEntry> = Vec::new();
+
+    for entry in entries {
+        if cancel.load(Ordering::Relaxed) {
+            break;
+        }
+        let source_meta = fs::metadata(&entry.path_buf).ok();
+        let modified = source_meta
+            .as_ref()
+            .and_then(|m| m.modified().ok())
+            .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+            .map(|d| d.as_secs())
+            .unwrap_or(0);
+        let size = source_meta.map(|m| m.len());
+
+        let mut needs_upsert = false;
+        for sidecar in &entry.sidecars {
+            let (catalog_path, sidecar_filename) = match sidecar {
+                None => (entry.path_str.clone(), format!("{}.rrdata", entry.file_name)),
+                Some(id) => (
+                    format!("{}?vc={}", entry.path_str, id),
+                    format!("{}.{}.rrdata", entry.file_name, id),
+                ),
+            };
+            let sidecar_modified = fs::metadata(entry.path_buf.with_file_name(sidecar_filename))
+                .ok()
+                .and_then(|m| m.modified().ok())
+                .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                .map(|d| d.as_secs());
+            disk_paths.insert(catalog_path.clone());
+            let fingerprint = (Some(modified), size, sidecar_modified);
+            if fingerprints.get(&catalog_path) != Some(&fingerprint) {
+                needs_upsert = true;
+            }
+        }
+        if needs_upsert {
+            to_upsert.push(entry);
+        }
+    }
+
+    let mut removed = Vec::new();
+    for path in fingerprints.keys() {
+        if disk_paths.contains(path) {
+            continue;
+        }
+        if path.contains("?vc=") {
+            let (source_path, sidecar_path) = file_management::parse_virtual_path(path);
+            if source_path.exists() && sidecar_path.exists() {
+                continue;
+            }
+        }
+        removed.push(path.clone());
+    }
+    removed.sort();
+    (to_upsert, removed)
+}
+
+/// Delta-sync job: reconciles the catalog with the disk, then runs the same
+/// EXIF and thumbnail phases as an import. The event contract is identical to
+/// `run_import_job` (`folder-import-*`): systemic failure → error only,
+/// cancel → cancelled, otherwise complete with the per-file failure tally.
+async fn run_sync_job(
+    app_handle: AppHandle,
+    path: String,
+    recursive: bool,
+    cancel: Arc<AtomicBool>,
+) {
+    let folder_id = match library_db::upsert_folder(&app_handle, &path, recursive) {
+        Ok(id) => id,
+        Err(e) => {
+            emit_error(&app_handle, &path, &e);
+            return;
+        }
+    };
+
+    let entries = match tauri::async_runtime::spawn_blocking({
+        let path = path.clone();
+        let cancel = cancel.clone();
+        move || collect_image_paths(&path, recursive, &cancel)
+    })
+    .await
+    {
+        Ok(Ok(entries)) => entries,
+        Ok(Err(e)) => {
+            emit_error(&app_handle, &path, &e);
+            return;
+        }
+        Err(e) => {
+            emit_error(&app_handle, &path, &e.to_string());
+            return;
+        }
+    };
+
+    // The walk may have stopped early on cancel; don't sync a partial set.
+    if cancel.load(Ordering::SeqCst) {
+        emit_cancelled(&app_handle, &path);
+        return;
+    }
+
+    let total = entries.len();
+    let _ = app_handle.emit(
+        "folder-import-scan",
+        serde_json::json!({
+            "path": &path,
+            "discovered": total,
+        }),
+    );
+
+    let fingerprints = match library_db::get_folder_file_fingerprints(&app_handle, folder_id) {
+        Ok(fingerprints) => fingerprints,
+        Err(e) => {
+            emit_error(&app_handle, &path, &e);
+            return;
+        }
+    };
+
+    // The delta stats every file and sidecar; run it off the async executor
+    // like the walk itself.
+    let delta = tauri::async_runtime::spawn_blocking({
+        let cancel = cancel.clone();
+        move || compute_sync_delta(entries, &fingerprints, &cancel)
+    })
+    .await;
+    let (to_upsert, removed) = match delta {
+        Ok(delta) => delta,
+        Err(e) => {
+            emit_error(&app_handle, &path, &e.to_string());
+            return;
+        }
+    };
+
+    // A cancelled partial delta must not be applied.
+    if cancel.load(Ordering::SeqCst) {
+        emit_cancelled(&app_handle, &path);
+        return;
+    }
+
+    // Removals first, so the EXIF/thumbnail phases never touch dead rows.
+    if let Err(e) = library_db::delete_files_by_paths(&app_handle, &removed) {
+        emit_error(&app_handle, &path, &e);
+        return;
+    }
+
+    // Upsert new and changed entries in chunks. `total` is the number of
+    // entries to (re-)process — not the whole folder — so batch progress
+    // still runs 0 → 100%.
+    let upsert_total = to_upsert.len();
+    let mut scanned = 0usize;
+    for chunk in to_upsert.chunks(SCAN_CHUNK_SIZE) {
+        if cancel.load(Ordering::SeqCst) {
+            break;
+        }
+        match process_scan_chunk(&app_handle, folder_id, chunk, &cancel).await {
+            Ok((files, entries_processed)) => {
+                scanned += entries_processed;
+                let _ = app_handle.emit(
+                    "folder-import-batch",
+                    serde_json::json!({
+                        "path": &path,
+                        "files": files,
+                        "scanned": scanned,
+                        "total": upsert_total,
+                    }),
+                );
+            }
+            // Same rule as the import: a chunk-level DB failure is systemic;
+            // report once and abort rather than completing on a partial sync.
+            Err(e) => {
+                emit_error(&app_handle, &path, &e);
+                return;
+            }
+        }
+    }
+
+    // The catalog now matches the disk. Stamp the sync time only when the
+    // apply loop ran to the end — a cancelled partial apply is not a sync.
+    if !cancel.load(Ordering::SeqCst) {
+        if let Err(e) = library_db::update_folder_last_synced(&app_handle, folder_id) {
+            emit_error(&app_handle, &path, &e);
+            return;
+        }
+    }
+
+    // Phase 2: EXIF scan for rows with exif_scanned = 0 (unchanged files kept
+    // their flag through the upsert; new and changed rows are pending).
+    if cancel.load(Ordering::SeqCst) {
+        emit_cancelled(&app_handle, &path);
+        return;
+    }
+    // A systemic phase failure already emitted `folder-import-error`; stop
+    // here so the job never reports a false `folder-import-complete`.
+    let Some(exif_failed) = run_exif_phase(&app_handle, &path, folder_id, &cancel).await else {
+        return;
+    };
+
+    // Phase 3: thumbnails for every remaining catalog row.
+    if cancel.load(Ordering::SeqCst) {
+        emit_cancelled(&app_handle, &path);
+        return;
+    }
+    let Some(thumbs_failed) = run_thumbs_phase(&app_handle, &path, folder_id, &cancel).await
+    else {
+        return;
+    };
+
     let errors = exif_failed + thumbs_failed;
     if cancel.load(Ordering::SeqCst) {
         emit_cancelled(&app_handle, &path);

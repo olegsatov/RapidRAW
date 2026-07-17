@@ -601,6 +601,135 @@ fn mark_exif_scanned_in_conn(
     tx.commit().map_err(|e| e.to_string())
 }
 
+/// Fingerprint of one catalog row used by folder sync to detect changes:
+/// `(modified, size, sidecar_modified)`. All three columns are nullable, so
+/// the fingerprint keeps the `Option`s — a NULL on either side must compare
+/// equal to a missing value on the other, not force a re-upsert.
+pub type FileFingerprint = (Option<u64>, Option<u64>, Option<u64>);
+
+/// Returns the fingerprints of every catalog row in `folder_id`, keyed by the
+/// (possibly virtual) path. Virtual-copy rows (`path?vc=id`) are included:
+/// sync matches them against the sidecar files found by the disk walk.
+pub fn get_folder_file_fingerprints(
+    app_handle: &AppHandle,
+    folder_id: i64,
+) -> Result<HashMap<String, FileFingerprint>, String> {
+    let conn = open_connection(app_handle)?;
+    get_folder_file_fingerprints_in_conn(&conn, folder_id)
+}
+
+fn get_folder_file_fingerprints_in_conn(
+    conn: &Connection,
+    folder_id: i64,
+) -> Result<HashMap<String, FileFingerprint>, String> {
+    let mut stmt = conn
+        .prepare(
+            "SELECT path, modified, size, sidecar_modified FROM files
+             WHERE folder_id = ?1 ORDER BY id",
+        )
+        .map_err(|e| e.to_string())?;
+    let rows = stmt
+        .query_map(params![folder_id], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                (
+                    row.get::<_, Option<i64>>(1)?.map(|v| v as u64),
+                    row.get::<_, Option<i64>>(2)?.map(|v| v as u64),
+                    row.get::<_, Option<i64>>(3)?.map(|v| v as u64),
+                ),
+            ))
+        })
+        .map_err(|e| e.to_string())?;
+    rows.collect::<Result<HashMap<_, _>, _>>()
+        .map_err(|e| e.to_string())
+}
+
+/// Deletes catalog rows (and, via ON DELETE CASCADE, their tags) by exact
+/// path — real paths and virtual-copy paths alike. Unknown paths are ignored.
+pub fn delete_files_by_paths(app_handle: &AppHandle, paths: &[String]) -> Result<(), String> {
+    let mut conn = open_connection(app_handle)?;
+    delete_files_by_paths_in_conn(&mut conn, paths)
+}
+
+fn delete_files_by_paths_in_conn(conn: &mut Connection, paths: &[String]) -> Result<(), String> {
+    let tx = conn.transaction().map_err(|e| e.to_string())?;
+    // Chunked: SQLite caps bound variables per statement.
+    for chunk in paths.chunks(500) {
+        let placeholders = vec!["?"; chunk.len()].join(",");
+        let sql = format!("DELETE FROM files WHERE path IN ({})", placeholders);
+        tx.execute(&sql, rusqlite::params_from_iter(chunk.iter()))
+            .map_err(|e| e.to_string())?;
+    }
+    tx.commit().map_err(|e| e.to_string())
+}
+
+/// Moves a cataloged folder to a new on-disk location: updates the `folders`
+/// row(s) and rewrites every file path under the old prefix. The file match
+/// is anchored on `old_path + '/'` via `instr(...) = 1`, so relocating
+/// `/photos/2024` never touches `/photos/20245/...`, and LIKE wildcards in
+/// paths stay literal. Virtual-copy paths (`...?vc=id`) keep their suffix:
+/// the `?vc=` part comes after the filename, so a prefix rewrite is safe.
+pub fn relocate_folder(
+    app_handle: &AppHandle,
+    old_path: &str,
+    new_path: &str,
+) -> Result<(), String> {
+    let conn = open_connection(app_handle)?;
+    relocate_folder_in_conn(&conn, old_path, new_path)
+}
+
+fn relocate_folder_in_conn(
+    conn: &Connection,
+    old_path: &str,
+    new_path: &str,
+) -> Result<(), String> {
+    // Stored folder paths never carry a trailing separator; accept one anyway.
+    let old_trimmed = old_path.trim_end_matches('/');
+    let new_trimmed = new_path.trim_end_matches('/');
+    let tx = conn.unchecked_transaction().map_err(|e| e.to_string())?;
+
+    tx.execute(
+        "UPDATE folders SET path = ?2 WHERE path = ?1",
+        params![old_trimmed, new_trimmed],
+    )
+    .map_err(|e| e.to_string())?;
+
+    let old_prefix = format!("{}/", old_trimmed);
+    let new_prefix = format!("{}/", new_trimmed);
+    // substr() is 1-indexed; length() counts characters, so use chars().count().
+    let skip = old_prefix.chars().count() as i64 + 1;
+    tx.execute(
+        "UPDATE files SET path = ?2 || substr(path, ?3) WHERE instr(path, ?1) = 1",
+        params![old_prefix, new_prefix, skip],
+    )
+    .map_err(|e| e.to_string())?;
+
+    tx.commit().map_err(|e| e.to_string())
+}
+
+/// Stamps `folders.last_synced_at` after a successful sync delta apply.
+pub fn update_folder_last_synced(app_handle: &AppHandle, folder_id: i64) -> Result<(), String> {
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let conn = open_connection(app_handle)?;
+    update_folder_last_synced_in_conn(&conn, folder_id, now)
+}
+
+fn update_folder_last_synced_in_conn(
+    conn: &Connection,
+    folder_id: i64,
+    timestamp: u64,
+) -> Result<(), String> {
+    conn.execute(
+        "UPDATE folders SET last_synced_at = ?2 WHERE id = ?1",
+        params![folder_id, timestamp as i64],
+    )
+    .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1117,5 +1246,133 @@ mod tests {
         assert!(get_all_file_paths_in_conn(&conn, folder_id + 1)
             .unwrap()
             .is_empty());
+    }
+
+    #[test]
+    fn test_get_folder_file_fingerprints_includes_virtual_copies() {
+        let (mut conn, folder_id) = setup_conn();
+        let mut vc = sample_file();
+        vc.path = "/tmp/x/a.jpg?vc=abc123".to_string();
+        vc.is_virtual_copy = true;
+        vc.sidecar_modified = Some(95);
+        let mut no_sidecar = sample_file();
+        no_sidecar.path = "/tmp/x/b.jpg".to_string();
+        no_sidecar.name = "b.jpg".to_string();
+        no_sidecar.sidecar_modified = None;
+        upsert_files_in_conn(&mut conn, folder_id, &[sample_file(), vc, no_sidecar]).unwrap();
+
+        let fps = get_folder_file_fingerprints_in_conn(&conn, folder_id).unwrap();
+        assert_eq!(fps.len(), 3);
+        assert_eq!(fps["/tmp/x/a.jpg"], (Some(100), Some(10), Some(90)));
+        assert_eq!(fps["/tmp/x/a.jpg?vc=abc123"], (Some(100), Some(10), Some(95)));
+        assert_eq!(fps["/tmp/x/b.jpg"], (Some(100), Some(10), None));
+
+        // Another folder's rows are not included.
+        assert!(get_folder_file_fingerprints_in_conn(&conn, folder_id + 1)
+            .unwrap()
+            .is_empty());
+    }
+
+    #[test]
+    fn test_delete_files_by_paths_removes_rows_and_cascades_tags() {
+        let (mut conn, folder_id) = setup_conn();
+        conn.execute_batch("PRAGMA foreign_keys = ON").unwrap();
+        let mut vc = sample_file();
+        vc.path = "/tmp/x/a.jpg?vc=abc123".to_string();
+        vc.is_virtual_copy = true;
+        let mut other = sample_file();
+        other.path = "/tmp/x/b.jpg".to_string();
+        other.name = "b.jpg".to_string();
+        upsert_files_in_conn(&mut conn, folder_id, &[sample_file(), vc, other]).unwrap();
+
+        delete_files_by_paths_in_conn(
+            &mut conn,
+            &[
+                "/tmp/x/a.jpg".to_string(),
+                "/tmp/x/a.jpg?vc=abc123".to_string(),
+                "/tmp/x/never-cataloged.jpg".to_string(),
+            ],
+        )
+        .unwrap();
+
+        let remaining = get_all_file_paths_in_conn(&conn, folder_id).unwrap();
+        assert_eq!(remaining.len(), 1);
+        assert_eq!(remaining[0].1, "/tmp/x/b.jpg");
+        // The deleted rows' tags went with them.
+        let tag_count: i64 = conn
+            .query_row("SELECT COUNT(*) FROM tags", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(tag_count, 2); // only b.jpg's tags remain
+
+        // Empty input is a no-op, not an error.
+        delete_files_by_paths_in_conn(&mut conn, &[]).unwrap();
+    }
+
+    #[test]
+    fn test_relocate_folder_anchors_prefix_and_preserves_vc_suffix() {
+        let (mut conn, folder_id) = setup_conn();
+        // setup_conn created folder '/tmp/x'; move it to '/tmp/y'.
+        let mut sub = sample_file();
+        sub.path = "/tmp/x/sub/b.jpg".to_string();
+        sub.name = "b.jpg".to_string();
+        let mut vc = sample_file();
+        vc.path = "/tmp/x/a.jpg?vc=abc123".to_string();
+        vc.is_virtual_copy = true;
+        let mut lookalike = sample_file();
+        lookalike.path = "/tmp/x2/c.jpg".to_string();
+        lookalike.name = "c.jpg".to_string();
+        upsert_files_in_conn(&mut conn, folder_id, &[sample_file(), sub, vc, lookalike]).unwrap();
+
+        relocate_folder_in_conn(&conn, "/tmp/x", "/tmp/y").unwrap();
+
+        let folder_path: String = conn
+            .query_row("SELECT path FROM folders WHERE id = ?1", params![folder_id], |r| {
+                r.get(0)
+            })
+            .unwrap();
+        assert_eq!(folder_path, "/tmp/y");
+
+        let rows = get_all_file_paths_in_conn(&conn, folder_id).unwrap();
+        let paths: Vec<&str> = rows.iter().map(|(_, p)| p.as_str()).collect();
+        assert_eq!(
+            paths,
+            vec![
+                "/tmp/y/a.jpg",
+                "/tmp/y/sub/b.jpg",
+                "/tmp/y/a.jpg?vc=abc123",
+                // Prefix-anchored: '/tmp/x2/...' does not start with '/tmp/x/'.
+                "/tmp/x2/c.jpg",
+            ]
+        );
+
+        // A trailing separator on the old path still matches.
+        relocate_folder_in_conn(&conn, "/tmp/y/", "/tmp/z").unwrap();
+        assert!(get_file_id_by_path_in_conn(&conn, "/tmp/z/a.jpg")
+            .unwrap()
+            .is_some());
+    }
+
+    #[test]
+    fn test_update_folder_last_synced_stamps_timestamp() {
+        let (conn, folder_id) = setup_conn();
+        assert!(
+            conn.query_row(
+                "SELECT last_synced_at FROM folders WHERE id = ?1",
+                params![folder_id],
+                |r| r.get::<_, Option<i64>>(0)
+            )
+            .unwrap()
+            .is_none()
+        );
+
+        update_folder_last_synced_in_conn(&conn, folder_id, 1_700_000_000).unwrap();
+        let stamped: Option<i64> = conn
+            .query_row(
+                "SELECT last_synced_at FROM folders WHERE id = ?1",
+                params![folder_id],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(stamped, Some(1_700_000_000));
     }
 }

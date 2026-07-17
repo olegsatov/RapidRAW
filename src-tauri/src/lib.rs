@@ -2579,6 +2579,8 @@ pub fn run() {
             negative_conversion::convert_negatives,
             folder_import::start_folder_import,
             folder_import::cancel_folder_import,
+            folder_import::sync_folder,
+            folder_import::locate_folder,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
