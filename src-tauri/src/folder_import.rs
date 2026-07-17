@@ -290,22 +290,25 @@ fn file_row_input(image_file: &ImageFile) -> Result<FileRowInput, String> {
 }
 
 /// Builds `ImageFile`s for one chunk (reusing the same per-file logic as the
-/// folder-listing commands) and upserts them into the catalog.
+/// folder-listing commands) and upserts them into the catalog. Returns the
+/// files plus the number of scan entries (real files) processed, so progress
+/// stays in real-file units even on a cancelled partial chunk.
 async fn process_scan_chunk(
     app_handle: &AppHandle,
     folder_id: i64,
     chunk: &[ScanEntry],
     cancel: &Arc<AtomicBool>,
-) -> Result<Vec<ImageFile>, String> {
+) -> Result<(Vec<ImageFile>, usize), String> {
     let app_handle_clone = app_handle.clone();
     let chunk = chunk.to_vec();
     let cancel = cancel.clone();
 
-    let image_files = tauri::async_runtime::spawn_blocking(move || {
+    let (image_files, entries_processed) = tauri::async_runtime::spawn_blocking(move || {
         let settings = load_settings(app_handle_clone.clone()).unwrap_or_default();
         let enable_xmp_sync = settings.enable_xmp_sync.unwrap_or(false);
 
         let mut out = Vec::new();
+        let mut processed = 0usize;
         for entry in &chunk {
             if cancel.load(Ordering::Relaxed) {
                 break;
@@ -319,8 +322,9 @@ async fn process_scan_chunk(
                 enable_xmp_sync,
                 &settings,
             ));
+            processed += 1;
         }
-        out
+        (out, processed)
     })
     .await
     .map_err(|e| e.to_string())?;
@@ -331,7 +335,7 @@ async fn process_scan_chunk(
         .collect::<Result<Vec<_>, _>>()?;
     library_db::upsert_files(app_handle, folder_id, &rows)?;
 
-    Ok(image_files)
+    Ok((image_files, entries_processed))
 }
 
 async fn run_import_job(
@@ -389,8 +393,8 @@ async fn run_import_job(
             break;
         }
         match process_scan_chunk(&app_handle, folder_id, chunk, &cancel).await {
-            Ok(files) => {
-                scanned += files.len();
+            Ok((files, entries_processed)) => {
+                scanned += entries_processed;
                 let _ = app_handle.emit(
                     "folder-import-batch",
                     serde_json::json!({
