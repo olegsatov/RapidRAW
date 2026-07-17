@@ -12,6 +12,7 @@ import { Invokes, LibraryViewMode, ImageFile } from '../components/ui/AppPropert
 import { INITIAL_ADJUSTMENTS, normalizeLoadedAdjustments } from '../utils/adjustments';
 import { globalImageCache } from '../utils/ImageLRUCache';
 import { debouncedSave, debouncedSetHistory } from './useEditorActions';
+import { useFolderImport } from './useFolderImport';
 
 export interface AppNavigationProps {
   clearThumbnailQueue: () => void;
@@ -40,6 +41,8 @@ export function useAppNavigation({ clearThumbnailQueue, refs }: AppNavigationPro
     currentResRef,
     prevAdjustmentsRef,
   } = refs;
+
+  const { openFolder } = useFolderImport();
 
   const handleGoHome = useCallback(() => {
     useLibraryStore.getState().setLibrary({
@@ -267,7 +270,7 @@ export function useAppNavigation({ clearThumbnailQueue, refs }: AppNavigationPro
     ) => {
       const { appSettings, handleSettingsChange } = useSettingsStore.getState();
       const { pinnedFolders } = appSettings || { pinnedFolders: [] };
-      const { setLibrary, sortCriteria } = useLibraryStore.getState();
+      const { setLibrary } = useLibraryStore.getState();
       const { setUI } = useUIStore.getState();
       const { setProcess } = useProcessStore.getState();
       const { selectedImage, resetHistory, setEditor } = useEditorStore.getState();
@@ -330,58 +333,25 @@ export function useAppNavigation({ clearThumbnailQueue, refs }: AppNavigationPro
           useEditorStore.getState().patchesSentToBackend.clear();
         }
 
-        const command =
-          libraryViewMode === LibraryViewMode.Recursive ? Invokes.ListImagesRecursive : Invokes.ListImagesInDir;
-
-        let files: ImageFile[];
         if (preloadedImages) {
-          files = preloadedImages;
-        } else {
-          files = await invoke(command, { path });
+          const initialRatings: Record<string, number> = {};
+          const initialFlags: Record<string, number> = {};
+          preloadedImages.forEach((f) => {
+            if (f.rating !== undefined) {
+              initialRatings[f.path] = f.rating;
+            }
+            if (f.flag !== undefined) {
+              initialFlags[f.path] = f.flag;
+            }
+          });
+          setLibrary({ imageList: preloadedImages, imageRatings: initialRatings, imageFlags: initialFlags });
         }
 
-        const initialRatings: Record<string, number> = {};
-        const initialFlags: Record<string, number> = {};
-        files.forEach((f) => {
-          if (f.rating !== undefined) {
-            initialRatings[f.path] = f.rating;
-          }
-          if (f.flag !== undefined) {
-            initialFlags[f.path] = f.flag;
-          }
-        });
-        setLibrary({ imageRatings: initialRatings, imageFlags: initialFlags });
-
-        const exifSortKeys = ['date_taken', 'iso', 'shutter_speed', 'aperture', 'focal_length'];
-        const isExifSortActive = exifSortKeys.includes(sortCriteria.key);
-
-        if (files.length > 0) {
-          const paths = files.map((f: ImageFile) => f.path);
-
-          if (isExifSortActive) {
-            const exifDataMap: Record<string, any> = await invoke(Invokes.ReadExifForPaths, { paths });
-            const finalImageList = files.map((image) => ({
-              ...image,
-              exif: exifDataMap[image.path] || image.exif || null,
-            }));
-            setLibrary({ imageList: finalImageList });
-          } else {
-            setLibrary({ imageList: files });
-            invoke(Invokes.ReadExifForPaths, { paths })
-              .then((exifDataMap: any) => {
-                setLibrary((state) => ({
-                  imageList: state.imageList.map((image) => ({
-                    ...image,
-                    exif: exifDataMap[image.path] || image.exif || null,
-                  })),
-                }));
-              })
-              .catch((err) => {
-                console.error('Failed to read EXIF data in background:', err);
-              });
-          }
-        } else {
-          setLibrary({ imageList: files });
+        // Fire-and-forget: the import job streams folder-import-* events into
+        // the folder import store, and the useFolderImport effect mirrors the
+        // job's files into imageList as they arrive.
+        if (path) {
+          openFolder(path, libraryViewMode === LibraryViewMode.Recursive);
         }
 
         if (!preserveEditor) {
@@ -396,7 +366,7 @@ export function useAppNavigation({ clearThumbnailQueue, refs }: AppNavigationPro
         useLibraryStore.getState().setLibrary({ isViewLoading: false });
       }
     },
-    [clearThumbnailQueue, refs],
+    [clearThumbnailQueue, openFolder, refs],
   );
 
   const handleSelectAlbum = useCallback(
