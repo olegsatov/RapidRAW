@@ -17,6 +17,7 @@ use crate::app_state::{AppState, FolderImportHandle};
 use crate::exif_processing;
 use crate::file_management::{self, ImageFile, ReadFileError};
 use crate::formats::{is_raw_file, is_supported_image_file};
+use crate::gpu_processing;
 use crate::library_db::{self, FileRowInput, StructuredExif};
 use crate::tagging::{COLOR_TAG_PREFIX, USER_TAG_PREFIX};
 
@@ -143,6 +144,13 @@ fn emit_error(app_handle: &AppHandle, path: &str, message: &str) {
     let _ = app_handle.emit(
         "folder-import-error",
         serde_json::json!({ "path": path, "message": message }),
+    );
+}
+
+fn emit_cancelled(app_handle: &AppHandle, path: &str) {
+    let _ = app_handle.emit(
+        "folder-import-cancelled",
+        serde_json::json!({ "path": path }),
     );
 }
 
@@ -423,22 +431,23 @@ async fn process_exif_file(
 
 /// Phase 2: EXIF scan for catalog rows with `exif_scanned = 0`. Only pending
 /// rows are processed, so a re-run after cancel (or after new files were
-/// scanned in) resumes where the previous run stopped.
+/// scanned in) resumes where the previous run stopped. Returns the number of
+/// per-file failures for the final `folder-import-complete` tally.
 async fn run_exif_phase(
     app_handle: &AppHandle,
     path: &str,
     folder_id: i64,
     cancel: &Arc<AtomicBool>,
-) {
+) -> usize {
     let pending = match library_db::get_files_needing_exif(app_handle, folder_id) {
         Ok(pending) => pending,
         Err(e) => {
             emit_error(app_handle, path, &e);
-            return;
+            return 0;
         }
     };
     if pending.is_empty() {
-        return;
+        return 0;
     }
 
     let total_exif = pending.len();
@@ -501,6 +510,149 @@ async fn run_exif_phase(
             path
         );
     }
+    failed_count
+}
+
+/// Outcome of generating one thumbnail, distinguished so files skipped on
+/// purpose (cloud placeholders) are not miscounted as failures.
+enum ThumbOutcome {
+    /// Generated now or already present in the cache.
+    Done,
+    /// Cloud placeholder: skipped like the interactive queue does (the
+    /// generator would also refuse it); does not count as a failure.
+    Skipped,
+    Failed,
+    Cancelled,
+}
+
+/// Phase 3: thumbnail generation for every catalog row of the folder, real
+/// files and virtual copies alike (each VC has its own sidecar/adjustments,
+/// so the frontend requests thumbnails per virtual path). Cache entries are
+/// keyed by the stable file_id, so a later rename/move reuses the cached
+/// thumbnail instead of regenerating. Returns the number of per-file
+/// failures for the final `folder-import-complete` tally.
+async fn run_thumbs_phase(
+    app_handle: &AppHandle,
+    path: &str,
+    folder_id: i64,
+    cancel: &Arc<AtomicBool>,
+) -> usize {
+    let rows = match library_db::get_all_file_paths(app_handle, folder_id) {
+        Ok(rows) => rows,
+        Err(e) => {
+            emit_error(app_handle, path, &e);
+            return 0;
+        }
+    };
+    if rows.is_empty() {
+        return 0;
+    }
+
+    let total_thumbs = rows.len();
+    let _ = app_handle.emit(
+        "folder-import-thumbs-started",
+        serde_json::json!({ "path": path, "total": total_thumbs }),
+    );
+
+    let settings = load_settings(app_handle.clone()).unwrap_or_default();
+    let thumb_cache_dir = match file_management::get_thumb_cache_dir(app_handle) {
+        Ok(dir) => dir,
+        Err(e) => {
+            emit_error(app_handle, path, &e);
+            return 0;
+        }
+    };
+    let gpu_context = {
+        let state = app_handle.state::<AppState>();
+        gpu_processing::get_or_init_gpu_context(&state, app_handle).ok()
+    };
+
+    // Two files at a time, like the EXIF phase: RAW decoding plus the GPU
+    // render are heavy and the source may be a slow external volume.
+    let semaphore = Arc::new(Semaphore::new(2));
+    let processed = Arc::new(AtomicUsize::new(0));
+    let failed = Arc::new(AtomicUsize::new(0));
+    let mut handles = Vec::new();
+
+    for (file_id, file_path) in rows {
+        if cancel.load(Ordering::SeqCst) {
+            break;
+        }
+        let Ok(permit) = semaphore.clone().acquire_owned().await else {
+            break;
+        };
+        let app = app_handle.clone();
+        let cancel_task = cancel.clone();
+        let processed_task = processed.clone();
+        let failed_task = failed.clone();
+        let path_for_event = path.to_string();
+        let settings_task = settings.clone();
+        let cache_dir_task = thumb_cache_dir.clone();
+        let gpu_task = gpu_context.clone();
+        handles.push(tokio::spawn(async move {
+            let _permit = permit;
+            let cancel_inner = cancel_task.clone();
+            let app_inner = app.clone();
+            let gen_path = file_path.clone();
+            let outcome = tauri::async_runtime::spawn_blocking(move || {
+                if cancel_inner.load(Ordering::Relaxed) {
+                    return ThumbOutcome::Cancelled;
+                }
+                let (source_path, _) = file_management::parse_virtual_path(&gen_path);
+                if file_management::is_cloud_placeholder(&source_path) {
+                    return ThumbOutcome::Skipped;
+                }
+                match file_management::generate_single_thumbnail_and_cache(
+                    &gen_path,
+                    &cache_dir_task,
+                    gpu_task.as_ref(),
+                    None,
+                    false,
+                    &app_inner,
+                    &settings_task,
+                    Some(file_id),
+                ) {
+                    Some(_) => ThumbOutcome::Done,
+                    None => ThumbOutcome::Failed,
+                }
+            })
+            .await
+            .unwrap_or(ThumbOutcome::Failed);
+
+            match outcome {
+                ThumbOutcome::Done | ThumbOutcome::Skipped => {}
+                ThumbOutcome::Failed => {
+                    failed_task.fetch_add(1, Ordering::Relaxed);
+                    log::warn!("thumbnail generation failed for {}", file_path);
+                }
+                ThumbOutcome::Cancelled => return,
+            }
+            let current = processed_task.fetch_add(1, Ordering::Relaxed) + 1;
+            let _ = app.emit(
+                "folder-import-thumbs-progress",
+                serde_json::json!({
+                    "path": path_for_event,
+                    "current": current,
+                    "total": total_thumbs,
+                }),
+            );
+        }));
+    }
+
+    for h in handles {
+        let _ = h.await;
+    }
+
+    let failed_count = failed.load(Ordering::Relaxed);
+    if failed_count > 0 {
+        log::warn!(
+            "folder import thumbnail phase: {} of {} files failed for {}",
+            failed_count,
+            total_thumbs,
+            path
+        );
+    }
+    failed_count
 }
 
 async fn run_import_job(
@@ -540,6 +692,7 @@ async fn run_import_job(
 
     // The walk may have stopped early on cancel; don't catalog a partial set.
     if cancel.load(Ordering::SeqCst) {
+        emit_cancelled(&app_handle, &path);
         return;
     }
 
@@ -583,11 +736,30 @@ async fn run_import_job(
     // Phase 2: EXIF scan for catalog rows with exif_scanned = 0 (resumable:
     // only pending rows are processed).
     if cancel.load(Ordering::SeqCst) {
+        emit_cancelled(&app_handle, &path);
         return;
     }
-    run_exif_phase(&app_handle, &path, folder_id, &cancel).await;
+    let exif_failed = run_exif_phase(&app_handle, &path, folder_id, &cancel).await;
 
-    // Phase 3 (Task 8): thumbnail generation.
+    // Phase 3: thumbnail generation with stable file_id-keyed cache entries.
+    if cancel.load(Ordering::SeqCst) {
+        emit_cancelled(&app_handle, &path);
+        return;
+    }
+    let thumbs_failed = run_thumbs_phase(&app_handle, &path, folder_id, &cancel).await;
+
+    // Scan-phase chunk failures already reported `folder-import-error` (they
+    // are systemic, not per-file), so the tally below counts only per-file
+    // EXIF/thumbnail failures.
+    let errors = exif_failed + thumbs_failed;
+    if cancel.load(Ordering::SeqCst) {
+        emit_cancelled(&app_handle, &path);
+    } else {
+        let _ = app_handle.emit(
+            "folder-import-complete",
+            serde_json::json!({ "path": &path, "errors": errors }),
+        );
+    }
 }
 
 #[cfg(test)]

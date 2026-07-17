@@ -397,6 +397,51 @@ fn get_files_needing_exif_in_conn(
         .map_err(|e| e.to_string())
 }
 
+/// Resolves the catalog id for one (possibly virtual) path. `None` means the
+/// file is not cataloged; callers fall back to path-keyed behavior in that
+/// case — a missing row is never an error.
+pub fn get_file_id_by_path(app_handle: &AppHandle, file_path: &str) -> Result<Option<i64>, String> {
+    let conn = open_connection(app_handle)?;
+    get_file_id_by_path_in_conn(&conn, file_path)
+}
+
+fn get_file_id_by_path_in_conn(conn: &Connection, file_path: &str) -> Result<Option<i64>, String> {
+    conn.query_row(
+        "SELECT id FROM files WHERE path = ?1",
+        params![file_path],
+        |row| row.get(0),
+    )
+    .optional()
+    .map_err(|e| e.to_string())
+}
+
+/// Returns `(id, path)` for every catalog row in `folder_id`, real files and
+/// virtual copies alike. Thumbnails are per row, not per source file: each
+/// virtual copy has its own sidecar (adjustments) and gets its own
+/// file_id-keyed cache entry — matching the frontend, which requests
+/// thumbnails per (virtual) path.
+pub fn get_all_file_paths(
+    app_handle: &AppHandle,
+    folder_id: i64,
+) -> Result<Vec<(i64, String)>, String> {
+    let conn = open_connection(app_handle)?;
+    get_all_file_paths_in_conn(&conn, folder_id)
+}
+
+fn get_all_file_paths_in_conn(
+    conn: &Connection,
+    folder_id: i64,
+) -> Result<Vec<(i64, String)>, String> {
+    let mut stmt = conn
+        .prepare("SELECT id, path FROM files WHERE folder_id = ?1 ORDER BY id")
+        .map_err(|e| e.to_string())?;
+    let rows = stmt
+        .query_map(params![folder_id], |row| Ok((row.get(0)?, row.get(1)?)))
+        .map_err(|e| e.to_string())?;
+    rows.collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())
+}
+
 /// Sets the `exif` field of the serialized `ImageFile` stored in
 /// `metadata_json` without touching anything else, so catalog loads return
 /// fully-populated `ImageFile`s. Falls back to the original string when it is
@@ -1020,5 +1065,57 @@ mod tests {
             .unwrap();
         assert_eq!((exif_scanned, iso), (1, None));
         assert_eq!(json_after, json_before);
+    }
+
+    #[test]
+    fn test_get_file_id_by_path_finds_real_and_virtual_rows() {
+        let (mut conn, folder_id) = setup_conn();
+        let mut vc = sample_file();
+        vc.path = "/tmp/x/a.jpg?vc=abc123".to_string();
+        vc.is_virtual_copy = true;
+        upsert_files_in_conn(&mut conn, folder_id, &[sample_file(), vc]).unwrap();
+
+        let real_id = get_file_id_by_path_in_conn(&conn, "/tmp/x/a.jpg").unwrap();
+        let vc_id = get_file_id_by_path_in_conn(&conn, "/tmp/x/a.jpg?vc=abc123").unwrap();
+        assert!(real_id.is_some());
+        assert!(vc_id.is_some());
+        assert_ne!(real_id, vc_id);
+
+        // Uncataloged paths resolve to None, not an error.
+        assert_eq!(
+            get_file_id_by_path_in_conn(&conn, "/tmp/x/never-scanned.jpg").unwrap(),
+            None
+        );
+    }
+
+    #[test]
+    fn test_get_all_file_paths_includes_virtual_copies_ordered_by_id() {
+        let (mut conn, folder_id) = setup_conn();
+        let mut vc = sample_file();
+        vc.path = "/tmp/x/a.jpg?vc=abc123".to_string();
+        vc.is_virtual_copy = true;
+        let mut other = sample_file();
+        other.path = "/tmp/x/b.jpg".to_string();
+        other.name = "b.jpg".to_string();
+        upsert_files_in_conn(&mut conn, folder_id, &[sample_file(), vc, other]).unwrap();
+
+        let rows = get_all_file_paths_in_conn(&conn, folder_id).unwrap();
+        let paths: Vec<&str> = rows.iter().map(|(_, p)| p.as_str()).collect();
+        assert_eq!(
+            paths,
+            vec!["/tmp/x/a.jpg", "/tmp/x/a.jpg?vc=abc123", "/tmp/x/b.jpg"]
+        );
+        // Ids are round-trippable through get_file_id_by_path.
+        for (id, path) in &rows {
+            assert_eq!(
+                get_file_id_by_path_in_conn(&conn, path).unwrap(),
+                Some(*id)
+            );
+        }
+
+        // Another folder's rows are not included.
+        assert!(get_all_file_paths_in_conn(&conn, folder_id + 1)
+            .unwrap()
+            .is_empty());
     }
 }

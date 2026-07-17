@@ -1464,7 +1464,14 @@ fn encode_thumbnail(image: &DynamicImage, target_width: u32) -> Result<Vec<u8>> 
     Ok(buf.into_inner())
 }
 
-fn generate_single_thumbnail_and_cache(
+/// Resolves the catalog file id for stable, file_id-keyed thumbnail cache
+/// entries. Any lookup error or a missing row falls back to `None`
+/// (path-keyed): thumbnail generation must never fail because of the catalog.
+fn lookup_catalog_file_id(app_handle: &AppHandle, path_str: &str) -> Option<i64> {
+    crate::library_db::get_file_id_by_path(app_handle, path_str).unwrap_or(None)
+}
+
+pub(crate) fn generate_single_thumbnail_and_cache(
     path_str: &str,
     thumb_cache_dir: &Path,
     gpu_context: Option<&GpuContext>,
@@ -1561,6 +1568,7 @@ pub fn start_thumbnail_workers(app_handle: tauri::AppHandle) {
                     crate::gpu_processing::get_or_init_gpu_context(&state, &app_clone).ok();
 
                 if let Ok(cache_dir) = get_thumb_cache_dir(&app_clone) {
+                    let file_id = lookup_catalog_file_id(&app_clone, &path_to_process);
                     let result = generate_single_thumbnail_and_cache(
                         &path_to_process,
                         &cache_dir,
@@ -1569,7 +1577,7 @@ pub fn start_thumbnail_workers(app_handle: tauri::AppHandle) {
                         false,
                         &app_clone,
                         &worker_settings,
-                        None,
+                        file_id,
                     );
 
                     if let Some((thumbnail_path, rating, is_edited)) = result {
@@ -2221,6 +2229,7 @@ pub fn save_metadata_and_update_thumbnail(
             }
         };
 
+        let file_id = lookup_catalog_file_id(&app_handle_clone, &path_clone);
         let result = generate_single_thumbnail_and_cache(
             &path_clone,
             &thumb_cache_dir,
@@ -2229,7 +2238,7 @@ pub fn save_metadata_and_update_thumbnail(
             true,
             &app_handle_clone,
             &settings,
-            None,
+            file_id,
         );
 
         if let Some((thumbnail_path, rating, is_edited)) = result {
@@ -2323,6 +2332,7 @@ pub async fn apply_adjustments_to_paths(
         let gpu_context = gpu_processing::get_or_init_gpu_context(&state, &app_handle).ok();
 
         paths.par_iter().for_each(|path_str| {
+            let file_id = lookup_catalog_file_id(&app_handle, path_str);
             let result = generate_single_thumbnail_and_cache(
                 path_str,
                 &thumb_cache_dir,
@@ -2331,7 +2341,7 @@ pub async fn apply_adjustments_to_paths(
                 true,
                 &app_handle,
                 &settings,
-                None,
+                file_id,
             );
 
             if let Some((thumbnail_path, rating, is_edited)) = result {
@@ -2393,6 +2403,7 @@ pub async fn reset_adjustments_for_paths(
         let gpu_context = gpu_processing::get_or_init_gpu_context(&state, &app_handle).ok();
 
         paths.par_iter().for_each(|path_str| {
+            let file_id = lookup_catalog_file_id(&app_handle, path_str);
             let result = generate_single_thumbnail_and_cache(
                 path_str,
                 &thumb_cache_dir,
@@ -2401,7 +2412,7 @@ pub async fn reset_adjustments_for_paths(
                 true,
                 &app_handle,
                 &settings,
-                None,
+                file_id,
             );
 
             if let Some((thumbnail_path, rating, is_edited)) = result {
@@ -2504,6 +2515,7 @@ pub async fn apply_auto_adjustments_to_paths(
             .map_err(|e| eprintln!("Failed to apply auto adjustments to {}: {}", path, e))
             .ok();
 
+            let file_id = lookup_catalog_file_id(&app_handle, path);
             let result = generate_single_thumbnail_and_cache(
                 path,
                 &thumb_cache_dir,
@@ -2512,7 +2524,7 @@ pub async fn apply_auto_adjustments_to_paths(
                 true,
                 &app_handle,
                 &settings,
-                None,
+                file_id,
             );
 
             if let Some((thumbnail_path, rating, is_edited)) = result {
