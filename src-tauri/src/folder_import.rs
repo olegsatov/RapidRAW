@@ -437,22 +437,24 @@ async fn process_exif_file(
 /// Phase 2: EXIF scan for catalog rows with `exif_scanned = 0`. Only pending
 /// rows are processed, so a re-run after cancel (or after new files were
 /// scanned in) resumes where the previous run stopped. Returns the number of
-/// per-file failures for the final `folder-import-complete` tally.
+/// per-file failures for the final `folder-import-complete` tally, or `None`
+/// when the phase aborted on a systemic failure (`folder-import-error`
+/// already emitted) — the caller must not report completion then.
 async fn run_exif_phase(
     app_handle: &AppHandle,
     path: &str,
     folder_id: i64,
     cancel: &Arc<AtomicBool>,
-) -> usize {
+) -> Option<usize> {
     let pending = match library_db::get_files_needing_exif(app_handle, folder_id) {
         Ok(pending) => pending,
         Err(e) => {
             emit_error(app_handle, path, &e);
-            return 0;
+            return None;
         }
     };
     if pending.is_empty() {
-        return 0;
+        return Some(0);
     }
 
     let total_exif = pending.len();
@@ -515,7 +517,7 @@ async fn run_exif_phase(
             path
         );
     }
-    failed_count
+    Some(failed_count)
 }
 
 /// Outcome of generating one thumbnail, distinguished so files skipped on
@@ -535,22 +537,24 @@ enum ThumbOutcome {
 /// so the frontend requests thumbnails per virtual path). Cache entries are
 /// keyed by the stable file_id, so a later rename/move reuses the cached
 /// thumbnail instead of regenerating. Returns the number of per-file
-/// failures for the final `folder-import-complete` tally.
+/// failures for the final `folder-import-complete` tally, or `None` when the
+/// phase aborted on a systemic failure (`folder-import-error` already
+/// emitted) — the caller must not report completion then.
 async fn run_thumbs_phase(
     app_handle: &AppHandle,
     path: &str,
     folder_id: i64,
     cancel: &Arc<AtomicBool>,
-) -> usize {
+) -> Option<usize> {
     let rows = match library_db::get_all_file_paths(app_handle, folder_id) {
         Ok(rows) => rows,
         Err(e) => {
             emit_error(app_handle, path, &e);
-            return 0;
+            return None;
         }
     };
     if rows.is_empty() {
-        return 0;
+        return Some(0);
     }
 
     let total_thumbs = rows.len();
@@ -564,7 +568,7 @@ async fn run_thumbs_phase(
         Ok(dir) => dir,
         Err(e) => {
             emit_error(app_handle, path, &e);
-            return 0;
+            return None;
         }
     };
     let gpu_context = {
@@ -657,7 +661,7 @@ async fn run_thumbs_phase(
             path
         );
     }
-    failed_count
+    Some(failed_count)
 }
 
 async fn run_import_job(
@@ -729,11 +733,12 @@ async fn run_import_job(
                 );
             }
             // A chunk-level DB failure is almost always systemic; report it
-            // once and abort the scan rather than spamming one error per
-            // remaining chunk.
+            // once and abort the whole import (phases 2/3 would run on a
+            // partial catalog, and a later `folder-import-complete` would
+            // hide the failure from the UI).
             Err(e) => {
                 emit_error(&app_handle, &path, &e);
-                break;
+                return;
             }
         }
     }
@@ -744,18 +749,24 @@ async fn run_import_job(
         emit_cancelled(&app_handle, &path);
         return;
     }
-    let exif_failed = run_exif_phase(&app_handle, &path, folder_id, &cancel).await;
+    // A systemic phase failure already emitted `folder-import-error`; stop
+    // here so the job never reports a false `folder-import-complete`.
+    let Some(exif_failed) = run_exif_phase(&app_handle, &path, folder_id, &cancel).await else {
+        return;
+    };
 
     // Phase 3: thumbnail generation with stable file_id-keyed cache entries.
     if cancel.load(Ordering::SeqCst) {
         emit_cancelled(&app_handle, &path);
         return;
     }
-    let thumbs_failed = run_thumbs_phase(&app_handle, &path, folder_id, &cancel).await;
+    let Some(thumbs_failed) = run_thumbs_phase(&app_handle, &path, folder_id, &cancel).await
+    else {
+        return;
+    };
 
-    // Scan-phase chunk failures already reported `folder-import-error` (they
-    // are systemic, not per-file), so the tally below counts only per-file
-    // EXIF/thumbnail failures.
+    // Reaching here means no systemic failure occurred (those return early
+    // above), so the tally is exactly the per-file EXIF/thumbnail failures.
     let errors = exif_failed + thumbs_failed;
     if cancel.load(Ordering::SeqCst) {
         emit_cancelled(&app_handle, &path);
