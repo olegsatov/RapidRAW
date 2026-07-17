@@ -12,7 +12,7 @@ import { Invokes, LibraryViewMode, ImageFile } from '../components/ui/AppPropert
 import { INITIAL_ADJUSTMENTS, normalizeLoadedAdjustments } from '../utils/adjustments';
 import { globalImageCache } from '../utils/ImageLRUCache';
 import { debouncedSave, debouncedSetHistory } from './useEditorActions';
-import { useFolderImport } from './useFolderImport';
+import { useFolderImport, useFolderImportMirror } from './useFolderImport';
 
 export interface AppNavigationProps {
   clearThumbnailQueue: () => void;
@@ -43,6 +43,7 @@ export function useAppNavigation({ clearThumbnailQueue, refs }: AppNavigationPro
   } = refs;
 
   const { openFolder } = useFolderImport();
+  useFolderImportMirror();
 
   const handleGoHome = useCallback(() => {
     useLibraryStore.getState().setLibrary({

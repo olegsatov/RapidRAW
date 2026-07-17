@@ -9,14 +9,19 @@ import { LibraryViewMode } from '../components/ui/AppProperties';
 // ("path|recursive", path normalized by normalize_folder_path). When it
 // differs from the optimistic raw-path key, re-home the job so the optimistic
 // entry does not shadow the real one the folder-import-* event listeners
-// update. Clearing first and relying on startJob's no-op-if-exists keeps any
-// state listeners already wrote under the canonical key.
+// update. A sync re-emits the folder's files, so any stale job at the
+// canonical key is dropped first to avoid appendBatch duplicating its files;
+// the subsequent startJob then no-ops only if listeners already created a
+// fresh entry there.
 function rehomeJob(returnedKey: string, optimisticKey: string, recursive: boolean, kind?: 'import' | 'sync') {
   if (returnedKey === optimisticKey) {
     return;
   }
   const store = useFolderImportStore.getState();
   store.clearJob(optimisticKey);
+  if (kind === 'sync') {
+    store.clearJob(returnedKey);
+  }
   const separator = returnedKey.lastIndexOf('|');
   const canonicalPath = separator > -1 ? returnedKey.substring(0, separator) : returnedKey;
   store.startJob(canonicalPath, recursive, kind);
@@ -38,6 +43,10 @@ function findJobForFolder(
   return Object.values(jobs).find((job) => job.recursive === recursive && job.path.replace(/[/\\]+$/, '') === trimmed);
 }
 
+// Pure folder-import command API. Safe to call from any component (e.g. the
+// Task 12 ImportJobsIndicator): it mounts no effects and subscribes to no
+// store slices. The imageList mirror lives in useFolderImportMirror below,
+// which must be mounted exactly once.
 export function useFolderImport() {
   const openFolder = useCallback(async (path: string, recursive: boolean) => {
     const store = useFolderImportStore.getState();
@@ -83,12 +92,21 @@ export function useFolderImport() {
     }
   }, []);
 
+  return { openFolder, syncFolder, cancelFolderImport };
+}
+
+// Mirrors the current folder job's streamed file list into the library store.
+// Mount exactly once (done by useAppNavigation at the App root); a second
+// mount would duplicate every imageList write.
+export function useFolderImportMirror() {
   const currentFolderPath = useLibraryStore((state) => state.currentFolderPath);
   const recursive = useSettingsStore((state) => state.appSettings?.libraryViewMode === LibraryViewMode.Recursive);
-  const job = useFolderImportStore((state) =>
-    currentFolderPath ? findJobForFolder(state.jobs, currentFolderPath, recursive) : undefined,
+  // Select only the files array: its identity changes once per emitted batch,
+  // so exif/thumbnail per-file progress updates on the same job do not
+  // re-render the App-root component this hook is mounted in.
+  const files = useFolderImportStore((state) =>
+    currentFolderPath ? findJobForFolder(state.jobs, currentFolderPath, recursive)?.files : undefined,
   );
-  const files = job?.files;
 
   useEffect(() => {
     // Mirror the current folder job's file list into the library. This covers
@@ -98,6 +116,9 @@ export function useFolderImport() {
     // list is never mirrored: a freshly started job (or one for an
     // already-cataloged folder, which emits no batches) must not wipe the
     // current imageList.
+    // TODO(Task 14): batch files carry exif: null (phase 2 writes EXIF only
+    // to the catalog DB). The complete-time catalog refresh planned there
+    // restores exif into imageList for sorting and the metadata columns.
     if (!files || files.length === 0) {
       return;
     }
@@ -119,6 +140,4 @@ export function useFolderImport() {
       imageFlags: { ...state.imageFlags, ...flags },
     }));
   }, [files]);
-
-  return { openFolder, syncFolder, cancelFolderImport };
 }
