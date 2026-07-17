@@ -269,15 +269,15 @@ impl fmt::Display for ReadFileError {
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ImageFile {
-    path: String,
-    modified: u64,
-    is_edited: bool,
-    rating: u8,
-    flag: i8,
-    tags: Option<Vec<String>>,
-    exif: Option<HashMap<String, String>>,
-    is_virtual_copy: bool,
-    is_cloud_placeholder: bool,
+    pub(crate) path: String,
+    pub(crate) modified: u64,
+    pub(crate) is_edited: bool,
+    pub(crate) rating: u8,
+    pub(crate) flag: i8,
+    pub(crate) tags: Option<Vec<String>>,
+    pub(crate) exif: Option<HashMap<String, String>>,
+    pub(crate) is_virtual_copy: bool,
+    pub(crate) is_cloud_placeholder: bool,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -287,6 +287,22 @@ pub struct ImportSettings {
     pub organize_by_date: bool,
     pub date_folder_format: String,
     pub delete_after_import: bool,
+}
+
+/// Parses an `.rrdata` sidecar filename into its source image filename and
+/// optional virtual-copy id (`name.ext.<id>.rrdata` -> (`name.ext`, Some(id))).
+/// Returns `None` when `file_name` is not a sidecar.
+pub(crate) fn parse_sidecar_filename(file_name: &str) -> Option<(String, Option<String>)> {
+    let base = file_name.strip_suffix(".rrdata")?;
+
+    if base.len() >= 7 && base.as_bytes()[base.len() - 7] == b'.' {
+        let id = &base[base.len() - 6..];
+        if id.chars().all(|c| matches!(c, '0'..='9' | 'a'..='f')) {
+            return Some((base[..base.len() - 7].to_string(), Some(id.to_string())));
+        }
+    }
+
+    Some((base.to_string(), None))
 }
 
 pub fn parse_virtual_path(virtual_path: &str) -> (PathBuf, PathBuf) {
@@ -401,6 +417,74 @@ pub async fn update_exif_fields(
     .map_err(|e| format!("Task failed: {}", e))?
 }
 
+/// Builds the `ImageFile` entries for one image file and its sidecars (one
+/// entry per virtual copy). Shared by the folder-listing commands and the
+/// folder-import scan so both produce identical results.
+pub(crate) fn build_image_files(
+    app_handle: &AppHandle,
+    path_str: &str,
+    file_name: &str,
+    path_buf: &Path,
+    sidecars: Vec<Option<String>>,
+    enable_xmp_sync: bool,
+    settings: &AppSettings,
+) -> Vec<ImageFile> {
+    let modified = fs::metadata(path_buf)
+        .ok()
+        .and_then(|m| m.modified().ok())
+        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+
+    let is_cloud_placeholder = is_cloud_placeholder(path_buf);
+
+    let mut file_results = Vec::with_capacity(sidecars.len());
+
+    for copy_id_opt in sidecars {
+        let (virtual_path, is_virtual_copy, sidecar_filename) = match copy_id_opt {
+            Some(id) => (
+                format!("{}?vc={}", path_str, id),
+                true,
+                format!("{}.{}.rrdata", file_name, id),
+            ),
+            None => (path_str.to_string(), false, format!("{}.rrdata", file_name)),
+        };
+
+        let sidecar_path = path_buf.with_file_name(sidecar_filename);
+
+        let xmp_is_placeholder = enable_xmp_sync
+            && resolve_xmp_path(path_buf)
+                .is_some_and(|p| crate::file_management::is_cloud_placeholder(&p));
+
+        let (is_edited, tags, rating, flag) =
+            if crate::file_management::is_cloud_placeholder(&sidecar_path) || xmp_is_placeholder {
+                enqueue_metadata(
+                    app_handle,
+                    virtual_path.clone(),
+                    path_buf.to_path_buf(),
+                    sidecar_path.clone(),
+                );
+                (false, None, 0, 0)
+            } else {
+                resolve_image_metadata(path_buf, &sidecar_path, enable_xmp_sync, settings)
+            };
+
+        file_results.push(ImageFile {
+            path: virtual_path,
+            modified,
+            is_edited,
+            tags,
+            exif: None,
+            is_virtual_copy,
+            rating,
+            flag,
+            is_cloud_placeholder,
+        });
+    }
+
+    file_results
+}
+
 #[tauri::command]
 pub fn list_images_in_dir(path: String, app_handle: AppHandle) -> Result<Vec<ImageFile>, String> {
     let settings = load_settings(app_handle.clone()).unwrap_or_default();
@@ -417,23 +501,9 @@ pub fn list_images_in_dir(path: String, app_handle: AppHandle) -> Result<Vec<Ima
             .into_string()
             .unwrap_or_else(|os| os.to_string_lossy().into_owned());
 
-        if file_name.ends_with(".rrdata") {
-            let base = &file_name[..file_name.len() - 7];
-
-            let (source_filename, copy_id) =
-                if base.len() >= 7 && base.as_bytes()[base.len() - 7] == b'.' {
-                    let id = &base[base.len() - 6..];
-                    if id.chars().all(|c| matches!(c, '0'..='9' | 'a'..='f')) {
-                        (&base[..base.len() - 7], Some(id.to_string()))
-                    } else {
-                        (base, None)
-                    }
-                } else {
-                    (base, None)
-                };
-
+        if let Some((source_filename, copy_id)) = parse_sidecar_filename(&file_name) {
             sidecars_by_filename
-                .entry(source_filename.to_string())
+                .entry(source_filename)
                 .or_default()
                 .push(copy_id);
         } else if is_supported_image_file(&file_name) {
@@ -455,62 +525,15 @@ pub fn list_images_in_dir(path: String, app_handle: AppHandle) -> Result<Vec<Ima
     let result_list: Vec<ImageFile> = tasks
         .into_par_iter()
         .flat_map(|(path_str, file_name, path_buf, sidecars)| {
-            let modified = fs::metadata(&path_buf)
-                .ok()
-                .and_then(|m| m.modified().ok())
-                .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
-                .map(|d| d.as_secs())
-                .unwrap_or(0);
-
-            let is_cloud_placeholder = is_cloud_placeholder(&path_buf);
-
-            let mut file_results = Vec::with_capacity(sidecars.len());
-
-            for copy_id_opt in sidecars {
-                let (virtual_path, is_virtual_copy, sidecar_filename) = match copy_id_opt {
-                    Some(id) => (
-                        format!("{}?vc={}", path_str, id),
-                        true,
-                        format!("{}.{}.rrdata", file_name, id),
-                    ),
-                    None => (path_str.clone(), false, format!("{}.rrdata", file_name)),
-                };
-
-                let sidecar_path = path_buf.with_file_name(sidecar_filename);
-
-                let xmp_is_placeholder = enable_xmp_sync
-                    && resolve_xmp_path(&path_buf)
-                        .is_some_and(|p| crate::file_management::is_cloud_placeholder(&p));
-
-                let (is_edited, tags, rating, flag) =
-                    if crate::file_management::is_cloud_placeholder(&sidecar_path)
-                        || xmp_is_placeholder
-                    {
-                        enqueue_metadata(
-                            &app_handle,
-                            virtual_path.clone(),
-                            path_buf.clone(),
-                            sidecar_path.clone(),
-                        );
-                        (false, None, 0, 0)
-                    } else {
-                        resolve_image_metadata(&path_buf, &sidecar_path, enable_xmp_sync, &settings)
-                    };
-
-                file_results.push(ImageFile {
-                    path: virtual_path,
-                    modified,
-                    is_edited,
-                    tags,
-                    exif: None,
-                    is_virtual_copy,
-                    rating,
-                    flag,
-                    is_cloud_placeholder,
-                });
-            }
-
-            file_results
+            build_image_files(
+                &app_handle,
+                &path_str,
+                &file_name,
+                &path_buf,
+                sidecars,
+                enable_xmp_sync,
+                &settings,
+            )
         })
         .collect();
 
@@ -537,19 +560,7 @@ pub fn list_images_recursive(
         }
 
         let file_name = entry_path.file_name().unwrap_or_default().to_string_lossy();
-        if let Some(base) = file_name.strip_suffix(".rrdata") {
-            let (source_filename, copy_id) =
-                if base.len() >= 7 && base.as_bytes()[base.len() - 7] == b'.' {
-                    let id = &base[base.len() - 6..];
-                    if id.chars().all(|c| matches!(c, '0'..='9' | 'a'..='f')) {
-                        (&base[..base.len() - 7], Some(id.to_string()))
-                    } else {
-                        (base, None)
-                    }
-                } else {
-                    (base, None)
-                };
-
+        if let Some((source_filename, copy_id)) = parse_sidecar_filename(&file_name) {
             if let Some(parent) = entry_path.parent() {
                 sidecars_by_path
                     .entry(parent.join(source_filename))
@@ -580,62 +591,15 @@ pub fn list_images_recursive(
     let result_list: Vec<ImageFile> = tasks
         .into_par_iter()
         .flat_map(|(path_str, file_name, path_buf, sidecars)| {
-            let modified = fs::metadata(&path_buf)
-                .ok()
-                .and_then(|m| m.modified().ok())
-                .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
-                .map(|d| d.as_secs())
-                .unwrap_or(0);
-
-            let is_cloud_placeholder = is_cloud_placeholder(&path_buf);
-
-            let mut file_results = Vec::with_capacity(sidecars.len());
-
-            for copy_id_opt in sidecars {
-                let (virtual_path, is_virtual_copy, sidecar_filename) = match copy_id_opt {
-                    Some(id) => (
-                        format!("{}?vc={}", path_str, id),
-                        true,
-                        format!("{}.{}.rrdata", file_name, id),
-                    ),
-                    None => (path_str.clone(), false, format!("{}.rrdata", file_name)),
-                };
-
-                let sidecar_path = path_buf.with_file_name(sidecar_filename);
-
-                let xmp_is_placeholder = enable_xmp_sync
-                    && resolve_xmp_path(&path_buf)
-                        .is_some_and(|p| crate::file_management::is_cloud_placeholder(&p));
-
-                let (is_edited, tags, rating, flag) =
-                    if crate::file_management::is_cloud_placeholder(&sidecar_path)
-                        || xmp_is_placeholder
-                    {
-                        enqueue_metadata(
-                            &app_handle,
-                            virtual_path.clone(),
-                            path_buf.clone(),
-                            sidecar_path.clone(),
-                        );
-                        (false, None, 0, 0)
-                    } else {
-                        resolve_image_metadata(&path_buf, &sidecar_path, enable_xmp_sync, &settings)
-                    };
-
-                file_results.push(ImageFile {
-                    path: virtual_path,
-                    modified,
-                    is_edited,
-                    tags,
-                    exif: None,
-                    is_virtual_copy,
-                    rating,
-                    flag,
-                    is_cloud_placeholder,
-                });
-            }
-
-            file_results
+            build_image_files(
+                &app_handle,
+                &path_str,
+                &file_name,
+                &path_buf,
+                sidecars,
+                enable_xmp_sync,
+                &settings,
+            )
         })
         .collect();
 
