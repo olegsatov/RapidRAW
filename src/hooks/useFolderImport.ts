@@ -5,11 +5,26 @@ import { useSettingsStore } from '../store/useSettingsStore';
 import { folderJobKey, useFolderImportStore, type FolderImportJob } from '../store/useFolderImportStore';
 import { LibraryViewMode } from '../components/ui/AppProperties';
 
-// The backend canonicalizes folder paths (and trims trailing separators)
-// before keying its job map, and the folder-import-* event listeners key the
-// store by those normalized paths. `currentFolderPath` comes from the folder
-// tree and is not canonicalized, so look up the exact key first and fall back
-// to a trailing-separator-insensitive match.
+// The start/sync invokes return the backend's canonical job key
+// ("path|recursive", path normalized by normalize_folder_path). When it
+// differs from the optimistic raw-path key, re-home the job so the optimistic
+// entry does not shadow the real one the folder-import-* event listeners
+// update. Clearing first and relying on startJob's no-op-if-exists keeps any
+// state listeners already wrote under the canonical key.
+function rehomeJob(returnedKey: string, optimisticKey: string, recursive: boolean, kind?: 'import' | 'sync') {
+  if (returnedKey === optimisticKey) {
+    return;
+  }
+  const store = useFolderImportStore.getState();
+  store.clearJob(optimisticKey);
+  const separator = returnedKey.lastIndexOf('|');
+  const canonicalPath = separator > -1 ? returnedKey.substring(0, separator) : returnedKey;
+  store.startJob(canonicalPath, recursive, kind);
+}
+
+// Jobs are keyed by the canonical path the invokes return (see rehomeJob), so
+// an exact lookup normally hits. The trailing-separator-insensitive fallback
+// remains for entries created from event payloads before the invoke resolved.
 function findJobForFolder(
   jobs: Record<string, FolderImportJob>,
   path: string,
@@ -26,31 +41,34 @@ function findJobForFolder(
 export function useFolderImport() {
   const openFolder = useCallback(async (path: string, recursive: boolean) => {
     const store = useFolderImportStore.getState();
+    const optimisticKey = folderJobKey(path, recursive);
     store.startJob(path, recursive, 'import');
     try {
-      // Returns the job key immediately; progress and file batches arrive as
-      // folder-import-* events.
+      // Returns the canonical job key immediately; progress and file batches
+      // arrive as folder-import-* events.
       // TODO(Task 14): for an already-cataloged folder the backend emits
       // folder-import-catalog-ready and runs no job, so no batches ever
       // arrive — load the file list from the catalog there instead.
-      await invoke<string>('start_folder_import', { path, recursive });
+      const key = await invoke<string>('start_folder_import', { path, recursive });
+      rehomeJob(key, optimisticKey, recursive, 'import');
     } catch (err) {
-      store.failJob(folderJobKey(path, recursive), String(err));
+      store.failJob(optimisticKey, String(err));
       console.error('Failed to start folder import:', err);
     }
   }, []);
 
   const syncFolder = useCallback(async (path: string, recursive: boolean) => {
     const store = useFolderImportStore.getState();
-    const key = folderJobKey(path, recursive);
+    const optimisticKey = folderJobKey(path, recursive);
     // A sync re-emits the folder's files, so drop any previous job instead of
     // appending duplicates to its file list.
-    store.clearJob(key);
+    store.clearJob(optimisticKey);
     store.startJob(path, recursive, 'sync');
     try {
-      await invoke<string>('sync_folder', { path, recursive });
+      const key = await invoke<string>('sync_folder', { path, recursive });
+      rehomeJob(key, optimisticKey, recursive, 'sync');
     } catch (err) {
-      store.failJob(key, String(err));
+      store.failJob(optimisticKey, String(err));
       console.error('Failed to sync folder:', err);
     }
   }, []);
