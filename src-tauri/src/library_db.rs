@@ -3,6 +3,8 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use tauri::{AppHandle, Manager};
 
+use crate::file_management::ImageFile;
+
 const CURRENT_SCHEMA_VERSION: i32 = 1;
 
 fn db_path(app_handle: &AppHandle) -> Result<PathBuf, String> {
@@ -440,6 +442,57 @@ fn get_all_file_paths_in_conn(
         .map_err(|e| e.to_string())?;
     rows.collect::<Result<Vec<_>, _>>()
         .map_err(|e| e.to_string())
+}
+
+/// Loads one page of a folder's cataloged files as fully-populated
+/// `ImageFile`s by deserializing each row's `metadata_json` (which the EXIF
+/// phase has already merged `exif` into). Rows are ordered by `name`
+/// (case-insensitive via the column's COLLATE NOCASE) with the row id as a
+/// tiebreaker — virtual-copy rows share the base row's `name` — so paging is
+/// deterministic. A row whose `metadata_json` fails to deserialize is skipped
+/// with a log line: one corrupt row must not blank the whole folder listing.
+pub fn load_folder_files(
+    app_handle: &AppHandle,
+    path: &str,
+    recursive: bool,
+    offset: usize,
+    limit: usize,
+) -> Result<Vec<ImageFile>, String> {
+    let conn = open_connection(app_handle)?;
+    load_folder_files_in_conn(&conn, path, recursive, offset, limit)
+}
+
+fn load_folder_files_in_conn(
+    conn: &Connection,
+    path: &str,
+    recursive: bool,
+    offset: usize,
+    limit: usize,
+) -> Result<Vec<ImageFile>, String> {
+    let mut stmt = conn
+        .prepare(
+            "SELECT f.metadata_json FROM files f
+             JOIN folders fo ON fo.id = f.folder_id
+             WHERE fo.path = ?1 AND fo.recursive = ?2
+             ORDER BY f.name, f.id
+             LIMIT ?3 OFFSET ?4",
+        )
+        .map_err(|e| e.to_string())?;
+    let rows = stmt
+        .query_map(
+            params![path, recursive as i32, limit as i64, offset as i64],
+            |row| row.get::<_, String>(0),
+        )
+        .map_err(|e| e.to_string())?;
+    let mut files = Vec::new();
+    for row in rows {
+        let json = row.map_err(|e| e.to_string())?;
+        match serde_json::from_str::<ImageFile>(&json) {
+            Ok(file) => files.push(file),
+            Err(e) => log::warn!("skipping catalog row with corrupt metadata_json: {}", e),
+        }
+    }
+    Ok(files)
 }
 
 /// Sets the `exif` field of the serialized `ImageFile` stored in
@@ -1381,5 +1434,72 @@ mod tests {
             )
             .unwrap();
         assert_eq!(stamped, Some(1_700_000_000));
+    }
+
+    fn image_row(name: &str, exif: Option<HashMap<String, String>>) -> FileRowInput {
+        let image = ImageFile {
+            path: format!("/tmp/x/{}", name),
+            modified: 100,
+            is_edited: false,
+            rating: 0,
+            flag: 0,
+            tags: None,
+            exif,
+            is_virtual_copy: false,
+            is_cloud_placeholder: false,
+        };
+        let mut row = sample_file();
+        row.path = image.path.clone();
+        row.name = name.to_string();
+        row.metadata_json = serde_json::to_string(&image).unwrap();
+        row
+    }
+
+    #[test]
+    fn test_load_folder_files_pages_in_name_order_and_skips_corrupt_rows() {
+        let (mut conn, folder_id) = setup_conn();
+        let exif = HashMap::from([("ISO".to_string(), "400".to_string())]);
+        upsert_files_in_conn(
+            &mut conn,
+            folder_id,
+            &[
+                image_row("b.jpg", None),
+                image_row("A.jpg", Some(exif)),
+                image_row("c.jpg", None),
+            ],
+        )
+        .unwrap();
+        // A row whose metadata_json is not a valid serialized ImageFile.
+        conn.execute(
+            "INSERT INTO files(folder_id, path, name, metadata_json)
+             VALUES (?1, '/tmp/x/z.jpg', 'z.jpg', 'not json')",
+            params![folder_id],
+        )
+        .unwrap();
+
+        // Page size 2: ordering is by name COLLATE NOCASE (id tiebreaker).
+        let page1 = load_folder_files_in_conn(&conn, "/tmp/x", false, 0, 2).unwrap();
+        let page2 = load_folder_files_in_conn(&conn, "/tmp/x", false, 2, 2).unwrap();
+        let page3 = load_folder_files_in_conn(&conn, "/tmp/x", false, 4, 2).unwrap();
+        let names = |files: &[ImageFile]| {
+            files
+                .iter()
+                .map(|f| f.path.rsplit('/').next().unwrap().to_string())
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(names(&page1), vec!["A.jpg", "b.jpg"]);
+        // z.jpg's corrupt JSON is skipped, not an error.
+        assert_eq!(names(&page2), vec!["c.jpg"]);
+        assert!(page3.is_empty());
+
+        // Deserialized rows carry the EXIF merged by the EXIF phase.
+        assert_eq!(page1[0].exif.as_ref().unwrap().get("ISO").unwrap(), "400");
+
+        // The recursive variant of the same path is a different folder.
+        assert!(
+            load_folder_files_in_conn(&conn, "/tmp/x", true, 0, 10)
+                .unwrap()
+                .is_empty()
+        );
     }
 }

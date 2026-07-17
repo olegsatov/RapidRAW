@@ -2,10 +2,13 @@ import { useEffect, useRef } from 'react';
 import { listen } from '@tauri-apps/api/event';
 import { convertFileSrc } from '@tauri-apps/api/core';
 import { Status } from '../components/ui/ExportImportProperties';
+import { LibraryViewMode } from '../components/ui/AppProperties';
 import { useProcessStore } from '../store/useProcessStore';
 import { useEditorStore } from '../store/useEditorStore';
 import { useUIStore } from '../store/useUIStore';
 import { useLibraryStore } from '../store/useLibraryStore';
+import { useSettingsStore } from '../store/useSettingsStore';
+import { loadFolderFromCatalog } from './useFolderImport';
 import {
   folderJobKey,
   useFolderImportStore,
@@ -412,10 +415,30 @@ export function useTauriListeners({
         }
       }),
       listen<FolderImportCompletePayload>('folder-import-complete', (event) => {
-        if (isEffectActive) {
-          const { path, recursive, errors } = event.payload;
-          useFolderImportStore.getState().completeJob(folderJobKey(path, recursive), errors);
+        if (!isEffectActive) return;
+        const { path, recursive, errors } = event.payload;
+        const key = folderJobKey(path, recursive);
+        useFolderImportStore.getState().completeJob(key, errors);
+        // Batch files streamed during the import carry exif: null (phase 2
+        // writes EXIF only to the catalog). When the completed folder is the
+        // one on screen, reload its catalog pages so imageList gains exif for
+        // sorting and the metadata columns; background folders keep their
+        // batch files. On failure the existing files stay as they are.
+        const currentFolder = useLibraryStore.getState().currentFolderPath;
+        const viewRecursive = useSettingsStore.getState().appSettings?.libraryViewMode === LibraryViewMode.Recursive;
+        const isCurrentFolder =
+          currentFolder !== null &&
+          recursive === viewRecursive &&
+          currentFolder.replace(/[/\\]+$/, '') === path.replace(/[/\\]+$/, '');
+        if (!isCurrentFolder) {
+          return;
         }
+        loadFolderFromCatalog(path, recursive)
+          .then((files) => {
+            if (!isEffectActive || files.length === 0) return;
+            useFolderImportStore.getState().setFiles(key, files);
+          })
+          .catch((err) => console.error('Failed to refresh folder files from catalog:', err));
       }),
       listen<FolderImportEventPayload>('folder-import-cancelled', (event) => {
         if (isEffectActive) {
@@ -429,8 +452,39 @@ export function useTauriListeners({
           useFolderImportStore.getState().failJob(folderJobKey(path, recursive), message);
         }
       }),
-      listen<FolderImportCatalogReadyPayload>('folder-import-catalog-ready', () => {
-        // TODO(Task 14): load files from catalog
+      listen<FolderImportCatalogReadyPayload>('folder-import-catalog-ready', (event) => {
+        if (!isEffectActive) return;
+        const { path, recursive } = event.payload;
+        const key = folderJobKey(path, recursive);
+        // The backend found the folder already cataloged and runs no job, so
+        // no batches ever arrive: page the full listing out of the catalog
+        // instead. Pages stream into the job (mirroring to imageList as they
+        // land), then the optimistic job is resolved — it would sit in phase
+        // 'scan' forever otherwise. total stays 0 (unknown); scanned counts
+        // the files loaded so far. startJob first: this event fires before
+        // the start_folder_import invoke resolves, so when the payload's
+        // canonical path differs from the optimistic raw-path key no job
+        // exists here yet (startJob no-ops when one does).
+        useFolderImportStore.getState().startJob(path, recursive);
+        loadFolderFromCatalog(path, recursive, (page, scanned) => {
+          if (!isEffectActive) return;
+          useFolderImportStore.getState().appendBatch(key, page, scanned, 0);
+        })
+          .then((files) => {
+            if (!isEffectActive) return;
+            const store = useFolderImportStore.getState();
+            if (files.length > 0) {
+              store.completeJob(key, 0);
+            } else {
+              // An empty catalog means nothing to show; drop the job.
+              store.clearJob(key);
+            }
+          })
+          .catch((err) => {
+            if (!isEffectActive) return;
+            console.error('Failed to load folder files from catalog:', err);
+            useFolderImportStore.getState().clearJob(key);
+          });
       }),
     ];
 

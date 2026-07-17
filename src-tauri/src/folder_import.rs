@@ -264,6 +264,22 @@ pub fn locate_folder(
     Ok(())
 }
 
+/// Returns one page of a cataloged folder's files as fully-populated
+/// `ImageFile`s (EXIF included once the EXIF phase has run). The frontend
+/// pages through these on `folder-import-catalog-ready` to restore a folder's
+/// listing without a rescan, and on `folder-import-complete` to refresh EXIF.
+#[tauri::command]
+pub fn load_folder_files(
+    app_handle: AppHandle,
+    path: String,
+    recursive: bool,
+    offset: usize,
+    limit: usize,
+) -> Result<Vec<ImageFile>, String> {
+    let normalized = normalize_folder_path(&path);
+    library_db::load_folder_files(&app_handle, &normalized, recursive, offset, limit)
+}
+
 fn folder_key(path: &str, recursive: bool) -> String {
     format!("{}|{}", path, recursive)
 }

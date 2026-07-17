@@ -2581,6 +2581,7 @@ pub fn run() {
             folder_import::cancel_folder_import,
             folder_import::sync_folder,
             folder_import::locate_folder,
+            folder_import::load_folder_files,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
