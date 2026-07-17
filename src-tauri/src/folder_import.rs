@@ -1050,6 +1050,18 @@ async fn run_sync_job(
         return;
     }
 
+    // Re-check the root after the walk: if the volume dropped mid-sync, the
+    // walk returned empty/partial and the delta would delete every row.
+    if !Path::new(&path).is_dir() {
+        emit_error(
+            &app_handle,
+            &path,
+            recursive,
+            "folder does not exist or is not readable",
+        );
+        return;
+    }
+
     let total = entries.len();
     let _ = app_handle.emit(
         "folder-import-scan",
