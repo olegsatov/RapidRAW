@@ -3221,7 +3221,11 @@ pub fn get_cached_or_generate_thumbnail_image(
     let settings = load_settings(app_handle.clone()).unwrap_or_default();
     let target_width = settings.thumbnail_resolution.unwrap_or(720);
 
-    if let Some(cache_hash) = get_cache_key_hash(path_str, None) {
+    // Cataloged files use the stable file_id key so reads hit the entries
+    // written by the import phase / thumbnail workers; uncataloged files
+    // fall back to path-keyed.
+    let file_id = lookup_catalog_file_id(app_handle, path_str);
+    if let Some(cache_hash) = get_cache_key_hash(path_str, file_id) {
         let cache_filename = format!("{}.jpg", cache_hash);
         let cache_path = thumb_cache_dir.join(cache_filename);
 

@@ -115,6 +115,7 @@ pub fn start_folder_import(
 
 #[tauri::command]
 pub fn cancel_folder_import(
+    app_handle: AppHandle,
     state: State<AppState>,
     path: String,
     recursive: bool,
@@ -131,7 +132,11 @@ pub fn cancel_folder_import(
     };
     if let Some(job) = handle {
         job.cancel.store(true, Ordering::SeqCst);
+        // The abort kills the job task, so the cooperative emit_cancelled
+        // checks inside run_import_job never run — emit here, with the
+        // normalized path the frontend store keys on.
         job.handle.abort();
+        emit_cancelled(&app_handle, &normalized);
     }
     Ok(())
 }
