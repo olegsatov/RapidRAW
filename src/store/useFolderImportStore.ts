@@ -39,6 +39,49 @@ interface FolderImportState {
 // recursive jobs for the same folder do not collide.
 export const folderJobKey = (path: string, recursive: boolean): string => `${path}|${recursive}`;
 
+// Payloads of the backend `folder-import-*` event stream (see
+// src-tauri/src/folder_import.rs). Every payload carries path + recursive so
+// listeners rebuild the job key with folderJobKey.
+export interface FolderImportEventPayload {
+  path: string;
+  recursive: boolean;
+}
+
+export interface FolderImportStartedPayload extends FolderImportEventPayload {
+  kind: 'import' | 'sync';
+}
+
+export interface FolderImportScanPayload extends FolderImportEventPayload {
+  discovered: number;
+}
+
+export interface FolderImportBatchPayload extends FolderImportEventPayload {
+  files: ImageFile[];
+  scanned: number;
+  total: number;
+}
+
+export interface FolderImportPhaseStartPayload extends FolderImportEventPayload {
+  total: number;
+}
+
+export interface FolderImportPhaseProgressPayload extends FolderImportEventPayload {
+  current: number;
+  total: number;
+}
+
+export interface FolderImportCompletePayload extends FolderImportEventPayload {
+  errors: number;
+}
+
+export interface FolderImportErrorPayload extends FolderImportEventPayload {
+  message: string;
+}
+
+export interface FolderImportCatalogReadyPayload extends FolderImportEventPayload {
+  folderId: number;
+}
+
 export const useFolderImportStore = create<FolderImportState>((set) => {
   const updateJob = (key: string, updater: (job: FolderImportJob) => Partial<FolderImportJob>) =>
     set((state) => {

@@ -6,7 +6,19 @@ import { useProcessStore } from '../store/useProcessStore';
 import { useEditorStore } from '../store/useEditorStore';
 import { useUIStore } from '../store/useUIStore';
 import { useLibraryStore } from '../store/useLibraryStore';
-import { folderJobKey, useFolderImportStore } from '../store/useFolderImportStore';
+import {
+  folderJobKey,
+  useFolderImportStore,
+  type FolderImportBatchPayload,
+  type FolderImportCatalogReadyPayload,
+  type FolderImportCompletePayload,
+  type FolderImportErrorPayload,
+  type FolderImportEventPayload,
+  type FolderImportPhaseProgressPayload,
+  type FolderImportPhaseStartPayload,
+  type FolderImportScanPayload,
+  type FolderImportStartedPayload,
+} from '../store/useFolderImportStore';
 
 interface TauriListenerProps {
   refreshAllFolderTrees: () => void;
@@ -357,67 +369,67 @@ export function useTauriListeners({
           }));
         }
       }),
-      listen('folder-import-started', (event: any) => {
+      listen<FolderImportStartedPayload>('folder-import-started', (event) => {
         if (isEffectActive) {
           const { path, recursive, kind } = event.payload;
           useFolderImportStore.getState().startJob(path, recursive, kind);
         }
       }),
-      listen('folder-import-scan', (event: any) => {
+      listen<FolderImportScanPayload>('folder-import-scan', (event) => {
         if (isEffectActive) {
           const { path, recursive, discovered } = event.payload;
           useFolderImportStore.getState().setScanProgress(folderJobKey(path, recursive), discovered);
         }
       }),
-      listen('folder-import-batch', (event: any) => {
+      listen<FolderImportBatchPayload>('folder-import-batch', (event) => {
         if (isEffectActive) {
           const { path, recursive, files, scanned, total } = event.payload;
           useFolderImportStore.getState().appendBatch(folderJobKey(path, recursive), files, scanned, total);
         }
       }),
-      listen('folder-import-exif-started', (event: any) => {
+      listen<FolderImportPhaseStartPayload>('folder-import-exif-started', (event) => {
         if (isEffectActive) {
           const { path, recursive, total } = event.payload;
           useFolderImportStore.getState().setExifProgress(folderJobKey(path, recursive), 0, total);
         }
       }),
-      listen('folder-import-exif-progress', (event: any) => {
+      listen<FolderImportPhaseProgressPayload>('folder-import-exif-progress', (event) => {
         if (isEffectActive) {
           const { path, recursive, current, total } = event.payload;
           useFolderImportStore.getState().setExifProgress(folderJobKey(path, recursive), current, total);
         }
       }),
-      listen('folder-import-thumbs-started', (event: any) => {
+      listen<FolderImportPhaseStartPayload>('folder-import-thumbs-started', (event) => {
         if (isEffectActive) {
           const { path, recursive, total } = event.payload;
           useFolderImportStore.getState().setThumbsProgress(folderJobKey(path, recursive), 0, total);
         }
       }),
-      listen('folder-import-thumbs-progress', (event: any) => {
+      listen<FolderImportPhaseProgressPayload>('folder-import-thumbs-progress', (event) => {
         if (isEffectActive) {
           const { path, recursive, current, total } = event.payload;
           useFolderImportStore.getState().setThumbsProgress(folderJobKey(path, recursive), current, total);
         }
       }),
-      listen('folder-import-complete', (event: any) => {
+      listen<FolderImportCompletePayload>('folder-import-complete', (event) => {
         if (isEffectActive) {
           const { path, recursive, errors } = event.payload;
           useFolderImportStore.getState().completeJob(folderJobKey(path, recursive), errors);
         }
       }),
-      listen('folder-import-cancelled', (event: any) => {
+      listen<FolderImportEventPayload>('folder-import-cancelled', (event) => {
         if (isEffectActive) {
           const { path, recursive } = event.payload;
           useFolderImportStore.getState().cancelJob(folderJobKey(path, recursive));
         }
       }),
-      listen('folder-import-error', (event: any) => {
+      listen<FolderImportErrorPayload>('folder-import-error', (event) => {
         if (isEffectActive) {
           const { path, recursive, message } = event.payload;
           useFolderImportStore.getState().failJob(folderJobKey(path, recursive), message);
         }
       }),
-      listen('folder-import-catalog-ready', () => {
+      listen<FolderImportCatalogReadyPayload>('folder-import-catalog-ready', () => {
         // TODO(Task 14): load files from catalog
       }),
     ];
