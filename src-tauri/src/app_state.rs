@@ -140,6 +140,11 @@ impl MetadataManager {
 
 pub type TransformedImageCache = (u64, Arc<DynamicImage>, (f32, f32));
 
+pub struct FolderImportHandle {
+    pub cancel: Arc<AtomicBool>,
+    pub handle: JoinHandle<()>,
+}
+
 pub struct AppState {
     pub window_setup_complete: AtomicBool,
     pub gpu_crash_flag_path: Mutex<Option<PathBuf>>,
@@ -151,6 +156,7 @@ pub struct AppState {
     pub ai_state: Mutex<Option<AiState>>,
     pub ai_init_lock: TokioMutex<()>,
     pub export_task_handle: Mutex<Option<JoinHandle<()>>>,
+    pub folder_import_jobs: Arc<Mutex<HashMap<String, FolderImportHandle>>>,
     pub hdr_result: Arc<Mutex<Option<DynamicImage>>>,
     pub panorama_result: Arc<Mutex<Option<DynamicImage>>>,
     pub denoise_result: Arc<Mutex<Option<DynamicImage>>>,

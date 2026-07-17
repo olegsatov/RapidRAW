@@ -2438,6 +2438,7 @@ pub fn run() {
             ai_state: Mutex::new(None),
             ai_init_lock: TokioMutex::new(()),
             export_task_handle: Mutex::new(None),
+            folder_import_jobs: Arc::new(Mutex::new(HashMap::new())),
             hdr_result: Arc::new(Mutex::new(None)),
             panorama_result: Arc::new(Mutex::new(None)),
             denoise_result: Arc::new(Mutex::new(None)),
