@@ -116,13 +116,20 @@ pub fn init_catalog(app_handle: &AppHandle) -> Result<(), String> {
 
 pub fn upsert_folder(app_handle: &AppHandle, path: &str, recursive: bool) -> Result<i64, String> {
     let conn = open_connection(app_handle)?;
-    conn.execute(
+    upsert_folder_in_conn(&conn, path, recursive)
+}
+
+fn upsert_folder_in_conn(conn: &Connection, path: &str, recursive: bool) -> Result<i64, String> {
+    // RETURNING id: on the conflict-update path last_insert_rowid() is not
+    // set to the conflicting row (it returns 0 on a fresh connection).
+    conn.query_row(
         "INSERT INTO folders(path, recursive) VALUES (?1, ?2)
-         ON CONFLICT(path, recursive) DO UPDATE SET path=excluded.path",
+         ON CONFLICT(path, recursive) DO UPDATE SET path=excluded.path
+         RETURNING id",
         params![path, recursive as i32],
+        |row| row.get(0),
     )
-    .map_err(|e| e.to_string())?;
-    Ok(conn.last_insert_rowid())
+    .map_err(|e| e.to_string())
 }
 
 pub fn get_folder_id(
@@ -300,6 +307,22 @@ mod tests {
         .unwrap();
         let folder_id = conn.last_insert_rowid();
         (conn, folder_id)
+    }
+
+    #[test]
+    fn test_upsert_folder_returns_stable_id_on_conflict() {
+        let conn = Connection::open_in_memory().unwrap();
+        migrate(&conn).unwrap();
+
+        let a1 = upsert_folder_in_conn(&conn, "/tmp/a", false).unwrap();
+        let b = upsert_folder_in_conn(&conn, "/tmp/b", false).unwrap();
+        let a2 = upsert_folder_in_conn(&conn, "/tmp/a", false).unwrap();
+
+        assert_ne!(a1, b);
+        assert_eq!(a1, a2);
+        // Distinct (path, recursive) pairs get distinct rows.
+        let a_recursive = upsert_folder_in_conn(&conn, "/tmp/a", true).unwrap();
+        assert_ne!(a_recursive, a1);
     }
 
     #[test]

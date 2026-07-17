@@ -175,13 +175,21 @@ fn classify_entry(
 }
 
 /// Collects supported image files (grouped with their `.rrdata` sidecars),
-/// mirroring the grouping logic of the `list_images_*` commands.
-fn collect_image_paths(root: &str, recursive: bool) -> Result<Vec<ScanEntry>, String> {
+/// mirroring the grouping logic of the `list_images_*` commands. Stops early
+/// when `cancel` is set, returning what was found so far.
+fn collect_image_paths(
+    root: &str,
+    recursive: bool,
+    cancel: &Arc<AtomicBool>,
+) -> Result<Vec<ScanEntry>, String> {
     let mut images: Vec<PathBuf> = Vec::new();
     let mut sidecars_by_path: HashMap<PathBuf, Vec<Option<String>>> = HashMap::new();
 
     if recursive {
         for entry in WalkDir::new(root).into_iter().filter_map(Result::ok) {
+            if cancel.load(Ordering::Relaxed) {
+                break;
+            }
             let entry_path = entry.path();
             if !entry_path.is_file() {
                 continue;
@@ -193,6 +201,9 @@ fn collect_image_paths(root: &str, recursive: bool) -> Result<Vec<ScanEntry>, St
             .map_err(|e| e.to_string())?
             .filter_map(Result::ok)
         {
+            if cancel.load(Ordering::Relaxed) {
+                break;
+            }
             classify_entry(&entry.path(), &mut images, &mut sidecars_by_path);
         }
     }
@@ -330,6 +341,8 @@ async fn run_import_job(
     cancel: Arc<AtomicBool>,
 ) {
     // Phase 1: scan the folder and write every file to the catalog.
+    // Note: this phase only upserts. Rows for files deleted from disk stay in
+    // the catalog until the sync/prune job (Task 9) removes them.
     let folder_id = match library_db::upsert_folder(&app_handle, &path, recursive) {
         Ok(id) => id,
         Err(e) => {
@@ -340,7 +353,8 @@ async fn run_import_job(
 
     let entries = match tauri::async_runtime::spawn_blocking({
         let path = path.clone();
-        move || collect_image_paths(&path, recursive)
+        let cancel = cancel.clone();
+        move || collect_image_paths(&path, recursive, &cancel)
     })
     .await
     {
@@ -354,6 +368,11 @@ async fn run_import_job(
             return;
         }
     };
+
+    // The walk may have stopped early on cancel; don't catalog a partial set.
+    if cancel.load(Ordering::SeqCst) {
+        return;
+    }
 
     let total = entries.len();
     let _ = app_handle.emit(
@@ -371,7 +390,7 @@ async fn run_import_job(
         }
         match process_scan_chunk(&app_handle, folder_id, chunk, &cancel).await {
             Ok(files) => {
-                scanned += chunk.len();
+                scanned += files.len();
                 let _ = app_handle.emit(
                     "folder-import-batch",
                     serde_json::json!({
@@ -382,7 +401,13 @@ async fn run_import_job(
                     }),
                 );
             }
-            Err(e) => emit_error(&app_handle, &path, &e),
+            // A chunk-level DB failure is almost always systemic; report it
+            // once and abort the scan rather than spamming one error per
+            // remaining chunk.
+            Err(e) => {
+                emit_error(&app_handle, &path, &e);
+                break;
+            }
         }
     }
 
@@ -415,7 +440,8 @@ mod tests {
     #[test]
     fn collect_flat_groups_sidecars_and_virtual_copies() {
         let dir = make_test_dir();
-        let entries = collect_image_paths(dir.path().to_str().unwrap(), false).unwrap();
+        let cancel = Arc::new(AtomicBool::new(false));
+        let entries = collect_image_paths(dir.path().to_str().unwrap(), false, &cancel).unwrap();
 
         assert_eq!(entries.len(), 2);
 
@@ -429,7 +455,8 @@ mod tests {
     #[test]
     fn collect_recursive_includes_subdirectories() {
         let dir = make_test_dir();
-        let entries = collect_image_paths(dir.path().to_str().unwrap(), true).unwrap();
+        let cancel = Arc::new(AtomicBool::new(false));
+        let entries = collect_image_paths(dir.path().to_str().unwrap(), true, &cancel).unwrap();
 
         assert_eq!(entries.len(), 3);
         let c = entries.iter().find(|e| e.file_name == "c.jpg").unwrap();
@@ -438,8 +465,17 @@ mod tests {
     }
 
     #[test]
+    fn collect_stops_early_when_cancelled() {
+        let dir = make_test_dir();
+        let cancel = Arc::new(AtomicBool::new(true));
+        let entries = collect_image_paths(dir.path().to_str().unwrap(), true, &cancel).unwrap();
+        assert!(entries.is_empty());
+    }
+
+    #[test]
     fn collect_missing_dir_is_an_error() {
-        let result = collect_image_paths("/nonexistent/path/that/does/not/exist", false);
+        let cancel = Arc::new(AtomicBool::new(false));
+        let result = collect_image_paths("/nonexistent/path/that/does/not/exist", false, &cancel);
         assert!(result.is_err());
     }
 }
