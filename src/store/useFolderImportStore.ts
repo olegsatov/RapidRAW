@@ -53,26 +53,32 @@ export const useFolderImportStore = create<FolderImportState>((set) => {
     jobs: {},
 
     startJob: (path, recursive, kind) =>
-      set((state) => ({
-        jobs: {
-          ...state.jobs,
-          [folderJobKey(path, recursive)]: {
-            path,
-            recursive,
-            kind,
-            phase: 'scan',
-            discovered: 0,
-            scanned: 0,
-            total: 0,
-            exifCurrent: 0,
-            exifTotal: 0,
-            thumbsCurrent: 0,
-            thumbsTotal: 0,
-            files: [],
-            errors: 0,
+      set((state) => {
+        const key = folderJobKey(path, recursive);
+        if (state.jobs[key]) {
+          return state;
+        }
+        return {
+          jobs: {
+            ...state.jobs,
+            [key]: {
+              path,
+              recursive,
+              kind,
+              phase: 'scan',
+              discovered: 0,
+              scanned: 0,
+              total: 0,
+              exifCurrent: 0,
+              exifTotal: 0,
+              thumbsCurrent: 0,
+              thumbsTotal: 0,
+              files: [],
+              errors: 0,
+            },
           },
-        },
-      })),
+        };
+      }),
 
     appendBatch: (key, files, scanned, total) =>
       updateJob(key, (job) => ({
