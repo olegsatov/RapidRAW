@@ -286,17 +286,50 @@ fn parse_exif_f32(value: Option<&String>) -> Option<f32> {
         .trim()
         .parse()
         .ok()
+        .filter(|v: &f32| v.is_finite())
 }
 
 fn parse_exif_shutter(value: Option<&String>) -> Option<f32> {
     let cleaned = clean_exif_str(value?).trim_end_matches(" s").trim();
-    if let Some((num, den)) = cleaned.split_once('/') {
+    let parsed = if let Some((num, den)) = cleaned.split_once('/') {
         let num: f32 = num.trim().parse().ok()?;
         let den: f32 = den.trim().parse().ok()?;
         (den != 0.0).then_some(num / den)
     } else {
         cleaned.parse().ok()
+    };
+    parsed.filter(|v: &f32| v.is_finite())
+}
+
+/// Parses a raw APEX value. The EXIF map stores `ShutterSpeedValue` and
+/// `ApertureValue` as unconverted APEX numbers (verified in both extraction
+/// paths): `"7"` / `"f/5.66"` from `extract_metadata` (RAW) and `"7 EV"` from
+/// kamadak-exif's `display_value().with_unit()` (non-RAW). Callers convert:
+/// shutter seconds = 2^-x, aperture f-number = 2^(x/2).
+fn parse_exif_apex(value: Option<&String>) -> Option<f32> {
+    clean_exif_str(value?)
+        .trim_start_matches("f/")
+        .trim_end_matches(" EV")
+        .trim()
+        .parse()
+        .ok()
+        .filter(|v: &f32| v.is_finite())
+}
+
+/// Normalizes `date_taken` to `YYYY-MM-DD HH:MM:SS`. The RAW extraction path
+/// already emits that format, but the non-RAW path stores the raw EXIF date
+/// `2024:05:01 12:30:00`; both must match or the `date_taken` index sorts
+/// mixed folders wrong.
+fn normalize_date_taken(value: Option<&String>) -> Option<String> {
+    let cleaned = clean_exif_str(value?);
+    if cleaned.is_empty() {
+        return None;
     }
+    Some(match cleaned.split_once(' ') {
+        // Only the date part carries colons; the time part keeps its own.
+        Some((date, time)) => format!("{} {}", date.replace(':', "-"), time),
+        None => cleaned.replace(':', "-"),
+    })
 }
 
 impl StructuredExif {
@@ -309,14 +342,21 @@ impl StructuredExif {
             })
         };
         StructuredExif {
-            date_taken: get_string(&["DateTimeOriginal", "CreateDate"]),
+            date_taken: normalize_date_taken(get(&["DateTimeOriginal", "CreateDate"])),
             iso: parse_exif_u32(get(&[
                 "ISOSpeed",
                 "PhotographicSensitivity",
                 "ISOSpeedRatings",
             ])),
-            aperture: parse_exif_f32(get(&["FNumber", "ApertureValue"])),
-            shutter: parse_exif_shutter(get(&["ExposureTime", "ShutterSpeedValue"])),
+            // Prefer the true f-number/seconds keys; the `ApertureValue`/
+            // `ShutterSpeedValue` fallbacks are raw APEX (see parse_exif_apex)
+            // and must be converted, not stored as-is.
+            aperture: parse_exif_f32(get(&["FNumber"])).or_else(|| {
+                parse_exif_apex(get(&["ApertureValue"])).map(|apex| 2f32.powf(apex / 2.0))
+            }),
+            shutter: parse_exif_shutter(get(&["ExposureTime"])).or_else(|| {
+                parse_exif_apex(get(&["ShutterSpeedValue"])).map(|apex| 2f32.powf(-apex))
+            }),
             focal_length: parse_exif_f32(get(&["FocalLength"])),
             focal_length_35: parse_exif_f32(get(&["FocalLengthIn35mmFilm"])),
             make: get_string(&["Make"]),
@@ -365,6 +405,11 @@ fn merge_exif_into_metadata_json(
     metadata_json: &str,
     exif_map: &HashMap<String, String>,
 ) -> String {
+    // No EXIF: leave the stored ImageFile's `exif: null` alone — inserting an
+    // empty object would deserialize as `Some({})` on the frontend.
+    if exif_map.is_empty() {
+        return metadata_json.to_string();
+    }
     let Ok(mut value) = serde_json::from_str::<serde_json::Value>(metadata_json) else {
         return metadata_json.to_string();
     };
@@ -749,6 +794,72 @@ mod tests {
     }
 
     #[test]
+    fn test_apex_fallbacks_are_converted_to_real_units() {
+        // ShutterSpeedValue/ApertureValue are stored as raw APEX numbers:
+        // bare/"f/"-prefixed from the RAW path, " EV"-suffixed from the
+        // non-RAW path. 7 EV = 1/128 s, 5.66 APEX = 2^(5.66/2) ≈ f/7.1.
+        let expected_aperture = 2f32.powf(5.66 / 2.0);
+        for (shutter_value, aperture_value) in [("7", "f/5.66"), ("7 EV", "5.66 EV")] {
+            let map = HashMap::from([
+                ("ShutterSpeedValue".to_string(), shutter_value.to_string()),
+                ("ApertureValue".to_string(), aperture_value.to_string()),
+            ]);
+            let structured = StructuredExif::from_exif_map(&map);
+            assert!((structured.shutter.unwrap() - 1.0 / 128.0).abs() < 1e-6);
+            assert!((structured.aperture.unwrap() - expected_aperture).abs() < 1e-6);
+        }
+
+        // The true-units keys win when both are present.
+        let map = HashMap::from([
+            ("ExposureTime".to_string(), "1/125 s".to_string()),
+            ("ShutterSpeedValue".to_string(), "99".to_string()),
+            ("FNumber".to_string(), "f/2.8".to_string()),
+            ("ApertureValue".to_string(), "99".to_string()),
+        ]);
+        let structured = StructuredExif::from_exif_map(&map);
+        assert!((structured.shutter.unwrap() - 1.0 / 125.0).abs() < 1e-9);
+        assert_eq!(structured.aperture, Some(2.8));
+    }
+
+    #[test]
+    fn test_date_taken_colon_format_is_normalized() {
+        // The non-RAW path stores the raw EXIF date with colons.
+        let map = HashMap::from([(
+            "DateTimeOriginal".to_string(),
+            "2024:05:01 12:30:00".to_string(),
+        )]);
+        let structured = StructuredExif::from_exif_map(&map);
+        assert_eq!(
+            structured.date_taken.as_deref(),
+            Some("2024-05-01 12:30:00")
+        );
+
+        // Already-normalized (RAW path) stays untouched.
+        let map = HashMap::from([(
+            "DateTimeOriginal".to_string(),
+            "2024-05-01 12:30:00".to_string(),
+        )]);
+        let structured = StructuredExif::from_exif_map(&map);
+        assert_eq!(
+            structured.date_taken.as_deref(),
+            Some("2024-05-01 12:30:00")
+        );
+    }
+
+    #[test]
+    fn test_non_finite_values_are_rejected() {
+        let map = HashMap::from([
+            ("FNumber".to_string(), "f/inf".to_string()),
+            ("ExposureTime".to_string(), "NaN s".to_string()),
+            ("FocalLength".to_string(), "inf mm".to_string()),
+        ]);
+        let structured = StructuredExif::from_exif_map(&map);
+        assert_eq!(structured.aperture, None);
+        assert_eq!(structured.shutter, None);
+        assert_eq!(structured.focal_length, None);
+    }
+
+    #[test]
     fn test_get_files_needing_exif_excludes_scanned_and_virtual_copies() {
         let (mut conn, folder_id) = setup_conn();
         let mut vc = sample_file();
@@ -864,6 +975,50 @@ mod tests {
             )
             .unwrap();
         assert_eq!((exif_scanned, iso, make), (1, None, None));
+        assert_eq!(json_after, json_before);
+    }
+
+    #[test]
+    fn test_mark_exif_scanned_with_empty_map_does_not_insert_empty_exif_object() {
+        // A file with no EXIF at all still counts as scanned, but the stored
+        // ImageFile JSON must keep `exif: null` (an empty object would
+        // deserialize as `Some({})` on the frontend).
+        let (mut conn, folder_id) = setup_conn();
+        upsert_files_in_conn(&mut conn, folder_id, std::slice::from_ref(&sample_file())).unwrap();
+        let base_id: i64 = conn
+            .query_row(
+                "SELECT id FROM files WHERE path = '/tmp/x/a.jpg'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        let json_before: String = conn
+            .query_row(
+                "SELECT metadata_json FROM files WHERE id = ?1",
+                params![base_id],
+                |r| r.get(0),
+            )
+            .unwrap();
+
+        let empty_map = HashMap::new();
+        let structured = StructuredExif::from_exif_map(&empty_map);
+        mark_exif_scanned_in_conn(
+            &conn,
+            base_id,
+            "/tmp/x/a.jpg",
+            Some(&empty_map),
+            &structured,
+        )
+        .unwrap();
+
+        let (exif_scanned, iso, json_after): (i64, Option<i64>, String) = conn
+            .query_row(
+                "SELECT exif_scanned, iso, metadata_json FROM files WHERE id = ?1",
+                params![base_id],
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+            )
+            .unwrap();
+        assert_eq!((exif_scanned, iso), (1, None));
         assert_eq!(json_after, json_before);
     }
 }
