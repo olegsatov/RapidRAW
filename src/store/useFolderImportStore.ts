@@ -1,0 +1,113 @@
+import { create } from 'zustand';
+import type { ImageFile } from '../components/ui/AppProperties';
+
+export type ImportPhase = 'scan' | 'exif' | 'thumbnails' | 'complete' | 'cancelled' | 'error';
+
+export interface FolderImportJob {
+  path: string;
+  recursive: boolean;
+  kind?: 'import' | 'sync';
+  phase: ImportPhase;
+  discovered: number;
+  scanned: number;
+  total: number;
+  exifCurrent: number;
+  exifTotal: number;
+  thumbsCurrent: number;
+  thumbsTotal: number;
+  files: ImageFile[];
+  errors: number;
+  errorMessage?: string;
+}
+
+interface FolderImportState {
+  jobs: Record<string, FolderImportJob>;
+  startJob: (path: string, recursive: boolean, kind?: 'import' | 'sync') => void;
+  appendBatch: (key: string, files: ImageFile[], scanned: number, total: number) => void;
+  setPhase: (key: string, phase: ImportPhase) => void;
+  setScanProgress: (key: string, discovered: number) => void;
+  setExifProgress: (key: string, current: number, total: number) => void;
+  setThumbsProgress: (key: string, current: number, total: number) => void;
+  completeJob: (key: string, errors: number) => void;
+  cancelJob: (key: string) => void;
+  failJob: (key: string, message: string) => void;
+  clearJob: (key: string) => void;
+  setFiles: (key: string, files: ImageFile[]) => void;
+}
+
+// Jobs are keyed the same way as the backend job map so concurrent flat and
+// recursive jobs for the same folder do not collide.
+export const folderJobKey = (path: string, recursive: boolean): string => `${path}|${recursive}`;
+
+export const useFolderImportStore = create<FolderImportState>((set) => {
+  const updateJob = (key: string, updater: (job: FolderImportJob) => Partial<FolderImportJob>) =>
+    set((state) => {
+      const job = state.jobs[key];
+      if (!job) {
+        return state;
+      }
+      return { jobs: { ...state.jobs, [key]: { ...job, ...updater(job) } } };
+    });
+
+  return {
+    jobs: {},
+
+    startJob: (path, recursive, kind) =>
+      set((state) => ({
+        jobs: {
+          ...state.jobs,
+          [folderJobKey(path, recursive)]: {
+            path,
+            recursive,
+            kind,
+            phase: 'scan',
+            discovered: 0,
+            scanned: 0,
+            total: 0,
+            exifCurrent: 0,
+            exifTotal: 0,
+            thumbsCurrent: 0,
+            thumbsTotal: 0,
+            files: [],
+            errors: 0,
+          },
+        },
+      })),
+
+    appendBatch: (key, files, scanned, total) =>
+      updateJob(key, (job) => ({
+        phase: 'scan',
+        files: [...job.files, ...files],
+        scanned,
+        total,
+      })),
+
+    setPhase: (key, phase) => updateJob(key, () => ({ phase })),
+
+    setScanProgress: (key, discovered) => updateJob(key, () => ({ phase: 'scan', discovered })),
+
+    setExifProgress: (key, current, total) =>
+      updateJob(key, () => ({ phase: 'exif', exifCurrent: current, exifTotal: total })),
+
+    setThumbsProgress: (key, current, total) =>
+      updateJob(key, () => ({ phase: 'thumbnails', thumbsCurrent: current, thumbsTotal: total })),
+
+    completeJob: (key, errors) => updateJob(key, (job) => (job.phase === 'error' ? {} : { phase: 'complete', errors })),
+
+    cancelJob: (key) => updateJob(key, () => ({ phase: 'cancelled' })),
+
+    failJob: (key, message) => updateJob(key, () => ({ phase: 'error', errorMessage: message })),
+
+    clearJob: (key) =>
+      set((state) => {
+        if (!state.jobs[key]) {
+          return state;
+        }
+        const jobs = { ...state.jobs };
+        delete jobs[key];
+        return { jobs };
+      }),
+
+    setFiles: (key, files) => updateJob(key, () => ({ files })),
+  };
+});
