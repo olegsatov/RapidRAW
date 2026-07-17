@@ -48,6 +48,15 @@ enum FolderJobKind {
     Sync,
 }
 
+impl FolderJobKind {
+    fn as_str(self) -> &'static str {
+        match self {
+            FolderJobKind::Import => "import",
+            FolderJobKind::Sync => "sync",
+        }
+    }
+}
+
 #[tauri::command]
 pub fn start_folder_import(
     app_handle: AppHandle,
@@ -172,6 +181,7 @@ fn start_job(
         serde_json::json!({
             "path": normalized,
             "recursive": recursive,
+            "kind": kind.as_str(),
         }),
     );
 
@@ -197,7 +207,7 @@ pub fn cancel_folder_import(
         // checks inside the job never run — emit here, with the
         // normalized path the frontend store keys on.
         job.handle.abort();
-        emit_cancelled(&app_handle, &normalized);
+        emit_cancelled(&app_handle, &normalized, recursive);
     }
     Ok(())
 }
@@ -232,7 +242,12 @@ pub fn locate_folder(
         }
     }
 
-    library_db::relocate_folder(&app_handle, &normalized_old, &normalized_new)?;
+    if !library_db::relocate_folder(&app_handle, &normalized_old, &normalized_new)? {
+        return Err(format!(
+            "folder is not in the catalog: {}",
+            normalized_old
+        ));
+    }
     crate::file_management::sync_album_path_changes(
         &app_handle,
         None,
@@ -253,17 +268,20 @@ fn folder_key(path: &str, recursive: bool) -> String {
     format!("{}|{}", path, recursive)
 }
 
-fn emit_error(app_handle: &AppHandle, path: &str, message: &str) {
+// Every `folder-import-*` payload carries `path` and `recursive` so the
+// frontend store can key jobs by `path|recursive` — both variants may run
+// concurrently for the same path.
+fn emit_error(app_handle: &AppHandle, path: &str, recursive: bool, message: &str) {
     let _ = app_handle.emit(
         "folder-import-error",
-        serde_json::json!({ "path": path, "message": message }),
+        serde_json::json!({ "path": path, "recursive": recursive, "message": message }),
     );
 }
 
-fn emit_cancelled(app_handle: &AppHandle, path: &str) {
+fn emit_cancelled(app_handle: &AppHandle, path: &str, recursive: bool) {
     let _ = app_handle.emit(
         "folder-import-cancelled",
-        serde_json::json!({ "path": path }),
+        serde_json::json!({ "path": path, "recursive": recursive }),
     );
 }
 
@@ -551,13 +569,14 @@ async fn process_exif_file(
 async fn run_exif_phase(
     app_handle: &AppHandle,
     path: &str,
+    recursive: bool,
     folder_id: i64,
     cancel: &Arc<AtomicBool>,
 ) -> Option<usize> {
     let pending = match library_db::get_files_needing_exif(app_handle, folder_id) {
         Ok(pending) => pending,
         Err(e) => {
-            emit_error(app_handle, path, &e);
+            emit_error(app_handle, path, recursive, &e);
             return None;
         }
     };
@@ -568,7 +587,7 @@ async fn run_exif_phase(
     let total_exif = pending.len();
     let _ = app_handle.emit(
         "folder-import-exif-started",
-        serde_json::json!({ "path": path, "total": total_exif }),
+        serde_json::json!({ "path": path, "recursive": recursive, "total": total_exif }),
     );
 
     // Two files at a time: EXIF parsing of RAWs is CPU-heavy and the reads
@@ -605,6 +624,7 @@ async fn run_exif_phase(
                 "folder-import-exif-progress",
                 serde_json::json!({
                     "path": path_for_event,
+                    "recursive": recursive,
                     "current": current,
                     "total": total_exif,
                 }),
@@ -651,13 +671,14 @@ enum ThumbOutcome {
 async fn run_thumbs_phase(
     app_handle: &AppHandle,
     path: &str,
+    recursive: bool,
     folder_id: i64,
     cancel: &Arc<AtomicBool>,
 ) -> Option<usize> {
     let rows = match library_db::get_all_file_paths(app_handle, folder_id) {
         Ok(rows) => rows,
         Err(e) => {
-            emit_error(app_handle, path, &e);
+            emit_error(app_handle, path, recursive, &e);
             return None;
         }
     };
@@ -668,14 +689,14 @@ async fn run_thumbs_phase(
     let total_thumbs = rows.len();
     let _ = app_handle.emit(
         "folder-import-thumbs-started",
-        serde_json::json!({ "path": path, "total": total_thumbs }),
+        serde_json::json!({ "path": path, "recursive": recursive, "total": total_thumbs }),
     );
 
     let settings = load_settings(app_handle.clone()).unwrap_or_default();
     let thumb_cache_dir = match file_management::get_thumb_cache_dir(app_handle) {
         Ok(dir) => dir,
         Err(e) => {
-            emit_error(app_handle, path, &e);
+            emit_error(app_handle, path, recursive, &e);
             return None;
         }
     };
@@ -749,6 +770,7 @@ async fn run_thumbs_phase(
                 "folder-import-thumbs-progress",
                 serde_json::json!({
                     "path": path_for_event,
+                    "recursive": recursive,
                     "current": current,
                     "total": total_thumbs,
                 }),
@@ -784,7 +806,7 @@ async fn run_import_job(
     let folder_id = match library_db::upsert_folder(&app_handle, &path, recursive) {
         Ok(id) => id,
         Err(e) => {
-            emit_error(&app_handle, &path, &e);
+            emit_error(&app_handle, &path, recursive, &e);
             return;
         }
     };
@@ -798,18 +820,18 @@ async fn run_import_job(
     {
         Ok(Ok(entries)) => entries,
         Ok(Err(e)) => {
-            emit_error(&app_handle, &path, &e);
+            emit_error(&app_handle, &path, recursive, &e);
             return;
         }
         Err(e) => {
-            emit_error(&app_handle, &path, &e.to_string());
+            emit_error(&app_handle, &path, recursive, &e.to_string());
             return;
         }
     };
 
     // The walk may have stopped early on cancel; don't catalog a partial set.
     if cancel.load(Ordering::SeqCst) {
-        emit_cancelled(&app_handle, &path);
+        emit_cancelled(&app_handle, &path, recursive);
         return;
     }
 
@@ -818,6 +840,7 @@ async fn run_import_job(
         "folder-import-scan",
         serde_json::json!({
             "path": &path,
+            "recursive": recursive,
             "discovered": total,
         }),
     );
@@ -834,6 +857,7 @@ async fn run_import_job(
                     "folder-import-batch",
                     serde_json::json!({
                         "path": &path,
+                        "recursive": recursive,
                         "files": files,
                         "scanned": scanned,
                         "total": total,
@@ -845,7 +869,7 @@ async fn run_import_job(
             // partial catalog, and a later `folder-import-complete` would
             // hide the failure from the UI).
             Err(e) => {
-                emit_error(&app_handle, &path, &e);
+                emit_error(&app_handle, &path, recursive, &e);
                 return;
             }
         }
@@ -854,21 +878,23 @@ async fn run_import_job(
     // Phase 2: EXIF scan for catalog rows with exif_scanned = 0 (resumable:
     // only pending rows are processed).
     if cancel.load(Ordering::SeqCst) {
-        emit_cancelled(&app_handle, &path);
+        emit_cancelled(&app_handle, &path, recursive);
         return;
     }
     // A systemic phase failure already emitted `folder-import-error`; stop
     // here so the job never reports a false `folder-import-complete`.
-    let Some(exif_failed) = run_exif_phase(&app_handle, &path, folder_id, &cancel).await else {
+    let Some(exif_failed) = run_exif_phase(&app_handle, &path, recursive, folder_id, &cancel).await
+    else {
         return;
     };
 
     // Phase 3: thumbnail generation with stable file_id-keyed cache entries.
     if cancel.load(Ordering::SeqCst) {
-        emit_cancelled(&app_handle, &path);
+        emit_cancelled(&app_handle, &path, recursive);
         return;
     }
-    let Some(thumbs_failed) = run_thumbs_phase(&app_handle, &path, folder_id, &cancel).await
+    let Some(thumbs_failed) =
+        run_thumbs_phase(&app_handle, &path, recursive, folder_id, &cancel).await
     else {
         return;
     };
@@ -877,11 +903,11 @@ async fn run_import_job(
     // above), so the tally is exactly the per-file EXIF/thumbnail failures.
     let errors = exif_failed + thumbs_failed;
     if cancel.load(Ordering::SeqCst) {
-        emit_cancelled(&app_handle, &path);
+        emit_cancelled(&app_handle, &path, recursive);
     } else {
         let _ = app_handle.emit(
             "folder-import-complete",
-            serde_json::json!({ "path": &path, "errors": errors }),
+            serde_json::json!({ "path": &path, "recursive": recursive, "errors": errors }),
         );
     }
 }
@@ -978,10 +1004,24 @@ async fn run_sync_job(
     recursive: bool,
     cancel: Arc<AtomicBool>,
 ) {
+    // A missing root (e.g. an unplugged external drive) must never reach the
+    // delta: the recursive walk silently yields an empty set for a
+    // nonexistent root, and an "everything is gone" delta would delete the
+    // folder's whole catalog.
+    if !Path::new(&path).is_dir() {
+        emit_error(
+            &app_handle,
+            &path,
+            recursive,
+            "folder does not exist or is not readable",
+        );
+        return;
+    }
+
     let folder_id = match library_db::upsert_folder(&app_handle, &path, recursive) {
         Ok(id) => id,
         Err(e) => {
-            emit_error(&app_handle, &path, &e);
+            emit_error(&app_handle, &path, recursive, &e);
             return;
         }
     };
@@ -995,18 +1035,18 @@ async fn run_sync_job(
     {
         Ok(Ok(entries)) => entries,
         Ok(Err(e)) => {
-            emit_error(&app_handle, &path, &e);
+            emit_error(&app_handle, &path, recursive, &e);
             return;
         }
         Err(e) => {
-            emit_error(&app_handle, &path, &e.to_string());
+            emit_error(&app_handle, &path, recursive, &e.to_string());
             return;
         }
     };
 
     // The walk may have stopped early on cancel; don't sync a partial set.
     if cancel.load(Ordering::SeqCst) {
-        emit_cancelled(&app_handle, &path);
+        emit_cancelled(&app_handle, &path, recursive);
         return;
     }
 
@@ -1015,6 +1055,7 @@ async fn run_sync_job(
         "folder-import-scan",
         serde_json::json!({
             "path": &path,
+            "recursive": recursive,
             "discovered": total,
         }),
     );
@@ -1022,7 +1063,7 @@ async fn run_sync_job(
     let fingerprints = match library_db::get_folder_file_fingerprints(&app_handle, folder_id) {
         Ok(fingerprints) => fingerprints,
         Err(e) => {
-            emit_error(&app_handle, &path, &e);
+            emit_error(&app_handle, &path, recursive, &e);
             return;
         }
     };
@@ -1037,20 +1078,20 @@ async fn run_sync_job(
     let (to_upsert, removed) = match delta {
         Ok(delta) => delta,
         Err(e) => {
-            emit_error(&app_handle, &path, &e.to_string());
+            emit_error(&app_handle, &path, recursive, &e.to_string());
             return;
         }
     };
 
     // A cancelled partial delta must not be applied.
     if cancel.load(Ordering::SeqCst) {
-        emit_cancelled(&app_handle, &path);
+        emit_cancelled(&app_handle, &path, recursive);
         return;
     }
 
     // Removals first, so the EXIF/thumbnail phases never touch dead rows.
     if let Err(e) = library_db::delete_files_by_paths(&app_handle, &removed) {
-        emit_error(&app_handle, &path, &e);
+        emit_error(&app_handle, &path, recursive, &e);
         return;
     }
 
@@ -1070,6 +1111,7 @@ async fn run_sync_job(
                     "folder-import-batch",
                     serde_json::json!({
                         "path": &path,
+                        "recursive": recursive,
                         "files": files,
                         "scanned": scanned,
                         "total": upsert_total,
@@ -1079,7 +1121,7 @@ async fn run_sync_job(
             // Same rule as the import: a chunk-level DB failure is systemic;
             // report once and abort rather than completing on a partial sync.
             Err(e) => {
-                emit_error(&app_handle, &path, &e);
+                emit_error(&app_handle, &path, recursive, &e);
                 return;
             }
         }
@@ -1089,7 +1131,7 @@ async fn run_sync_job(
     // apply loop ran to the end — a cancelled partial apply is not a sync.
     if !cancel.load(Ordering::SeqCst) {
         if let Err(e) = library_db::update_folder_last_synced(&app_handle, folder_id) {
-            emit_error(&app_handle, &path, &e);
+            emit_error(&app_handle, &path, recursive, &e);
             return;
         }
     }
@@ -1097,32 +1139,34 @@ async fn run_sync_job(
     // Phase 2: EXIF scan for rows with exif_scanned = 0 (unchanged files kept
     // their flag through the upsert; new and changed rows are pending).
     if cancel.load(Ordering::SeqCst) {
-        emit_cancelled(&app_handle, &path);
+        emit_cancelled(&app_handle, &path, recursive);
         return;
     }
     // A systemic phase failure already emitted `folder-import-error`; stop
     // here so the job never reports a false `folder-import-complete`.
-    let Some(exif_failed) = run_exif_phase(&app_handle, &path, folder_id, &cancel).await else {
+    let Some(exif_failed) = run_exif_phase(&app_handle, &path, recursive, folder_id, &cancel).await
+    else {
         return;
     };
 
     // Phase 3: thumbnails for every remaining catalog row.
     if cancel.load(Ordering::SeqCst) {
-        emit_cancelled(&app_handle, &path);
+        emit_cancelled(&app_handle, &path, recursive);
         return;
     }
-    let Some(thumbs_failed) = run_thumbs_phase(&app_handle, &path, folder_id, &cancel).await
+    let Some(thumbs_failed) =
+        run_thumbs_phase(&app_handle, &path, recursive, folder_id, &cancel).await
     else {
         return;
     };
 
     let errors = exif_failed + thumbs_failed;
     if cancel.load(Ordering::SeqCst) {
-        emit_cancelled(&app_handle, &path);
+        emit_cancelled(&app_handle, &path, recursive);
     } else {
         let _ = app_handle.emit(
             "folder-import-complete",
-            serde_json::json!({ "path": &path, "errors": errors }),
+            serde_json::json!({ "path": &path, "recursive": recursive, "errors": errors }),
         );
     }
 }
@@ -1189,6 +1233,18 @@ mod tests {
         let cancel = Arc::new(AtomicBool::new(false));
         let result = collect_image_paths("/nonexistent/path/that/does/not/exist", false, &cancel);
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn collect_recursive_missing_root_is_silently_empty() {
+        // WalkDir reports the missing root as a per-entry Err, which the
+        // walk's filter_map swallows: Ok(empty), not Err. This is why
+        // run_sync_job refuses to run when the root is not a directory —
+        // an empty walk would otherwise look like "everything was deleted".
+        let cancel = Arc::new(AtomicBool::new(false));
+        let entries =
+            collect_image_paths("/nonexistent/path/that/does/not/exist", true, &cancel).unwrap();
+        assert!(entries.is_empty());
     }
 
     #[test]

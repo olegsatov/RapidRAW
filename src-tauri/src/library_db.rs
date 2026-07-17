@@ -669,11 +669,13 @@ fn delete_files_by_paths_in_conn(conn: &mut Connection, paths: &[String]) -> Res
 /// `/photos/2024` never touches `/photos/20245/...`, and LIKE wildcards in
 /// paths stay literal. Virtual-copy paths (`...?vc=id`) keep their suffix:
 /// the `?vc=` part comes after the filename, so a prefix rewrite is safe.
+/// Returns `false` when no `folders` row matched `old_path` — callers treat
+/// that as "folder is not cataloged" instead of succeeding vacuously.
 pub fn relocate_folder(
     app_handle: &AppHandle,
     old_path: &str,
     new_path: &str,
-) -> Result<(), String> {
+) -> Result<bool, String> {
     let conn = open_connection(app_handle)?;
     relocate_folder_in_conn(&conn, old_path, new_path)
 }
@@ -682,17 +684,18 @@ fn relocate_folder_in_conn(
     conn: &Connection,
     old_path: &str,
     new_path: &str,
-) -> Result<(), String> {
+) -> Result<bool, String> {
     // Stored folder paths never carry a trailing separator; accept one anyway.
     let old_trimmed = old_path.trim_end_matches(&['/', '\\'][..]);
     let new_trimmed = new_path.trim_end_matches(&['/', '\\'][..]);
     let tx = conn.unchecked_transaction().map_err(|e| e.to_string())?;
 
-    tx.execute(
-        "UPDATE folders SET path = ?2 WHERE path = ?1",
-        params![old_trimmed, new_trimmed],
-    )
-    .map_err(|e| e.to_string())?;
+    let folder_rows = tx
+        .execute(
+            "UPDATE folders SET path = ?2 WHERE path = ?1",
+            params![old_trimmed, new_trimmed],
+        )
+        .map_err(|e| e.to_string())?;
 
     let old_prefix = format!("{}/", old_trimmed);
     let new_prefix = format!("{}/", new_trimmed);
@@ -704,7 +707,8 @@ fn relocate_folder_in_conn(
     )
     .map_err(|e| e.to_string())?;
 
-    tx.commit().map_err(|e| e.to_string())
+    tx.commit().map_err(|e| e.to_string())?;
+    Ok(folder_rows > 0)
 }
 
 /// Stamps `folders.last_synced_at` after a successful sync delta apply.
@@ -1323,7 +1327,7 @@ mod tests {
         lookalike.name = "c.jpg".to_string();
         upsert_files_in_conn(&mut conn, folder_id, &[sample_file(), sub, vc, lookalike]).unwrap();
 
-        relocate_folder_in_conn(&conn, "/tmp/x", "/tmp/y").unwrap();
+        assert!(relocate_folder_in_conn(&conn, "/tmp/x", "/tmp/y").unwrap());
 
         let folder_path: String = conn
             .query_row("SELECT path FROM folders WHERE id = ?1", params![folder_id], |r| {
@@ -1346,10 +1350,13 @@ mod tests {
         );
 
         // A trailing separator on the old path still matches.
-        relocate_folder_in_conn(&conn, "/tmp/y/", "/tmp/z").unwrap();
+        assert!(relocate_folder_in_conn(&conn, "/tmp/y/", "/tmp/z").unwrap());
         assert!(get_file_id_by_path_in_conn(&conn, "/tmp/z/a.jpg")
             .unwrap()
             .is_some());
+
+        // An uncataloged old path relocates nothing and reports false.
+        assert!(!relocate_folder_in_conn(&conn, "/tmp/never-cataloged", "/tmp/w").unwrap());
     }
 
     #[test]
