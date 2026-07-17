@@ -1,3 +1,4 @@
+use std::collections::hash_map::Entry;
 use std::path::PathBuf;
 use std::sync::{
     atomic::{AtomicBool, Ordering},
@@ -46,6 +47,7 @@ pub fn start_folder_import(
 
     let cancel = Arc::new(AtomicBool::new(false));
     let cancel_clone = cancel.clone();
+    let cancel_for_cleanup = cancel.clone();
     let app_clone = app_handle.clone();
     let app_for_job = app_clone.clone();
     let key_clone = key.clone();
@@ -54,16 +56,40 @@ pub fn start_folder_import(
     let handle: JoinHandle<()> = tokio::spawn(async move {
         run_import_job(app_for_job, path_for_job, recursive, cancel_clone).await;
         // Remove the finished job so a later import of the same folder can
-        // start fresh. Never hold the std Mutex guard across an `.await`.
+        // start fresh. Only remove our own entry: if a duplicate start for the
+        // same key raced us, the map may hold a different live job (or our
+        // entry may already be gone). Never hold the std Mutex guard across
+        // an `.await`.
         let state = app_clone.state::<AppState>();
         if let Ok(mut jobs) = state.folder_import_jobs.lock() {
-            jobs.remove(&key_clone);
+            if jobs
+                .get(&key_clone)
+                .is_some_and(|j| Arc::ptr_eq(&j.cancel, &cancel_for_cleanup))
+            {
+                jobs.remove(&key_clone);
+            }
         }
     });
 
     {
         let mut jobs = state.folder_import_jobs.lock().map_err(|e| e.to_string())?;
-        jobs.insert(key.clone(), FolderImportHandle { cancel, handle });
+        match jobs.entry(key.clone()) {
+            // A concurrent start for the same folder won the race; scrap the
+            // task we just spawned and report the shared key as running.
+            Entry::Occupied(_) => {
+                handle.abort();
+                return Ok(key);
+            }
+            Entry::Vacant(slot) => {
+                slot.insert(FolderImportHandle { cancel, handle });
+            }
+        }
+        // The task may have finished (and run its no-op cleanup) before we
+        // inserted it; reap the completed handle so the folder doesn't stay
+        // "running" forever. Serialized with the task's cleanup by this lock.
+        if jobs.get(&key).is_some_and(|j| j.handle.is_finished()) {
+            jobs.remove(&key);
+        }
     }
 
     let _ = app_handle.emit(
