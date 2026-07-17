@@ -519,7 +519,6 @@ pub(crate) fn load_processed_for_grain(
         // The CPU grain renderer runs next, so the GPU pass must stay
         // grain-free (no baked-field grain on top of the real render).
         crate::export_processing::ExportGrainMode::Off,
-        false,
     )?;
     Ok((processed, source_path))
 }

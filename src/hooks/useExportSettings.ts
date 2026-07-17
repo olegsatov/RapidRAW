@@ -22,7 +22,6 @@ export function useExportSettings() {
   const [watermarkOpacity, setWatermarkOpacity] = useState(75);
   const [grainEnabled, setGrainEnabled] = useState(false);
   const [grainMode, setGrainMode] = useState<'fast' | 'pierre' | 'ipol'>('pierre');
-  const [grainMono, setGrainMono] = useState(false);
 
   const handleApplyPreset = useCallback((preset: ExportPreset) => {
     setFileFormat(preset.fileFormat);
@@ -85,7 +84,7 @@ export function useExportSettings() {
       watermarkScale,
       watermarkSpacing,
       watermarkOpacity,
-    ]
+    ],
   );
 
   return {
@@ -129,8 +128,6 @@ export function useExportSettings() {
     setGrainEnabled,
     grainMode,
     setGrainMode,
-    grainMono,
-    setGrainMono,
     handleApplyPreset,
     currentSettingsObject,
   };

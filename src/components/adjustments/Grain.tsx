@@ -29,7 +29,6 @@ export default function GrainPanel({ adjustments, setAdjustments, onDragStateCha
   const [grainRendering, setGrainRendering] = useState(false);
   const [grainProgress, setGrainProgress] = useState('');
   const [grainPreview, setGrainPreview] = useState<string | null>(null);
-  const [ipolMono, setIpolMono] = useState(false);
   const [xtalRendering, setXtalRendering] = useState(false);
   const [xtalProgress, setXtalProgress] = useState('');
   const [xtalPreview, setXtalPreview] = useState<string | null>(null);
@@ -124,7 +123,7 @@ export default function GrainPanel({ adjustments, setAdjustments, onDragStateCha
       await invoke('render_film_grain', {
         path: selectedImage.path,
         adjustments,
-        options: { ...grainOpts, monochrome: ipolMono, seed: 1 },
+        options: { ...grainOpts, monochrome: !!adjustments.crystalGrainMono, seed: 1 },
         preview,
       });
     } catch (e) {
@@ -295,8 +294,10 @@ export default function GrainPanel({ adjustments, setAdjustments, onDragStateCha
           <Switch
             id="switch-grain-mono-ipol"
             label={t('adjustments.effects.grainMonochrome')}
-            checked={ipolMono}
-            onChange={setIpolMono}
+            checked={!!adjustments.crystalGrainMono}
+            onChange={(v: boolean) =>
+              setAdjustments((prev: Partial<Adjustments>) => ({ ...prev, crystalGrainMono: v ? 1 : 0 }))
+            }
           />
           {grainRendering ? (
             <Button onClick={handleCancelGrain} className="w-full bg-surface">

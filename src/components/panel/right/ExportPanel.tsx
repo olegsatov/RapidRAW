@@ -237,8 +237,6 @@ export default function ExportPanel({
     setGrainEnabled,
     grainMode,
     setGrainMode,
-    grainMono,
-    setGrainMono,
     handleApplyPreset,
     currentSettingsObject,
   } = useExportSettings();
@@ -249,9 +247,10 @@ export default function ExportPanel({
     })),
   );
 
-  // Grain is configured per image in the Film tab; export can only add grain
-  // when the flim panel and the Grain section are both on for this image.
-  const grainAvailable = adjustments?.toneMapper === 'flim' && adjustments?.sectionVisibility?.grain !== false;
+  // Grain is configured per image in the Film tab. Export can add grain
+  // whenever the flim panel is on for this image — the Grain section eye
+  // only hides the slow canvas preview, it must not block the file.
+  const grainAvailable = adjustments?.toneMapper === 'flim';
 
   const [isAdvancedExpanded, setIsAdvancedExpanded] = useState(false);
   const initDone = useRef(false);
@@ -408,7 +407,6 @@ export default function ExportPanel({
           : null,
       grainEnabled: fileFormat !== FileFormats.Cube ? grainEnabled : false,
       grainMode,
-      grainMono,
     };
     const format = FILE_FORMATS.find((f: FileFormat) => f.id === fileFormat)?.extensions[0] || 'jpeg';
     debouncedEstimateSize(pathsToExport, adjustments, selectedImage?.path, exportSettings, format);
@@ -438,7 +436,6 @@ export default function ExportPanel({
     preserveFolders,
     grainEnabled,
     grainMode,
-    grainMono,
     isLibraryContext,
   ]);
 
@@ -490,7 +487,6 @@ export default function ExportPanel({
           : null,
       grainEnabled: fileFormat !== FileFormats.Cube ? grainEnabled : false,
       grainMode,
-      grainMono,
     };
 
     const lastExportPath = appSettings?.exportPresets?.find((p) => p.id === '__last_used__')?.lastExportPath;
@@ -531,13 +527,12 @@ export default function ExportPanel({
 
       if (isAndroid || outputFolderOrFile) {
         if (!isAndroid) {
-          const dir =
-            shouldChooseOutputFile
-              ? outputFolderOrFile.substring(
-                  0,
-                  Math.max(outputFolderOrFile.lastIndexOf('/'), outputFolderOrFile.lastIndexOf('\\')),
-                )
-              : outputFolderOrFile;
+          const dir = shouldChooseOutputFile
+            ? outputFolderOrFile.substring(
+                0,
+                Math.max(outputFolderOrFile.lastIndexOf('/'), outputFolderOrFile.lastIndexOf('\\')),
+              )
+            : outputFolderOrFile;
           if (dir) saveLastUsedPreset(dir);
         }
 
@@ -819,13 +814,6 @@ export default function ExportPanel({
                         onChange={(val) => setGrainMode(val as 'fast' | 'pierre' | 'ipol')}
                         disabled={isExporting}
                         className="w-full"
-                      />
-                      <Switch
-                        label={t('export.grain.mono')}
-                        checked={grainMono}
-                        onChange={setGrainMono}
-                        disabled={isExporting}
-                        trackClassName="bg-surface"
                       />
                       <Text variant={TextVariants.small} color={TextColors.secondary}>
                         {t(`export.grain.hints.${grainMode}`)}

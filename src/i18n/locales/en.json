@@ -941,8 +941,7 @@
     },
     "grain": {
       "addGrain": "Add film grain",
-      "mono": "B&W noise (shared grain field)",
-      "disabledHint": "Enable the flim panel and the Grain section in the Film tab to add grain at export.",
+      "disabledHint": "Enable the flim panel in the Film tab to add grain at export. The Grain section eye only affects the editor preview — not the exported file.",
       "modes": {
         "fast": "Fast (matches preview)",
         "pierre": "High quality — crystal emulsion (slow)",

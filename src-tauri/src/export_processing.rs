@@ -81,10 +81,6 @@ pub struct ExportSettings {
     /// after the export resize.
     #[serde(default = "default_grain_mode")]
     pub grain_mode: String,
-    /// Force monochrome (shared-field) grain regardless of the editor's
-    /// mono toggle.
-    #[serde(default)]
-    pub grain_mono: bool,
 }
 
 fn default_grain_mode() -> String {
@@ -322,7 +318,6 @@ pub(crate) fn process_image_for_export_pipeline(
     debug_tag: &str,
     app_handle: &tauri::AppHandle,
     grain_mode: ExportGrainMode,
-    grain_mono: bool,
 ) -> Result<DynamicImage, String> {
     let (transformed_image, unscaled_crop_offset) =
         apply_all_transformations(Cow::Borrowed(base_image), js_adjustments);
@@ -358,23 +353,35 @@ pub(crate) fn process_image_for_export_pipeline(
     let mut grain_view = None;
     match grain_mode {
         ExportGrainMode::Fast => {
-            if grain_mono {
-                all_adjustments.global.crystal_grain_mono = 1.0;
-            }
-            // The editor engine mode zeroes the GPU-gated global amount (IPOL
-            // gets no canvas grain), but `fast` is an explicit export choice:
-            // read the raw slider value, still honoring the grain section
-            // toggle and the flim panel master switch.
-            let amount = if grain_section_visible(js_adjustments) && flim_panel_on(js_adjustments) {
-                js_adjustments
-                    .get("crystalGrainAmount")
-                    .and_then(|v| v.as_f64())
-                    .unwrap_or(0.0) as f32
-                    / 100.0
+            // `fast` is an explicit export choice: read the raw per-image
+            // slider and mono values — the gated parse zeroes them when the
+            // Grain section is off, but the editor's section eye only gates
+            // the canvas preview (grain renders are slow), not the file.
+            // The flim panel stays the master switch: grain modules live in
+            // the Film tab.
+            let (amount, mono) = if flim_panel_on(js_adjustments) {
+                (
+                    js_adjustments
+                        .get("crystalGrainAmount")
+                        .and_then(|v| v.as_f64())
+                        .unwrap_or(0.0) as f32
+                        / 100.0,
+                    if js_adjustments
+                        .get("crystalGrainMono")
+                        .and_then(|v| v.as_f64())
+                        .unwrap_or(0.0)
+                        > 0.5
+                    {
+                        1.0
+                    } else {
+                        0.0
+                    },
+                )
             } else {
-                0.0
+                (0.0, 0.0)
             };
             all_adjustments.global.crystal_grain_amount = amount;
+            all_adjustments.global.crystal_grain_mono = mono;
             if amount > 0.0 {
                 let opts = crate::crystal_grain::options_from_adjustments(js_adjustments);
                 grain_view = Some(get_export_grain_view(context, state, &opts)?);
@@ -402,6 +409,7 @@ pub(crate) fn process_image_for_export_pipeline(
             roi: None,
             grain_mip_level: 0.0,
             grain_coord_scale: 1.0,
+            grain_boost: 1.0,
             grain_view,
         },
         debug_tag,
@@ -515,6 +523,7 @@ pub fn render_image_headless(
             roi: None,
             grain_mip_level: 0.0,
             grain_coord_scale: 1.0,
+            grain_boost: 1.0,
             grain_view: None,
         },
         false,
@@ -614,7 +623,6 @@ fn process_image_for_export(
         "process_image_for_export",
         app_handle,
         grain_mode,
-        export_settings.grain_mono,
     )?;
 
     // Order: resize -> CPU grain -> watermark. The grain is authored in
@@ -633,30 +641,13 @@ fn process_image_for_export(
     }
 
     if matches!(grain_mode, ExportGrainMode::Pierre | ExportGrainMode::Ipol) {
-        image = apply_export_grain_cpu(
-            image,
-            js_adjustments,
-            grain_mode,
-            export_settings.grain_mono,
-            state,
-            grain_px_scale,
-        )?;
+        image = apply_export_grain_cpu(image, js_adjustments, grain_mode, state, grain_px_scale)?;
     }
 
     if let Some(watermark_settings) = &export_settings.watermark {
         apply_watermark(&mut image, watermark_settings)?;
     }
     Ok(image)
-}
-
-/// Grain section visibility (the Film-tab Grain section eye toggle).
-/// Missing key means an old sidecar — default to visible.
-fn grain_section_visible(js_adjustments: &Value) -> bool {
-    js_adjustments
-        .get("sectionVisibility")
-        .and_then(|v| v.get("grain"))
-        .and_then(|s| s.as_bool())
-        .unwrap_or(true)
 }
 
 /// Grain modules live in the Film tab and run only while the flim
@@ -675,18 +666,12 @@ fn apply_export_grain_cpu(
     image: DynamicImage,
     js_adjustments: &Value,
     grain_mode: ExportGrainMode,
-    grain_mono: bool,
     state: &tauri::State<AppState>,
     grain_px_scale: f32,
 ) -> Result<DynamicImage, String> {
-    // Grain section toggled off in the editor: the file stays clean even if
-    // a stale export preset asks for grain.
-    if !grain_section_visible(js_adjustments) {
-        return Ok(image);
-    }
-
-    // Same gate as the preview and the fast GPU path: grain modules live in
-    // the Film tab and stay off while the flim panel is off.
+    // Grain modules live in the Film tab and stay off while the flim panel
+    // is off. The Grain section eye is NOT a gate: it only hides the slow
+    // canvas preview, the export form is the explicit per-export choice.
     if !flim_panel_on(js_adjustments) {
         return Ok(image);
     }
@@ -708,13 +693,11 @@ fn apply_export_grain_cpu(
     let mut grained = match grain_mode {
         ExportGrainMode::Pierre => {
             let mut opts = crate::crystal_grain::options_from_adjustments(js_adjustments);
-            opts.monochrome |= grain_mono;
             opts.size = (opts.size * grain_px_scale).max(0.5);
             crate::crystal_grain::apply_crystal_grain_rgb(&rgb, &opts, None, None)
         }
         ExportGrainMode::Ipol => {
             let mut opts = crate::film_grain::options_from_adjustments(js_adjustments);
-            opts.monochrome |= grain_mono;
             opts.mu_r = (opts.mu_r * grain_px_scale).max(0.05);
             // The log-normal shape depends on sigma_r/mu_r, so scale the
             // spread too — keeps it matching the full-res render + downscale
@@ -907,6 +890,7 @@ fn export_masks_for_image(
                     roi: None,
                     grain_mip_level: 0.0,
                     grain_coord_scale: 1.0,
+                    grain_boost: 1.0,
                     grain_view: None,
                 },
                 "export_mask_image",
@@ -1004,6 +988,7 @@ fn export_adjustments_as_lut(
             roi: None,
             grain_mip_level: 0.0,
             grain_coord_scale: 1.0,
+            grain_boost: 1.0,
             grain_view: None,
         },
         "export_lut",
@@ -1480,6 +1465,7 @@ pub async fn estimate_export_sizes(
                 roi: None,
                 grain_mip_level: 0.0,
                 grain_coord_scale: 1.0,
+                grain_boost: 1.0,
                 grain_view: None,
             },
             "estimate_export_size",
@@ -1612,6 +1598,7 @@ pub async fn estimate_export_sizes(
                 roi: None,
                 grain_mip_level: 0.0,
                 grain_coord_scale: 1.0,
+                grain_boost: 1.0,
                 grain_view: None,
             },
             "estimate_batch_export_size",
@@ -1645,21 +1632,4 @@ pub async fn estimate_export_sizes(
     };
 
     Ok(single_image_extrapolated_size * paths.len())
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn grain_section_visibility_defaults_and_override() {
-        // Missing key (old sidecars) defaults to visible.
-        assert!(grain_section_visible(&serde_json::json!({})));
-        assert!(grain_section_visible(&serde_json::json!({
-            "sectionVisibility": { "grain": true }
-        })));
-        assert!(!grain_section_visible(&serde_json::json!({
-            "sectionVisibility": { "grain": false }
-        })));
-    }
 }
