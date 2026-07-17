@@ -13,6 +13,7 @@ import LeftBottomPanel from './components/panel/left/LeftBottomPanel';
 import ExportPanel from './components/panel/right/ExportPanel';
 import Resizer from './components/ui/Resizer';
 import GlobalTooltip from './components/ui/GlobalTooltip';
+import ImportJobsIndicator from './components/ui/ImportJobsIndicator';
 import AppModals from './components/modals/AppModals';
 
 import EditorView from './components/views/EditorView';
@@ -845,6 +846,7 @@ function App() {
             )
           }
         />
+        <ImportJobsIndicator />
       </div>
     </>
   );
