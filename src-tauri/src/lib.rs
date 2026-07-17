@@ -21,6 +21,7 @@ mod export_processing;
 pub mod crystal_grain;
 pub mod film_grain;
 mod file_management;
+mod folder_import;
 mod formats;
 mod gpu_processing;
 mod hdr_deghosting;
@@ -2576,6 +2577,8 @@ pub fn run() {
             lens_correction::get_lens_distortion_params,
             negative_conversion::preview_negative_conversion,
             negative_conversion::convert_negatives,
+            folder_import::start_folder_import,
+            folder_import::cancel_folder_import,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
