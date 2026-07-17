@@ -28,6 +28,7 @@ mod image_loader;
 mod image_processing;
 mod inpainting;
 mod lens_correction;
+mod library_db;
 mod lut_processing;
 mod mask_generation;
 mod negative_conversion;
@@ -2298,6 +2299,10 @@ pub fn run() {
                         "GPU pre-initialization failed (editing and thumbnails may be degraded): {}",
                         error
                     );
+                }
+
+                if let Err(error) = library_db::init_catalog(app.handle()) {
+                    log::warn!("Library catalog initialization failed: {}", error);
                 }
 
                 if let Ok(config_dir) = app.path().app_config_dir() {
