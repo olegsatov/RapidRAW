@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
+import clsx from 'clsx';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Search,

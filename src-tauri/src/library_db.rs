@@ -1148,7 +1148,8 @@ pub fn get_folder_last_synced(
         params![path, recursive as i32],
         |row| row.get::<_, Option<i64>>(0),
     )
-    .map(|v| v.map(|ts| ts as u64))
+    .optional()
+    .map(|v| v.flatten().map(|ts| ts as u64))
     .map_err(|e| e.to_string())
 }
 
