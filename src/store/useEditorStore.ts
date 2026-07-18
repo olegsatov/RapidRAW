@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { Adjustments, INITIAL_ADJUSTMENTS, MaskContainer, AiPatch } from '../utils/adjustments';
-import { arraysEqual, getChangedTopLevelKeys } from '../utils/historyUtils';
+import { arraysEqual, computeHistoryDeltas, getChangedTopLevelKeys, HistoryDelta } from '../utils/historyUtils';
 import { SelectedImage, WaveformData, BrushSettings } from '../components/ui/AppProperties';
 import { ChannelConfig } from '../components/adjustments/Curves';
 import { ImageDimensions } from '../hooks/useImageRenderSize';
@@ -26,6 +26,7 @@ interface EditorState {
   // History State
   history: Adjustments[];
   historyIndex: number;
+  historyDeltas: HistoryDelta[][];
 
   // Previews & Overlays
   finalPreviewUrl: string | null;
@@ -82,11 +83,12 @@ interface EditorState {
 
   // Actions
   setEditor: (updater: Partial<EditorState> | ((state: EditorState) => Partial<EditorState>)) => void;
+  setHistoryDeltas: (deltas: HistoryDelta[][]) => void;
   pushHistory: (newAdjustments: Adjustments) => void;
   undo: () => void;
   redo: () => void;
   resetHistory: (initialState: Adjustments) => void;
-  restoreHistory: (history: Adjustments[], index: number) => void;
+  restoreHistory: (history: Adjustments[], historyIndex: number, historyDeltas?: HistoryDelta[][]) => void;
   goToHistoryIndex: (index: number) => void;
 }
 
@@ -96,6 +98,7 @@ export const useEditorStore = create<EditorState>((set) => ({
   previewOverride: null,
   history: [INITIAL_ADJUSTMENTS],
   historyIndex: 0,
+  historyDeltas: [[]],
 
   finalPreviewUrl: null,
   uncroppedAdjustedPreviewUrl: null,
@@ -142,12 +145,14 @@ export const useEditorStore = create<EditorState>((set) => ({
   patchesSentToBackend: new Set<string>(),
 
   setEditor: (updater) => set((state) => (typeof updater === 'function' ? updater(state) : updater)),
+  setHistoryDeltas: (deltas) => set(() => ({ historyDeltas: deltas })),
 
   pushHistory: (newAdj) =>
     set((state) => {
       const current = state.history[state.historyIndex];
       if (JSON.stringify(current) === JSON.stringify(newAdj)) return state;
 
+      const delta = computeHistoryDeltas(current, newAdj);
       const newChanged = getChangedTopLevelKeys(current, newAdj);
       const atEnd = state.historyIndex === state.history.length - 1;
 
@@ -156,14 +161,31 @@ export const useEditorStore = create<EditorState>((set) => ({
         if (arraysEqual(newChanged, lastChanged)) {
           const newHistory = state.history.slice(0, state.historyIndex);
           newHistory.push(newAdj);
-          return { history: newHistory, historyIndex: state.historyIndex, adjustments: newAdj };
+          const newDeltas = state.historyDeltas.slice(0, state.historyIndex);
+          newDeltas.push(delta);
+          return {
+            history: newHistory,
+            historyIndex: state.historyIndex,
+            adjustments: newAdj,
+            historyDeltas: newDeltas,
+          };
         }
       }
 
       const newHistory = state.history.slice(0, state.historyIndex + 1);
       newHistory.push(newAdj);
-      if (newHistory.length > HISTORY_LIMIT) newHistory.shift();
-      return { history: newHistory, historyIndex: newHistory.length - 1, adjustments: newAdj };
+      const newDeltas = state.historyDeltas.slice(0, state.historyIndex + 1);
+      newDeltas.push(delta);
+      if (newHistory.length > HISTORY_LIMIT) {
+        newHistory.shift();
+        newDeltas.shift();
+      }
+      return {
+        history: newHistory,
+        historyIndex: newHistory.length - 1,
+        adjustments: newAdj,
+        historyDeltas: newDeltas,
+      };
     }),
 
   undo: () =>
@@ -185,17 +207,23 @@ export const useEditorStore = create<EditorState>((set) => ({
     }),
 
   resetHistory: (initialState) =>
-    set({
+    set(() => ({
       history: [initialState],
       historyIndex: 0,
       adjustments: initialState,
-    }),
+      historyDeltas: [[]],
+    })),
 
-  restoreHistory: (history, index) =>
-    set((state) => {
-      if (history.length === 0) return state;
-      const clamped = Math.min(Math.max(index, 0), history.length - 1);
-      return { history, historyIndex: clamped, adjustments: history[clamped] };
+  restoreHistory: (history, historyIndex, historyDeltas) =>
+    set(() => {
+      if (history.length === 0) return {} as Partial<EditorState>;
+      const clamped = Math.min(Math.max(historyIndex, 0), history.length - 1);
+      return {
+        history,
+        historyIndex: clamped,
+        adjustments: history[clamped],
+        historyDeltas: historyDeltas ?? Array.from({ length: history.length }, () => []),
+      };
     }),
 
   goToHistoryIndex: (index) =>

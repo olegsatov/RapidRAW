@@ -12,6 +12,7 @@ import { Invokes, LibraryViewMode, ImageFile } from '../components/ui/AppPropert
 import { INITIAL_ADJUSTMENTS, normalizeLoadedAdjustments } from '../utils/adjustments';
 import { globalImageCache } from '../utils/ImageLRUCache';
 import { globalHistoryCache } from '../utils/historyCache';
+import { flushHistoryPersistence } from '../utils/historyPersistence';
 import { debouncedSave, debouncedSetHistory } from './useEditorActions';
 import { useFolderImport, useFolderImportMirror } from './useFolderImport';
 
@@ -62,10 +63,14 @@ export function useAppNavigation({ clearThumbnailQueue, refs }: AppNavigationPro
     useUIStore.getState().setUI({ isLibraryExportPanelVisible: false });
   }, []);
 
-  const handleBackToLibrary = useCallback(() => {
+  const handleBackToLibrary = useCallback(async () => {
     const { selectedImage, resetHistory, setEditor } = useEditorStore.getState();
     const { setLibrary } = useLibraryStore.getState();
     const { setUI } = useUIStore.getState();
+
+    await flushHistoryPersistence().catch((err) => {
+      console.error('Failed to flush history on back to library:', err);
+    });
 
     if (selectedImage?.path && cachedEditStateRef.current) {
       globalImageCache.set(selectedImage.path, cachedEditStateRef.current);
@@ -123,6 +128,10 @@ export function useAppNavigation({ clearThumbnailQueue, refs }: AppNavigationPro
       const { setUI } = useUIStore.getState();
 
       if (selectedImage?.path === path) return;
+
+      await flushHistoryPersistence().catch((err) => {
+        console.error('Failed to flush history on image select:', err);
+      });
 
       useEditorStore.getState().patchesSentToBackend.clear();
       debouncedSave.flush();
@@ -301,6 +310,10 @@ export function useAppNavigation({ clearThumbnailQueue, refs }: AppNavigationPro
       const libraryViewMode = appSettings?.libraryViewMode;
 
       if (!preserveEditor) {
+        await flushHistoryPersistence().catch((err) => {
+          console.error('Failed to flush history on subfolder select:', err);
+        });
+
         await invoke('cancel_thumbnail_generation');
         clearThumbnailQueue();
         setLibrary({ isViewLoading: true, activeAlbumId: null, libraryScrollTop: 0 });

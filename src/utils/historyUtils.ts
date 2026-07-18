@@ -15,3 +15,22 @@ export function arraysEqual<T>(a: T[], b: T[]): boolean {
   }
   return true;
 }
+
+export interface HistoryDelta {
+  adjustment_key: string;
+  old_value: string | null;
+  new_value: string;
+}
+
+export function computeHistoryDeltas(prev: Adjustments, next: Adjustments): HistoryDelta[] {
+  const keys = new Set([...Object.keys(prev), ...Object.keys(next)]) as Set<keyof Adjustments>;
+  const deltas: HistoryDelta[] = [];
+  for (const key of keys) {
+    const oldJson = JSON.stringify(prev[key]);
+    const newJson = JSON.stringify(next[key]);
+    if (oldJson !== newJson) {
+      deltas.push({ adjustment_key: key as string, old_value: oldJson, new_value: newJson });
+    }
+  }
+  return deltas.sort((a, b) => a.adjustment_key.localeCompare(b.adjustment_key));
+}

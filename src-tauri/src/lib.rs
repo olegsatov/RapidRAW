@@ -25,6 +25,7 @@ mod folder_import;
 mod formats;
 mod gpu_processing;
 mod hdr_deghosting;
+mod history_commands;
 mod image_loader;
 mod image_processing;
 mod inpainting;
@@ -2602,6 +2603,8 @@ pub fn run() {
             folder_import::load_folder_files,
             folder_import::check_path_exists,
             folder_import::get_folder_last_synced,
+            history_commands::load_edit_history,
+            history_commands::save_edit_history,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

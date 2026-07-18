@@ -166,7 +166,7 @@ pub fn save_image_metadata<R: Runtime>(
     tx.commit().map_err(|e| e.to_string())
 }
 
-fn resolve_file_id<R: Runtime>(
+pub fn resolve_file_id<R: Runtime>(
     app_handle: &AppHandle<R>,
     file_id: Option<i64>,
     path: &str,
@@ -341,11 +341,13 @@ pub fn record_delta(
     _new: &Value,
     _source: &str,
 ) {
-    // Stub for the next task: insert into file_adjustment_deltas.
+    // Phase 2 persists history through save_edit_history; this hook is reserved
+    // for future internal callers that want to record a single delta directly.
 }
 
 pub fn take_snapshot(_app_handle: &AppHandle, _file_id: i64, _description: &str, _source: &str) {
-    // Stub for the next task: insert into file_adjustment_snapshots.
+    // Phase 2 persists history through save_edit_history; this hook is reserved
+    // for future internal callers that want to capture a snapshot directly.
 }
 
 #[cfg(test)]

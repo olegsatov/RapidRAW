@@ -5,7 +5,7 @@ use tauri::{AppHandle, Manager, Runtime};
 
 use crate::file_management::ImageFile;
 
-const CURRENT_SCHEMA_VERSION: i32 = 2;
+const CURRENT_SCHEMA_VERSION: i32 = 3;
 
 fn db_path<R: Runtime>(app_handle: &AppHandle<R>) -> Result<PathBuf, String> {
     let data_dir = app_handle
@@ -29,18 +29,74 @@ pub(crate) fn open_connection<R: Runtime>(app_handle: &AppHandle<R>) -> Result<C
     Ok(conn)
 }
 
+fn column_exists(conn: &Connection, table: &str, column: &str) -> Result<bool, String> {
+    let sql = format!("SELECT 1 FROM pragma_table_info('{}') WHERE name = ?1", table);
+    let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
+    let exists: Option<i32> = stmt
+        .query_row([column], |row| row.get(0))
+        .optional()
+        .map_err(|e| e.to_string())?;
+    Ok(exists.is_some())
+}
+
 fn migrate(conn: &Connection) -> Result<(), String> {
     let user_version: i32 = conn
         .query_row("PRAGMA user_version", [], |row| row.get(0))
         .map_err(|e| e.to_string())?;
-    if user_version < CURRENT_SCHEMA_VERSION {
-        if user_version < 1 {
-            conn.execute_batch(SCHEMA_V1).map_err(|e| e.to_string())?;
-        } else {
-            conn.execute_batch(SCHEMA_V2).map_err(|e| e.to_string())?;
-        }
-        conn.pragma_update(None, "user_version", CURRENT_SCHEMA_VERSION)
+    if user_version < 1 {
+        conn.execute_batch(SCHEMA_V1).map_err(|e| e.to_string())?;
+        conn.pragma_update(None, "user_version", 1)
             .map_err(|e| e.to_string())?;
+    }
+    if user_version < 2 {
+        conn.execute_batch(SCHEMA_V2).map_err(|e| e.to_string())?;
+        conn.pragma_update(None, "user_version", 2)
+            .map_err(|e| e.to_string())?;
+    }
+    if user_version < 3 {
+        // A crash between adding the V3 columns and bumping user_version can
+        // leave the catalog in a partially migrated state. Guard each ALTER so
+        // migration is idempotent and recovers cleanly.
+        if !column_exists(conn, "file_adjustment_deltas", "step_index")? {
+            conn.execute(
+                "ALTER TABLE file_adjustment_deltas ADD COLUMN step_index INTEGER NOT NULL DEFAULT 0",
+                [],
+            )
+            .map_err(|e| e.to_string())?;
+        }
+        if !column_exists(conn, "file_adjustment_deltas", "idx")? {
+            conn.execute(
+                "ALTER TABLE file_adjustment_deltas ADD COLUMN idx INTEGER NOT NULL DEFAULT 0",
+                [],
+            )
+            .map_err(|e| e.to_string())?;
+        }
+        if !column_exists(conn, "file_adjustment_snapshots", "idx")? {
+            conn.execute(
+                "ALTER TABLE file_adjustment_snapshots ADD COLUMN idx INTEGER NOT NULL DEFAULT 0",
+                [],
+            )
+            .map_err(|e| e.to_string())?;
+        }
+        if !column_exists(conn, "files", "history_index")? {
+            conn.execute(
+                "ALTER TABLE files ADD COLUMN history_index INTEGER",
+                [],
+            )
+            .map_err(|e| e.to_string())?;
+        }
+        conn.execute_batch(SCHEMA_V3).map_err(|e| e.to_string())?;
+        conn.pragma_update(None, "user_version", 3)
+            .map_err(|e| e.to_string())?;
+    }
+    let final_version: i32 = conn
+        .query_row("PRAGMA user_version", [], |row| row.get(0))
+        .map_err(|e| e.to_string())?;
+    if final_version != CURRENT_SCHEMA_VERSION {
+        return Err(format!(
+            "migration ended at user_version {} but expected {}",
+            final_version, CURRENT_SCHEMA_VERSION
+        ));
     }
     Ok(())
 }
@@ -150,9 +206,6 @@ CREATE TABLE IF NOT EXISTS files (
     color TEXT,
     exif_scanned INTEGER NOT NULL DEFAULT 0,
     metadata_json TEXT NOT NULL,
-    adjustments_json TEXT NOT NULL DEFAULT '{}',
-    metadata_modified INTEGER,
-    exif_json TEXT,
 
     date_taken TEXT,
     iso INTEGER,
@@ -191,30 +244,6 @@ CREATE INDEX IF NOT EXISTS idx_files_folder_make ON files(folder_id, make);
 CREATE INDEX IF NOT EXISTS idx_files_folder_model ON files(folder_id, model);
 CREATE INDEX IF NOT EXISTS idx_files_folder_lens_model ON files(folder_id, lens_model);
 CREATE INDEX IF NOT EXISTS idx_tags_tag ON tags(tag COLLATE NOCASE);
-
-CREATE TABLE IF NOT EXISTS file_adjustment_deltas (
-    id INTEGER PRIMARY KEY,
-    file_id INTEGER NOT NULL REFERENCES files(id) ON DELETE CASCADE,
-    created_at INTEGER NOT NULL,
-    adjustment_key TEXT NOT NULL,
-    old_value TEXT,
-    new_value TEXT NOT NULL,
-    source TEXT NOT NULL,
-    description TEXT,
-    is_undone INTEGER NOT NULL DEFAULT 0
-);
-
-CREATE TABLE IF NOT EXISTS file_adjustment_snapshots (
-    id INTEGER PRIMARY KEY,
-    file_id INTEGER NOT NULL REFERENCES files(id) ON DELETE CASCADE,
-    created_at INTEGER NOT NULL,
-    adjustments_json TEXT NOT NULL,
-    source TEXT NOT NULL,
-    description TEXT
-);
-
-CREATE INDEX IF NOT EXISTS idx_deltas_file_created ON file_adjustment_deltas(file_id, created_at);
-CREATE INDEX IF NOT EXISTS idx_snapshots_file_created ON file_adjustment_snapshots(file_id, created_at);
 "#;
 
 const SCHEMA_V2: &str = r#"
@@ -245,6 +274,12 @@ CREATE TABLE IF NOT EXISTS file_adjustment_snapshots (
 
 CREATE INDEX IF NOT EXISTS idx_deltas_file_created ON file_adjustment_deltas(file_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_snapshots_file_created ON file_adjustment_snapshots(file_id, created_at);
+"#;
+
+const SCHEMA_V3: &str = r#"
+CREATE INDEX IF NOT EXISTS idx_deltas_file_step ON file_adjustment_deltas(file_id, step_index);
+CREATE INDEX IF NOT EXISTS idx_deltas_file_idx ON file_adjustment_deltas(file_id, idx);
+CREATE INDEX IF NOT EXISTS idx_snapshots_file_idx ON file_adjustment_snapshots(file_id, idx);
 "#;
 
 pub fn init_catalog(app_handle: &AppHandle) -> Result<(), String> {
@@ -337,6 +372,32 @@ pub struct FileRowInput {
     pub color: Option<String>,
     pub metadata_json: String,
     pub tags: Vec<(String, String)>, // (tag, source)
+}
+
+#[derive(Debug, Clone)]
+pub struct AdjustmentDelta {
+    pub step_index: i64,
+    pub idx: i64,
+    pub adjustment_key: String,
+    pub old_value: Option<String>,
+    pub new_value: String,
+    pub description: Option<String>,
+    pub created_at: i64,
+}
+
+#[derive(Debug, Clone)]
+pub struct AdjustmentSnapshot {
+    pub idx: i64,
+    pub adjustments_json: String,
+    pub description: Option<String>,
+    pub created_at: i64,
+}
+
+#[derive(Debug, Clone)]
+pub struct EditHistory {
+    pub snapshot: AdjustmentSnapshot,
+    pub deltas: Vec<AdjustmentDelta>,
+    pub history_index: i64,
 }
 
 pub fn upsert_files<R: Runtime>(
@@ -645,6 +706,238 @@ pub(crate) fn update_file_metadata_in_conn(
     )
     .map_err(|e| e.to_string())?;
     Ok(())
+}
+
+/// Persists a full delta-based edit history for one file, replacing any
+/// previously stored history. The base snapshot is written to
+/// `file_adjustment_snapshots` and every delta to `file_adjustment_deltas`.
+/// The `files` row is updated with the current adjustments blob, the active
+/// history index, and a fresh `metadata_modified` timestamp.
+pub fn save_edit_history<R: Runtime>(
+    app_handle: &AppHandle<R>,
+    file_id: i64,
+    snapshot: &AdjustmentSnapshot,
+    deltas: &[AdjustmentDelta],
+    history_index: i64,
+    current_adjustments_json: &str,
+) -> Result<(), String> {
+    let mut conn = open_connection(app_handle)?;
+    let tx = conn.transaction().map_err(|e| e.to_string())?;
+    save_edit_history_in_conn(
+        &tx,
+        file_id,
+        snapshot,
+        deltas,
+        history_index,
+        current_adjustments_json,
+    )?;
+    tx.commit().map_err(|e| e.to_string())
+}
+
+fn save_edit_history_in_conn(
+    conn: &Connection,
+    file_id: i64,
+    snapshot: &AdjustmentSnapshot,
+    deltas: &[AdjustmentDelta],
+    history_index: i64,
+    current_adjustments_json: &str,
+) -> Result<(), String> {
+    // `reconstruct_history` expects deltas ordered by (step_index, idx).
+    // Sort here so callers don't have to guarantee ordering themselves.
+    let mut sorted_deltas = deltas.to_vec();
+    sorted_deltas.sort_by_key(|d| (d.step_index, d.idx));
+
+    conn.execute(
+        "DELETE FROM file_adjustment_deltas WHERE file_id = ?1",
+        params![file_id],
+    )
+    .map_err(|e| e.to_string())?;
+    conn.execute(
+        "DELETE FROM file_adjustment_snapshots WHERE file_id = ?1",
+        params![file_id],
+    )
+    .map_err(|e| e.to_string())?;
+
+    conn.execute(
+        "INSERT INTO file_adjustment_snapshots
+         (file_id, created_at, adjustments_json, source, description, idx)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+        params![
+            file_id,
+            snapshot.created_at,
+            &snapshot.adjustments_json,
+            "history",
+            snapshot.description.as_ref(),
+            snapshot.idx,
+        ],
+    )
+    .map_err(|e| e.to_string())?;
+
+    for delta in &sorted_deltas {
+        conn.execute(
+            "INSERT INTO file_adjustment_deltas
+             (file_id, created_at, adjustment_key, old_value, new_value, source, description, is_undone, step_index, idx)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+            params![
+                file_id,
+                delta.created_at,
+                &delta.adjustment_key,
+                delta.old_value.as_ref(),
+                &delta.new_value,
+                "history",
+                delta.description.as_ref(),
+                0i32,
+                delta.step_index,
+                delta.idx,
+            ],
+        )
+        .map_err(|e| e.to_string())?;
+    }
+
+    let max_step_index: i64 = conn
+        .query_row(
+            "SELECT COALESCE(MAX(step_index), 0) FROM file_adjustment_deltas WHERE file_id = ?1",
+            params![file_id],
+            |row| row.get(0),
+        )
+        .map_err(|e| e.to_string())?;
+    if max_step_index >= 100 {
+        let cutoff = max_step_index - 99;
+        conn.execute(
+            "DELETE FROM file_adjustment_deltas WHERE file_id = ?1 AND step_index < ?2",
+            params![file_id, cutoff],
+        )
+        .map_err(|e| e.to_string())?;
+    }
+
+    conn.execute(
+        "UPDATE files SET adjustments_json = ?1, history_index = ?2, metadata_modified = ?3 WHERE id = ?4",
+        params![current_adjustments_json, history_index, now_secs(), file_id],
+    )
+    .map_err(|e| e.to_string())?;
+
+    Ok(())
+}
+
+/// Loads the persisted edit history for one file. Returns `None` when no base
+/// snapshot exists.
+pub fn load_edit_history<R: Runtime>(
+    app_handle: &AppHandle<R>,
+    file_id: i64,
+) -> Result<Option<EditHistory>, String> {
+    let conn = open_connection(app_handle)?;
+    load_edit_history_in_conn(&conn, file_id)
+}
+
+fn load_edit_history_in_conn(
+    conn: &Connection,
+    file_id: i64,
+) -> Result<Option<EditHistory>, String> {
+    let snapshot = conn
+        .query_row(
+            "SELECT idx, adjustments_json, description, created_at
+             FROM file_adjustment_snapshots
+             WHERE file_id = ?1
+             ORDER BY idx ASC
+             LIMIT 1",
+            params![file_id],
+            |row| {
+                Ok(AdjustmentSnapshot {
+                    idx: row.get(0)?,
+                    adjustments_json: row.get(1)?,
+                    description: row.get(2)?,
+                    created_at: row.get(3)?,
+                })
+            },
+        )
+        .optional()
+        .map_err(|e| e.to_string())?;
+
+    let snapshot = match snapshot {
+        Some(s) => s,
+        None => return Ok(None),
+    };
+
+    let mut stmt = conn
+        .prepare(
+            "SELECT step_index, idx, adjustment_key, old_value, new_value, description, created_at
+             FROM file_adjustment_deltas
+             WHERE file_id = ?1
+             ORDER BY step_index ASC, idx ASC",
+        )
+        .map_err(|e| e.to_string())?;
+    let deltas = stmt
+        .query_map(params![file_id], |row| {
+            Ok(AdjustmentDelta {
+                step_index: row.get(0)?,
+                idx: row.get(1)?,
+                adjustment_key: row.get(2)?,
+                old_value: row.get(3)?,
+                new_value: row.get(4)?,
+                description: row.get(5)?,
+                created_at: row.get(6)?,
+            })
+        })
+        .map_err(|e| e.to_string())?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())?;
+
+    let history_index: i64 = conn
+        .query_row(
+            "SELECT COALESCE(history_index, 0) FROM files WHERE id = ?1",
+            params![file_id],
+            |row| row.get(0),
+        )
+        .optional()
+        .map_err(|e| e.to_string())?
+        .unwrap_or(0);
+
+    Ok(Some(EditHistory {
+        snapshot,
+        deltas,
+        history_index,
+    }))
+}
+
+/// Reconstructs the full adjustment state at every step from the base snapshot
+/// and the ordered deltas. Returns `(states, active_index)` where `states[0]`
+/// is the snapshot state, `states[1]` is after applying step 0, and so on.
+/// `active_index` is `history_index` clamped to the available state range.
+pub fn reconstruct_history(
+    snapshot: &AdjustmentSnapshot,
+    deltas: &[AdjustmentDelta],
+    history_index: i64,
+) -> Result<(Vec<String>, i64), String> {
+    let mut state: serde_json::Value =
+        serde_json::from_str(&snapshot.adjustments_json).map_err(|e| e.to_string())?;
+    let mut states = vec![serde_json::to_string(&state).map_err(|e| e.to_string())?];
+
+    let mut groups: Vec<Vec<&AdjustmentDelta>> = Vec::new();
+    for delta in deltas {
+        if let Some(last_group) = groups.last_mut() {
+            if last_group[0].step_index == delta.step_index {
+                last_group.push(delta);
+                continue;
+            }
+        }
+        groups.push(vec![delta]);
+    }
+
+    for group in groups {
+        let Some(obj) = state.as_object_mut() else {
+            return Err("snapshot adjustments are not a JSON object".to_string());
+        };
+        for delta in group {
+            let new_value: serde_json::Value =
+                serde_json::from_str(&delta.new_value).map_err(|e| e.to_string())?;
+            obj.insert(delta.adjustment_key.clone(), new_value);
+        }
+        states.push(serde_json::to_string(&state).map_err(|e| e.to_string())?);
+    }
+
+    let max_index = (states.len() as i64).saturating_sub(1);
+    let active_index = history_index.clamp(0, max_index);
+    Ok((states, active_index))
 }
 
 /// Returns whether a catalog row has already completed its EXIF scan. Used by
@@ -1265,6 +1558,7 @@ pub fn get_files_under_folder_subtree(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::json;
 
     #[test]
     fn test_schema_migration() {
@@ -2081,6 +2375,51 @@ mod tests {
         assert_eq!(version, CURRENT_SCHEMA_VERSION);
     }
 
+    #[test]
+    fn test_migrate_from_partial_v3_is_idempotent() {
+        // Simulate a crash that added the V3 columns but did not bump
+        // user_version. Migration must recover without "duplicate column" errors.
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(SCHEMA_V1_PRE_MIGRATION).unwrap();
+        conn.execute_batch(SCHEMA_V2).unwrap();
+        conn.execute(
+            "ALTER TABLE file_adjustment_deltas ADD COLUMN step_index INTEGER NOT NULL DEFAULT 0",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "ALTER TABLE file_adjustment_deltas ADD COLUMN idx INTEGER NOT NULL DEFAULT 0",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "ALTER TABLE file_adjustment_snapshots ADD COLUMN idx INTEGER NOT NULL DEFAULT 0",
+            [],
+        )
+        .unwrap();
+        conn.execute("ALTER TABLE files ADD COLUMN history_index INTEGER", [])
+            .unwrap();
+        conn.pragma_update(None, "user_version", 2i32).unwrap();
+
+        migrate(&conn).unwrap();
+
+        let version: i32 = conn
+            .query_row("PRAGMA user_version", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(version, CURRENT_SCHEMA_VERSION);
+
+        let indexes: Vec<String> = {
+            let mut stmt = conn
+                .prepare("SELECT name FROM sqlite_master WHERE type='index' ORDER BY name")
+                .unwrap();
+            stmt.query_map([], |r| r.get(0))
+                .unwrap()
+                .map(|r| r.unwrap())
+                .collect()
+        };
+        assert!(indexes.contains(&"idx_deltas_file_step".to_string()));
+    }
+
     fn image_row(name: &str, exif: Option<HashMap<String, String>>) -> FileRowInput {
         let image = ImageFile {
             path: format!("/tmp/x/{}", name),
@@ -2146,5 +2485,301 @@ mod tests {
                 .unwrap()
                 .is_empty()
         );
+    }
+
+    fn file_row(path: &str) -> FileRowInput {
+        let mut row = sample_file();
+        row.path = path.to_string();
+        row.name = path.rsplit('/').next().unwrap_or(path).to_string();
+        row.is_virtual_copy = path.contains("?vc=");
+        row
+    }
+
+    #[test]
+    fn test_save_and_load_edit_history() {
+        let (mut conn, folder_id) = setup_conn();
+        upsert_files_in_conn(&mut conn, folder_id, &[file_row("/tmp/a.jpg")]).unwrap();
+        let file_id: i64 = conn
+            .query_row("SELECT id FROM files WHERE path = '/tmp/a.jpg'", [], |r| {
+                r.get(0)
+            })
+            .unwrap();
+
+        let snapshot = AdjustmentSnapshot {
+            idx: 0,
+            adjustments_json: r#"{"exposure":0.0,"contrast":1.0}"#.to_string(),
+            description: Some("base".to_string()),
+            created_at: 1000,
+        };
+        let deltas = vec![
+            AdjustmentDelta {
+                step_index: 0,
+                idx: 0,
+                adjustment_key: "exposure".to_string(),
+                old_value: Some("0.0".to_string()),
+                new_value: "0.5".to_string(),
+                description: None,
+                created_at: 1001,
+            },
+            AdjustmentDelta {
+                step_index: 1,
+                idx: 0,
+                adjustment_key: "exposure".to_string(),
+                old_value: Some("0.5".to_string()),
+                new_value: "1.0".to_string(),
+                description: None,
+                created_at: 1002,
+            },
+            AdjustmentDelta {
+                step_index: 2,
+                idx: 0,
+                adjustment_key: "contrast".to_string(),
+                old_value: Some("1.0".to_string()),
+                new_value: "1.2".to_string(),
+                description: None,
+                created_at: 1003,
+            },
+        ];
+
+        save_edit_history_in_conn(
+            &conn,
+            file_id,
+            &snapshot,
+            &deltas,
+            1,
+            r#"{"exposure":1.0,"contrast":1.2}"#,
+        )
+        .unwrap();
+
+        let history = load_edit_history_in_conn(&conn, file_id).unwrap().unwrap();
+        assert_eq!(
+            history.snapshot.adjustments_json,
+            snapshot.adjustments_json
+        );
+        assert_eq!(history.deltas.len(), 3);
+        assert_eq!(history.history_index, 1);
+
+        let (states, active_index) =
+            reconstruct_history(&history.snapshot, &history.deltas, history.history_index)
+                .unwrap();
+        assert_eq!(states.len(), 4);
+        assert_eq!(active_index, 1);
+        assert_eq!(
+            serde_json::from_str::<serde_json::Value>(&states[0]).unwrap(),
+            json!({"exposure":0.0,"contrast":1.0})
+        );
+        assert_eq!(
+            serde_json::from_str::<serde_json::Value>(&states[1]).unwrap(),
+            json!({"exposure":0.5,"contrast":1.0})
+        );
+        assert_eq!(
+            serde_json::from_str::<serde_json::Value>(&states[2]).unwrap(),
+            json!({"exposure":1.0,"contrast":1.0})
+        );
+        assert_eq!(
+            serde_json::from_str::<serde_json::Value>(&states[3]).unwrap(),
+            json!({"exposure":1.0,"contrast":1.2})
+        );
+    }
+
+    #[test]
+    fn test_edit_history_pruning() {
+        let (mut conn, folder_id) = setup_conn();
+        upsert_files_in_conn(&mut conn, folder_id, &[file_row("/tmp/a.jpg")]).unwrap();
+        let file_id: i64 = conn
+            .query_row("SELECT id FROM files WHERE path = '/tmp/a.jpg'", [], |r| {
+                r.get(0)
+            })
+            .unwrap();
+
+        let snapshot = AdjustmentSnapshot {
+            idx: 0,
+            adjustments_json: r#"{"exposure":0.0}"#.to_string(),
+            description: None,
+            created_at: 0,
+        };
+        let deltas: Vec<AdjustmentDelta> = (0..105)
+            .map(|step| AdjustmentDelta {
+                step_index: step,
+                idx: 0,
+                adjustment_key: "exposure".to_string(),
+                old_value: None,
+                new_value: format!("{}", step as f64),
+                description: None,
+                created_at: step,
+            })
+            .collect();
+
+        save_edit_history_in_conn(
+            &conn,
+            file_id,
+            &snapshot,
+            &deltas,
+            104,
+            r#"{"exposure":104.0}"#,
+        )
+        .unwrap();
+
+        let history = load_edit_history_in_conn(&conn, file_id).unwrap().unwrap();
+        assert_eq!(history.deltas.len(), 100);
+        let min_step = history.deltas.iter().map(|d| d.step_index).min().unwrap();
+        let max_step = history.deltas.iter().map(|d| d.step_index).max().unwrap();
+        assert_eq!(min_step, 5);
+        assert_eq!(max_step, 104);
+    }
+
+    #[test]
+    fn test_edit_history_virtual_copy_isolation() {
+        let (mut conn, folder_id) = setup_conn();
+        upsert_files_in_conn(
+            &mut conn,
+            folder_id,
+            &[file_row("/tmp/a.jpg"), file_row("/tmp/a.jpg?vc=copy1")],
+        )
+        .unwrap();
+        let base_id: i64 = conn
+            .query_row("SELECT id FROM files WHERE path = '/tmp/a.jpg'", [], |r| {
+                r.get(0)
+            })
+            .unwrap();
+        let vc_id: i64 = conn
+            .query_row(
+                "SELECT id FROM files WHERE path = '/tmp/a.jpg?vc=copy1'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+
+        let base_snapshot = AdjustmentSnapshot {
+            idx: 0,
+            adjustments_json: r#"{"exposure":0.5}"#.to_string(),
+            description: None,
+            created_at: 0,
+        };
+        let base_deltas = vec![AdjustmentDelta {
+            step_index: 0,
+            idx: 0,
+            adjustment_key: "exposure".to_string(),
+            old_value: None,
+            new_value: "0.6".to_string(),
+            description: None,
+            created_at: 1,
+        }];
+        save_edit_history_in_conn(
+            &conn,
+            base_id,
+            &base_snapshot,
+            &base_deltas,
+            0,
+            r#"{"exposure":0.6}"#,
+        )
+        .unwrap();
+
+        let vc_snapshot = AdjustmentSnapshot {
+            idx: 0,
+            adjustments_json: r#"{"exposure":2.0}"#.to_string(),
+            description: None,
+            created_at: 0,
+        };
+        let vc_deltas = vec![AdjustmentDelta {
+            step_index: 0,
+            idx: 0,
+            adjustment_key: "exposure".to_string(),
+            old_value: None,
+            new_value: "2.5".to_string(),
+            description: None,
+            created_at: 1,
+        }];
+        save_edit_history_in_conn(
+            &conn,
+            vc_id,
+            &vc_snapshot,
+            &vc_deltas,
+            0,
+            r#"{"exposure":2.5}"#,
+        )
+        .unwrap();
+
+        let base_history = load_edit_history_in_conn(&conn, base_id).unwrap().unwrap();
+        let vc_history = load_edit_history_in_conn(&conn, vc_id).unwrap().unwrap();
+
+        assert_eq!(
+            base_history.snapshot.adjustments_json,
+            r#"{"exposure":0.5}"#
+        );
+        assert_eq!(
+            vc_history.snapshot.adjustments_json,
+            r#"{"exposure":2.0}"#
+        );
+    }
+
+    #[test]
+    fn test_reconstruct_history_undone_steps() {
+        let snapshot = AdjustmentSnapshot {
+            idx: 0,
+            adjustments_json: r#"{"exposure":0.0}"#.to_string(),
+            description: None,
+            created_at: 0,
+        };
+        let deltas: Vec<AdjustmentDelta> = (0..5)
+            .map(|step| AdjustmentDelta {
+                step_index: step,
+                idx: 0,
+                adjustment_key: "exposure".to_string(),
+                old_value: None,
+                new_value: format!("{:.1}", step as f64 + 1.0),
+                description: None,
+                created_at: step,
+            })
+            .collect();
+
+        let (states, active_index) = reconstruct_history(&snapshot, &deltas, 2).unwrap();
+        assert_eq!(states.len(), 6);
+        assert_eq!(active_index, 2);
+        // Future states are still present in the returned vector.
+        let last: serde_json::Value = serde_json::from_str(&states[5]).unwrap();
+        assert_eq!(last, json!({"exposure":5.0}));
+    }
+
+    #[test]
+    fn test_reconstruct_history_empty_deltas() {
+        let snapshot = AdjustmentSnapshot {
+            idx: 0,
+            adjustments_json: r#"{"exposure":0.0}"#.to_string(),
+            description: None,
+            created_at: 0,
+        };
+
+        let (states, active_index) = reconstruct_history(&snapshot, &[], 0).unwrap();
+        assert_eq!(states.len(), 1);
+        assert_eq!(active_index, 0);
+        let state: serde_json::Value = serde_json::from_str(&states[0]).unwrap();
+        assert_eq!(state, json!({"exposure":0.0}));
+    }
+
+    #[test]
+    fn test_reconstruct_history_clamps_index() {
+        let snapshot = AdjustmentSnapshot {
+            idx: 0,
+            adjustments_json: r#"{"exposure":0.0}"#.to_string(),
+            description: None,
+            created_at: 0,
+        };
+        let deltas: Vec<AdjustmentDelta> = (0..3)
+            .map(|step| AdjustmentDelta {
+                step_index: step,
+                idx: 0,
+                adjustment_key: "exposure".to_string(),
+                old_value: None,
+                new_value: format!("{:.1}", step as f64 + 1.0),
+                description: None,
+                created_at: step,
+            })
+            .collect();
+
+        // There are 4 states (snapshot + 3 steps); index 99 clamps to 3.
+        let (states, active_index) = reconstruct_history(&snapshot, &deltas, 99).unwrap();
+        assert_eq!(states.len(), 4);
+        assert_eq!(active_index, 3);
     }
 }

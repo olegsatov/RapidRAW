@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { toast } from 'react-toastify';
 import { useEditorStore } from '../store/useEditorStore';
@@ -7,6 +7,7 @@ import { useSettingsStore } from '../store/useSettingsStore';
 import { Invokes } from '../components/ui/AppProperties';
 import { INITIAL_ADJUSTMENTS, normalizeLoadedAdjustments } from '../utils/adjustments';
 import { globalHistoryCache } from '../utils/historyCache';
+import { loadPersistedHistory } from '../utils/historyPersistence';
 
 export function useImageLoader(cachedEditStateRef: React.RefObject<any>) {
   const selectedImage = useEditorStore((s) => s.selectedImage);
@@ -26,9 +27,12 @@ export function useImageLoader(cachedEditStateRef: React.RefObject<any>) {
   const appSettings = useSettingsStore((s) => s.appSettings);
 
   const isWgpuActive = appSettings?.useWgpuRenderer !== false && selectedImage?.isReady && hasRenderedFirstFrame;
+  const lastSelectedPathRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (selectedImage && !selectedImage.isReady && selectedImage.path) {
+      const previousPath = lastSelectedPathRef.current;
+      lastSelectedPathRef.current = selectedImage.path;
       let isEffectActive = true;
 
       const loadMetadataEarly = async () => {
@@ -46,12 +50,17 @@ export function useImageLoader(cachedEditStateRef: React.RefObject<any>) {
             initialAdjusts = { ...INITIAL_ADJUSTMENTS };
           }
 
-          const cachedHistory = globalHistoryCache.get(selectedImage.path);
-          if (cachedHistory) {
-            restoreHistory(cachedHistory.history, cachedHistory.historyIndex);
+          const persistedHistory = await loadPersistedHistory(selectedImage.path);
+          if (persistedHistory) {
+            restoreHistory(persistedHistory.history, persistedHistory.historyIndex, persistedHistory.historyDeltas);
           } else {
-            setEditor({ adjustments: initialAdjusts });
-            resetHistory(initialAdjusts);
+            const cachedHistory = globalHistoryCache.get(selectedImage.path);
+            if (cachedHistory) {
+              restoreHistory(cachedHistory.history, cachedHistory.historyIndex);
+            } else {
+              setEditor({ adjustments: initialAdjusts });
+              resetHistory(initialAdjusts);
+            }
           }
         } catch (err) {
           console.error('Failed to load metadata early:', err);

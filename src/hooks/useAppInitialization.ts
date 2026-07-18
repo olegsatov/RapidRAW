@@ -22,6 +22,7 @@ import {
   ThumbnailAspectRatio,
 } from '../components/ui/AppProperties';
 import { useTranslation } from 'react-i18next';
+import { subscribeHistoryPersistence } from '../utils/historyPersistence';
 
 export interface LaunchPayload {
   editSession?: ExternalEditSession;
@@ -141,10 +142,19 @@ export const useAppInitialization = ({
   const defaultThumbnailSize = isAndroid ? ThumbnailSize.Small : ThumbnailSize.Medium;
   const defaultLibraryViewMode = isAndroid ? LibraryViewMode.Recursive : LibraryViewMode.Flat;
   const prevImageCountsNeed = useRef<boolean | undefined>(undefined);
+  const unsubscribeHistoryPersistenceRef = useRef<(() => void) | null>(null);
 
   useEffect(() => {
     initPlatform();
   }, [initPlatform]);
+
+  useEffect(() => {
+    unsubscribeHistoryPersistenceRef.current = subscribeHistoryPersistence();
+    return () => {
+      unsubscribeHistoryPersistenceRef.current?.();
+      unsubscribeHistoryPersistenceRef.current = null;
+    };
+  }, []);
 
   useEffect(() => {
     invoke(Invokes.GetSupportedFileTypes)
