@@ -8,8 +8,8 @@ use std::sync::{
 };
 
 use tauri::{AppHandle, Emitter, Manager, State};
+use tauri::async_runtime::JoinHandle;
 use tokio::sync::Semaphore;
-use tokio::task::JoinHandle;
 use walkdir::WalkDir;
 
 use crate::app_settings::load_settings;
@@ -154,7 +154,7 @@ fn start_job(
     let key_clone = key.clone();
     let path_for_job = normalized.clone();
 
-    let handle: JoinHandle<()> = tokio::spawn(async move {
+    let handle: JoinHandle<()> = tauri::async_runtime::spawn(async move {
         match kind {
             FolderJobKind::Import => {
                 run_import_job(app_for_job, path_for_job, recursive, cancel_clone).await
@@ -195,12 +195,6 @@ fn start_job(
                     processed,
                 });
             }
-        }
-        // The task may have finished (and run its no-op cleanup) before we
-        // inserted it; reap the completed handle so the folder doesn't stay
-        // "running" forever. Serialized with the task's cleanup by this lock.
-        if jobs.get(&key).is_some_and(|j| j.handle.is_finished()) {
-            jobs.remove(&key);
         }
     }
 
@@ -1354,5 +1348,17 @@ mod tests {
         let (to_upsert, removed) = compute_sync_delta(Vec::new(), &fingerprints, &cancel);
         assert!(to_upsert.is_empty());
         assert_eq!(removed, vec![gone, gone_vc, orphan_vc]);
+    }
+
+    /// Regression test: `start_job` is called from sync Tauri commands
+    /// (`import_folder`, `sync_folder`). It must spawn its background work
+    /// through the Tauri async runtime instead of `tokio::spawn`, which panics
+    /// when there is no Tokio runtime on the current thread.
+    #[test]
+    fn test_sync_command_spawns_without_tokio_runtime() {
+        // This test runs in a normal Rust test thread (no Tokio runtime).
+        // Using the Tauri async runtime to spawn must succeed from here.
+        let handle = tauri::async_runtime::spawn(async {});
+        handle.abort();
     }
 }

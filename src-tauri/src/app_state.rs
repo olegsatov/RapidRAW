@@ -6,6 +6,7 @@ use std::sync::{Arc, Condvar, Mutex};
 
 use image::{DynamicImage, GrayImage};
 use serde::{Deserialize, Serialize};
+use tauri::async_runtime::JoinHandle as AsyncJoinHandle;
 use tokio::sync::Mutex as TokioMutex;
 use tokio::task::JoinHandle;
 use wgpu::{Texture, TextureView};
@@ -142,7 +143,7 @@ pub type TransformedImageCache = (u64, Arc<DynamicImage>, (f32, f32));
 
 pub struct FolderImportHandle {
     pub cancel: Arc<AtomicBool>,
-    pub handle: JoinHandle<()>,
+    pub handle: AsyncJoinHandle<()>,
     /// Number of files processed by the scan phase; used when the job is
     /// cancelled so the frontend can show how far it got.
     pub processed: Arc<AtomicUsize>,
