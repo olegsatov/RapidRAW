@@ -743,6 +743,10 @@
         "tool": "Narzędzie"
       }
     },
+    "history": {
+      "title": "Historia",
+      "empty": "Brak zmian"
+    },
     "switcher": {
       "tooltips": {
         "adjust": "Dopasuj",

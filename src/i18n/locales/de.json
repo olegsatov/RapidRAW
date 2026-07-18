@@ -705,6 +705,10 @@
         "tool": "Werkzeug"
       }
     },
+    "history": {
+      "title": "Verlauf",
+      "empty": "Noch keine Bearbeitungen"
+    },
     "switcher": {
       "tooltips": {
         "adjust": "Anpassen",

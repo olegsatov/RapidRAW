@@ -705,6 +705,10 @@
         "tool": "도구"
       }
     },
+    "history": {
+      "title": "기록",
+      "empty": "아직 편집 내용이 없습니다"
+    },
     "switcher": {
       "tooltips": {
         "adjust": "조정",

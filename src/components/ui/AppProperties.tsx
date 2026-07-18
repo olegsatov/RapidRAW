@@ -135,6 +135,7 @@ export enum Panel {
 
 export enum LeftPanelTab {
   Presets = 'presets',
+  History = 'history',
 }
 
 export enum RawStatus {

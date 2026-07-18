@@ -826,6 +826,10 @@
         "preset": "Псет"
       }
     },
+    "history": {
+      "title": "История",
+      "empty": "Изменений пока нет"
+    },
     "switcher": {
       "tooltips": {
         "adjust": "Коррекция",

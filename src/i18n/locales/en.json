@@ -827,6 +827,10 @@
         "preset": "Preset"
       }
     },
+    "history": {
+      "title": "History",
+      "empty": "No edits yet"
+    },
     "switcher": {
       "tooltips": {
         "adjust": "Adjust",

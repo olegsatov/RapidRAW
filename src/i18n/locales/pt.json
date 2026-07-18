@@ -705,6 +705,10 @@
         "tool": "Ferramenta"
       }
     },
+    "history": {
+      "title": "Histórico",
+      "empty": "Sem edições ainda"
+    },
     "switcher": {
       "tooltips": {
         "adjust": "Ajustar",

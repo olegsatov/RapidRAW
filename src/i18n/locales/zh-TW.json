@@ -705,6 +705,10 @@
         "tool": "工具"
       }
     },
+    "history": {
+      "title": "歷史記錄",
+      "empty": "尚無編輯"
+    },
     "switcher": {
       "tooltips": {
         "adjust": "調整",

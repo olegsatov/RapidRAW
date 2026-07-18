@@ -71,6 +71,7 @@ import { useLibraryActions } from './useLibraryActions';
 import { useFolderImport, applyFolderRelocation } from './useFolderImport';
 import { useFolderImportStore } from '../store/useFolderImportStore';
 import { globalImageCache } from '../utils/ImageLRUCache';
+import { globalHistoryCache } from '../utils/historyCache';
 import { EDITOR_BACKGROUND_OPTIONS } from '../utils/editorBackground';
 
 export interface UseAppContextMenusProps {
@@ -484,6 +485,7 @@ export function useAppContextMenus(props: UseAppContextMenusProps) {
       const handleApplyAutoAdjustmentsToSelection = () => {
         if (finalSelection.length === 0) return;
         finalSelection.forEach((p) => globalImageCache.delete(p));
+        finalSelection.forEach((p) => globalHistoryCache.delete(p));
 
         invoke(Invokes.ApplyAutoAdjustmentsToPaths, { paths: finalSelection })
           .then(async () => {

@@ -9,6 +9,7 @@ import { Adjustments, COPYABLE_ADJUSTMENT_KEYS } from '../utils/adjustments';
 import { Invokes, Panel } from '../components/ui/AppProperties';
 import { debouncedSave } from './useEditorActions';
 import { globalImageCache } from '../utils/ImageLRUCache';
+import { globalHistoryCache } from '../utils/historyCache';
 
 export function useImageProcessing(
   transformWrapperRef: any,
@@ -479,6 +480,7 @@ export function useImageProcessing(
             }
             if (Object.keys(delta).length > 0) {
               otherPaths.forEach((p) => globalImageCache.delete(p));
+              otherPaths.forEach((p) => globalHistoryCache.delete(p));
               invoke(Invokes.ApplyAdjustmentsToPaths, { paths: otherPaths, adjustments: delta }).catch((err) => {
                 console.error('Failed to apply adjustments to multi-selection:', err);
               });

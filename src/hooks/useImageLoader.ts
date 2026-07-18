@@ -6,6 +6,7 @@ import { useLibraryStore } from '../store/useLibraryStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { Invokes } from '../components/ui/AppProperties';
 import { INITIAL_ADJUSTMENTS, normalizeLoadedAdjustments } from '../utils/adjustments';
+import { globalHistoryCache } from '../utils/historyCache';
 
 export function useImageLoader(cachedEditStateRef: React.RefObject<any>) {
   const selectedImage = useEditorStore((s) => s.selectedImage);
@@ -19,6 +20,7 @@ export function useImageLoader(cachedEditStateRef: React.RefObject<any>) {
   const hasRenderedFirstFrame = useEditorStore((s) => s.hasRenderedFirstFrame);
 
   const setEditor = useEditorStore((s) => s.setEditor);
+  const restoreHistory = useEditorStore((state) => state.restoreHistory);
   const resetHistory = useEditorStore((s) => s.resetHistory);
   const setLibrary = useLibraryStore((s) => s.setLibrary);
   const appSettings = useSettingsStore((s) => s.appSettings);
@@ -44,8 +46,13 @@ export function useImageLoader(cachedEditStateRef: React.RefObject<any>) {
             initialAdjusts = { ...INITIAL_ADJUSTMENTS };
           }
 
-          setEditor({ adjustments: initialAdjusts });
-          resetHistory(initialAdjusts);
+          const cachedHistory = globalHistoryCache.get(selectedImage.path);
+          if (cachedHistory) {
+            restoreHistory(cachedHistory.history, cachedHistory.historyIndex);
+          } else {
+            setEditor({ adjustments: initialAdjusts });
+            resetHistory(initialAdjusts);
+          }
         } catch (err) {
           console.error('Failed to load metadata early:', err);
         }
@@ -133,6 +140,7 @@ export function useImageLoader(cachedEditStateRef: React.RefObject<any>) {
     selectedImage?.isReady,
     appSettings?.editorPreviewResolution,
     resetHistory,
+    restoreHistory,
     setEditor,
     setLibrary,
   ]);

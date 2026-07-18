@@ -1,4 +1,4 @@
-import { SwatchBook } from 'lucide-react';
+import { History, SwatchBook } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { LeftPanelTab } from '../../ui/AppProperties';
 import Text from '../../ui/Text';
@@ -10,7 +10,10 @@ interface TabDef {
   labelKey: string;
 }
 
-const TABS: TabDef[] = [{ id: LeftPanelTab.Presets, icon: SwatchBook, labelKey: 'editor.presets.title' }];
+const TABS: TabDef[] = [
+  { id: LeftPanelTab.Presets, icon: SwatchBook, labelKey: 'editor.presets.title' },
+  { id: LeftPanelTab.History, icon: History, labelKey: 'editor.history.title' },
+];
 
 interface LeftPanelTabsProps {
   activeTab: LeftPanelTab;
