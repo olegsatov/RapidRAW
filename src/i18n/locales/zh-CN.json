@@ -216,6 +216,11 @@
       "unpin": "取消固定文件夹",
       "syncFolder": "Synchronize folder",
       "locateFolder": "Locate folder...",
+      "lastSyncedAt": "Last synced {{time}}",
+      "neverSynced": "Never synced",
+      "statusOnline": "online",
+      "statusOffline": "offline",
+      "statusChecking": "checking...",
       "lastSynced": "Synced {{time}} ago"
     },
     "library": {
@@ -726,6 +731,12 @@
       },
       "vc": "VC"
     }
+  },
+  "folderImport": {
+    "complete": "Folder import complete: {{folder}}",
+    "completeWithErrors": "Folder import complete with {{count}} error(s): {{folder}}",
+    "cancelled": "Folder import cancelled: {{folder}}",
+    "error": "Folder import failed for {{folder}}: {{message}}"
   },
   "export": {
     "advanced": {

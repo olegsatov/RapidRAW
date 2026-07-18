@@ -266,6 +266,11 @@
       "unpin": "Открепить папку",
       "syncFolder": "Синхронизировать папку",
       "locateFolder": "Найти папку...",
+      "lastSyncedAt": "Last synced {{time}}",
+      "neverSynced": "Never synced",
+      "statusOnline": "online",
+      "statusOffline": "offline",
+      "statusChecking": "checking...",
       "lastSynced": "Синхронизировано {{time}} назад"
     },
     "library": {
@@ -848,6 +853,12 @@
       },
       "vc": "ВК"
     }
+  },
+  "folderImport": {
+    "complete": "Folder import complete: {{folder}}",
+    "completeWithErrors": "Folder import complete with {{count}} error(s): {{folder}}",
+    "cancelled": "Folder import cancelled: {{folder}}",
+    "error": "Folder import failed for {{folder}}: {{message}}"
   },
   "export": {
     "advanced": {
