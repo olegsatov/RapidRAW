@@ -449,6 +449,7 @@ export function useTauriListeners({
         if (!isFolderOnScreen(path, recursive)) {
           return;
         }
+        useLibraryStore.getState().setLibrary({ isViewLoading: false });
         loadFolderFromCatalog(path, recursive)
           .then((files) => {
             if (!isEffectActive || files.length === 0) return;
@@ -461,12 +462,18 @@ export function useTauriListeners({
         const { path, recursive } = event.payload;
         useFolderImportStore.getState().cancelJob(folderJobKey(path, recursive));
         toast.info(t('folderImport.cancelled', { folder: path }));
+        if (isFolderOnScreen(path, recursive)) {
+          useLibraryStore.getState().setLibrary({ isViewLoading: false });
+        }
       }),
       listen<FolderImportErrorPayload>('folder-import-error', (event) => {
         if (!isEffectActive) return;
         const { path, recursive, message } = event.payload;
         useFolderImportStore.getState().failJob(folderJobKey(path, recursive), message);
         toast.error(t('folderImport.error', { folder: path, message }));
+        if (isFolderOnScreen(path, recursive)) {
+          useLibraryStore.getState().setLibrary({ isViewLoading: false });
+        }
       }),
       listen<FolderLocatedPayload>('folder-located', (event) => {
         if (!isEffectActive) return;
