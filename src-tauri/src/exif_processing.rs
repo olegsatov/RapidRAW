@@ -47,23 +47,13 @@ pub fn load_sidecar(sidecar_path: &Path) -> ImageMetadata {
     };
 
     let mut meta = serde_json::from_str::<ImageMetadata>(&content).unwrap_or_default();
-    let mut healed = false;
 
     if let Some(ref mut exif_map) = meta.exif {
         for val in exif_map.values_mut() {
             if val.len() > 500 {
                 *val = truncate_large_exif(val);
-                healed = true;
             }
         }
-    }
-
-    if healed && let Ok(json) = serde_json::to_string_pretty(&meta) {
-        let _ = fs::write(sidecar_path, json);
-        log::info!(
-            "Auto-healed bloated sidecar for: {}",
-            sidecar_path.display()
-        );
     }
 
     meta
