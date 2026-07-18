@@ -587,6 +587,14 @@ fn get_file_id_by_path_in_conn(conn: &Connection, file_path: &str) -> Result<Opt
     .map_err(|e| e.to_string())
 }
 
+#[allow(dead_code)]
+fn now_secs() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0)
+}
+
 /// Adjustment/metadata state stored for one catalog row.
 #[derive(Debug, Clone, PartialEq)]
 pub struct FileMetadata {
@@ -654,6 +662,57 @@ fn update_file_metadata_in_conn(
     )
     .map_err(|e| e.to_string())?;
     Ok(())
+}
+
+/// Updates the rating, flag, and tags for a single catalog row in one
+/// transaction, stamping `metadata_modified`. Tags are parsed from prefixed
+/// strings: `user:`, `color:`, or default `ai`.
+#[allow(dead_code)]
+pub fn update_file_rating_flag_tags(
+    app_handle: &AppHandle,
+    file_id: i64,
+    rating: u8,
+    flag: i8,
+    tags: &Option<Vec<String>>,
+) -> Result<(), String> {
+    let mut conn = open_connection(app_handle)?;
+    update_file_rating_flag_tags_in_conn(&mut conn, file_id, rating, flag, tags)
+}
+
+#[allow(dead_code)]
+fn update_file_rating_flag_tags_in_conn(
+    conn: &mut Connection,
+    file_id: i64,
+    rating: u8,
+    flag: i8,
+    tags: &Option<Vec<String>>,
+) -> Result<(), String> {
+    let tx = conn.transaction().map_err(|e| e.to_string())?;
+    tx.execute(
+        "UPDATE files SET rating = ?1, flag = ?2, metadata_modified = ?3 WHERE id = ?4",
+        params![rating as i32, flag as i32, now_secs(), file_id],
+    )
+    .map_err(|e| e.to_string())?;
+
+    tx.execute("DELETE FROM tags WHERE file_id = ?1", params![file_id])
+        .map_err(|e| e.to_string())?;
+    if let Some(tags) = tags {
+        for tag in tags {
+            let (source, tag_name) = if let Some(stripped) = tag.strip_prefix("user:") {
+                ("user", stripped)
+            } else if let Some(stripped) = tag.strip_prefix("color:") {
+                ("color", stripped)
+            } else {
+                ("ai", tag.as_str())
+            };
+            tx.execute(
+                "INSERT INTO tags(file_id, tag, source) VALUES (?1, ?2, ?3)",
+                params![file_id, tag_name, source],
+            )
+            .map_err(|e| e.to_string())?;
+        }
+    }
+    tx.commit().map_err(|e| e.to_string())
 }
 
 /// Returns `(id, path)` for every catalog row in `folder_id`, real files and
@@ -1746,6 +1805,91 @@ mod tests {
         let conn = Connection::open_in_memory().unwrap();
         migrate(&conn).unwrap();
         assert_eq!(get_file_metadata_in_conn(&conn, 999).unwrap(), None);
+    }
+
+    #[test]
+    fn test_update_file_metadata_stamps_timestamp() {
+        let (mut conn, folder_id) = setup_conn();
+        upsert_files_in_conn(&mut conn, folder_id, std::slice::from_ref(&sample_file()))
+            .unwrap();
+        let file_id: i64 = conn
+            .query_row(
+                "SELECT id FROM files WHERE path = '/tmp/x/a.jpg'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+
+        let before = now_secs();
+        update_file_metadata_in_conn(&conn, file_id, r#"{"exposure":0.5}"#, None).unwrap();
+
+        let meta = get_file_metadata_in_conn(&conn, file_id).unwrap().unwrap();
+        assert_eq!(meta.adjustments_json, r#"{"exposure":0.5}"#);
+        assert!(
+            meta.metadata_modified.unwrap() >= before,
+            "metadata_modified should be stamped with the current time"
+        );
+    }
+
+    #[test]
+    fn test_update_file_rating_flag_tags() {
+        let (mut conn, folder_id) = setup_conn();
+        conn.execute_batch("PRAGMA foreign_keys = ON").unwrap();
+        upsert_files_in_conn(&mut conn, folder_id, std::slice::from_ref(&sample_file()))
+            .unwrap();
+        let file_id: i64 = conn
+            .query_row(
+                "SELECT id FROM files WHERE path = '/tmp/x/a.jpg'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+
+        let tags = Some(vec![
+            "user:holiday".to_string(),
+            "color:red".to_string(),
+            "landscape".to_string(),
+        ]);
+        update_file_rating_flag_tags_in_conn(&mut conn, file_id, 4, -1, &tags).unwrap();
+
+        let (rating, flag, metadata_modified): (i64, i64, Option<i64>) = conn
+            .query_row(
+                "SELECT rating, flag, metadata_modified FROM files WHERE id = ?1",
+                params![file_id],
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+            )
+            .unwrap();
+        assert_eq!((rating, flag), (4, -1));
+        assert!(metadata_modified.is_some());
+
+        let stored_tags: Vec<(String, String)> = {
+            let mut stmt = conn
+                .prepare("SELECT tag, source FROM tags WHERE file_id = ?1 ORDER BY tag")
+                .unwrap();
+            stmt.query_map(params![file_id], |r| Ok((r.get(0)?, r.get(1)?)))
+                .unwrap()
+                .map(|r| r.unwrap())
+                .collect()
+        };
+        assert_eq!(
+            stored_tags,
+            vec![
+                ("holiday".to_string(), "user".to_string()),
+                ("landscape".to_string(), "ai".to_string()),
+                ("red".to_string(), "color".to_string()),
+            ]
+        );
+
+        // Updating with no tags clears existing ones.
+        update_file_rating_flag_tags_in_conn(&mut conn, file_id, 4, -1, &None).unwrap();
+        let count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM tags WHERE file_id = ?1",
+                params![file_id],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 0);
     }
 
     #[test]
