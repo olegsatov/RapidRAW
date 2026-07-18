@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { invoke } from '@tauri-apps/api/core';
 import type { ImageFile } from '../components/ui/AppProperties';
 
 export type ImportPhase = 'scan' | 'exif' | 'thumbnails' | 'complete' | 'cancelled' | 'error';
@@ -20,8 +21,11 @@ export interface FolderImportJob {
   errorMessage?: string;
 }
 
+export type FolderAvailability = 'unknown' | 'online' | 'offline';
+
 interface FolderImportState {
   jobs: Record<string, FolderImportJob>;
+  availability: Record<string, FolderAvailability>;
   startJob: (path: string, recursive: boolean, kind?: 'import' | 'sync') => void;
   appendBatch: (key: string, files: ImageFile[], scanned: number, total: number) => void;
   setPhase: (key: string, phase: ImportPhase) => void;
@@ -33,6 +37,8 @@ interface FolderImportState {
   failJob: (key: string, message: string) => void;
   clearJob: (key: string) => void;
   setFiles: (key: string, files: ImageFile[]) => void;
+  setAvailability: (path: string, status: 'online' | 'offline') => void;
+  checkAvailability: (paths: string[]) => Promise<void>;
 }
 
 // Jobs are keyed the same way as the backend job map so concurrent flat and
@@ -94,6 +100,7 @@ export const useFolderImportStore = create<FolderImportState>((set) => {
 
   return {
     jobs: {},
+    availability: {},
 
     startJob: (path, recursive, kind) =>
       set((state) => {
@@ -158,5 +165,35 @@ export const useFolderImportStore = create<FolderImportState>((set) => {
       }),
 
     setFiles: (key, files) => updateJob(key, () => ({ files })),
+
+    setAvailability: (path, status) =>
+      set((state) => ({
+        availability: { ...state.availability, [path]: status },
+      })),
+
+    checkAvailability: async (paths) => {
+      const trimmed = paths.filter(Boolean);
+      if (trimmed.length === 0) {
+        return;
+      }
+      const results = await Promise.all(
+        trimmed.map(async (path) => {
+          try {
+            const exists = await invoke<boolean>('check_path_exists', { path });
+            return { path, status: exists ? 'online' : 'offline' } as const;
+          } catch (err) {
+            console.error(`Failed to check availability for ${path}:`, err);
+            return { path, status: 'offline' } as const;
+          }
+        }),
+      );
+      set((state) => {
+        const availability = { ...state.availability };
+        for (const { path, status } of results) {
+          availability[path] = status;
+        }
+        return { availability };
+      });
+    },
   };
 });

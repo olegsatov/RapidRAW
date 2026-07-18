@@ -7,6 +7,7 @@ import { useLibraryStore } from '../store/useLibraryStore';
 import { useEditorStore } from '../store/useEditorStore';
 import { useProcessStore, type ExternalEditSession } from '../store/useProcessStore';
 import { usePresetStore } from '../store/usePresetStore';
+import { useFolderImportStore } from '../store/useFolderImportStore';
 import { THEMES, DEFAULT_THEME_ID, ThemeProps } from '../utils/themes';
 import { COPYABLE_ADJUSTMENT_KEYS } from '../utils/adjustments';
 import {
@@ -225,6 +226,16 @@ export const useAppInitialization = ({
           : settings.lastRootPath
             ? [settings.lastRootPath]
             : [];
+
+        // Non-blocking: mark tracked folders online/offline for the UI.
+        if (rootFolders.length > 0) {
+          useFolderImportStore
+            .getState()
+            .checkAvailability(rootFolders)
+            .catch((err) => {
+              console.error('Failed to check folder availability:', err);
+            });
+        }
 
         if (!isAndroid && rootFolders.length > 0) {
           const currentPath = settings.lastFolderState?.currentFolderPath || rootFolders[0];

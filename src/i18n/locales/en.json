@@ -260,9 +260,11 @@
       "paste": "Paste",
       "pin": "Pin Folder",
       "refresh": "Refresh Folders",
+      "locateFolder": "Locate Folder",
       "removeRoot": "Remove Root Folder",
       "renameFolder": "Rename Folder",
       "showExplorer": "Show in File Explorer",
+      "syncFolder": "Sync Folder",
       "unpin": "Unpin Folder"
     },
     "library": {
@@ -325,6 +327,7 @@
       "failedDelete": "Failed to delete: {{err}}",
       "failedDeleteFolder": "Failed to delete folder: {{err}}",
       "failedDuplicate": "Failed to duplicate file: {{err}}",
+      "failedLocateFolder": "Failed to locate folder: {{err}}",
       "failedMove": "Failed to move files: {{err}}",
       "failedMoveError": "Failed to move: {{err}}",
       "failedMoveInvalid": "Failed to move: Target group not found or invalid.",

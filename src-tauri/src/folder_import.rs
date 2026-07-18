@@ -21,6 +21,17 @@ use crate::gpu_processing;
 use crate::library_db::{self, FileRowInput, StructuredExif};
 use crate::tagging::{COLOR_TAG_PREFIX, USER_TAG_PREFIX};
 
+/// Pure filesystem check used by the frontend to show whether a tracked
+/// root/pinned folder is currently reachable (online) or unavailable
+/// (offline). Runs on the blocking pool because `exists()` can block on
+/// stale network mounts or disconnected external volumes.
+#[tauri::command]
+pub async fn check_path_exists(path: String) -> Result<bool, String> {
+    tokio::task::spawn_blocking(move || std::path::Path::new(&path).exists())
+        .await
+        .map_err(|e| e.to_string())
+}
+
 /// Normalizes a folder path the same way for every command: canonicalized
 /// when it exists, raw otherwise, with trailing separators stripped so a
 /// user-supplied "/photos/2024/" matches the stored "/photos/2024".

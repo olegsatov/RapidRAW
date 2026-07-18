@@ -1,5 +1,6 @@
 import { useCallback, useMemo } from 'react';
 import { invoke } from '@tauri-apps/api/core';
+import { open } from '@tauri-apps/plugin-dialog';
 import {
   Aperture,
   Check,
@@ -37,6 +38,7 @@ import {
   Sun,
   Camera,
   Map,
+  MapPin,
   Heart,
   Car,
   Briefcase,
@@ -65,6 +67,8 @@ import { Color, COLOR_LABELS, INITIAL_ADJUSTMENTS, normalizeLoadedAdjustments } 
 import TaggingSubMenu from '../context/TaggingSubMenu';
 import { useEditorActions } from './useEditorActions';
 import { useLibraryActions } from './useLibraryActions';
+import { useFolderImport } from './useFolderImport';
+import { useFolderImportStore } from '../store/useFolderImportStore';
 import { globalImageCache } from '../utils/ImageLRUCache';
 import { EDITOR_BACKGROUND_OPTIONS } from '../utils/editorBackground';
 
@@ -83,6 +87,7 @@ export interface UseAppContextMenusProps {
 export function useAppContextMenus(props: UseAppContextMenusProps) {
   const { t } = useTranslation();
   const { showContextMenu } = useContextMenu();
+  const { syncFolder } = useFolderImport();
 
   const { handleAutoAdjustments, handleResetAdjustments, handleCopyAdjustments, handlePasteAdjustments } =
     useEditorActions();
@@ -1011,6 +1016,31 @@ export function useAppContextMenus(props: UseAppContextMenusProps) {
           label: t('contextMenus.folders.importImages'),
           onClick: () => props.handleImportClick(targetPath),
         },
+        {
+          icon: RefreshCw,
+          label: t('contextMenus.folders.syncFolder'),
+          onClick: () => syncFolder(targetPath, false),
+        },
+        ...(useFolderImportStore.getState().availability[targetPath] === 'offline'
+          ? [
+              {
+                icon: MapPin,
+                label: t('contextMenus.folders.locateFolder'),
+                onClick: async () => {
+                  try {
+                    const newPath = await open({ directory: true });
+                    if (newPath) {
+                      await invoke('locate_folder', { oldPath: targetPath, newPath });
+                      useFolderImportStore.getState().setAvailability(targetPath, 'online');
+                    }
+                  } catch (err) {
+                    console.error('Failed to locate folder:', err);
+                    toast.error(t('contextMenus.toasts.failedLocateFolder', { err }));
+                  }
+                },
+              },
+            ]
+          : []),
         { type: OPTION_SEPARATOR },
         {
           icon: Folder,
@@ -1072,7 +1102,7 @@ export function useAppContextMenus(props: UseAppContextMenusProps) {
       ];
       showContextMenu(event.clientX, event.clientY, options);
     },
-    [props, showContextMenu, albumIcons, t],
+    [props, showContextMenu, albumIcons, t, syncFolder],
   );
 
   const handleAlbumTreeContextMenu = useCallback(
