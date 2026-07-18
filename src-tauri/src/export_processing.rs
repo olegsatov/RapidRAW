@@ -33,6 +33,7 @@ use crate::lut_processing::{
     convert_image_to_cube_lut, generate_identity_lut_image, get_or_load_lut,
 };
 use crate::mask_generation::{MaskDefinition, generate_mask_bitmap};
+use crate::metadata_store;
 
 use crate::cache_utils::{calculate_full_job_hash, calculate_transform_hash};
 use crate::{
@@ -1110,15 +1111,15 @@ pub async fn export_images(
                 }
 
                 let state = app_handle_clone.state::<AppState>();
-                let (source_path, sidecar_path) = parse_virtual_path(&image_path_str);
+                let (source_path, _sidecar_path) = parse_virtual_path(&image_path_str);
                 let source_path_str = source_path.to_string_lossy().to_string();
                 let is_current_edit = Some(&source_path_str) == current_edit_path.as_ref();
 
                 let mut js_adjustments = match (is_current_edit, current_edit_adjustments) {
                     (true, Some(adjustments)) => adjustments,
                     _ => {
-                        let metadata = crate::exif_processing::load_sidecar(&sidecar_path);
-                        metadata.adjustments
+                        metadata_store::load_image_metadata(&app_handle_clone, None, &image_path_str)
+                            ?.adjustments
                     }
                 };
 
@@ -1368,7 +1369,7 @@ pub async fn estimate_export_sizes(
     }
 
     let first_path = &paths[0];
-    let (source_path, sidecar_path) = parse_virtual_path(first_path);
+    let (source_path, _) = parse_virtual_path(first_path);
     let source_path_str = source_path.to_string_lossy().to_string();
 
     let context = get_or_init_gpu_context(&state, &app_handle)?;
@@ -1498,8 +1499,8 @@ pub async fn estimate_export_sizes(
 
         (preview_byte_size as f64 * pixel_ratio) as usize
     } else {
-        let metadata = crate::exif_processing::load_sidecar(&sidecar_path);
-        let mut js_adjustments = metadata.adjustments;
+        let mut js_adjustments =
+            metadata_store::load_image_metadata(&app_handle, None, first_path)?.adjustments;
 
         const ESTIMATE_DIM: u32 = 1280;
 

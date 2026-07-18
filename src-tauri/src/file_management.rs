@@ -1177,39 +1177,37 @@ pub fn generate_thumbnail_data(
     gpu_context: Option<&GpuContext>,
     preloaded_image: Option<&DynamicImage>,
     app_handle: &AppHandle,
+    adjustments: Option<&Value>,
 ) -> anyhow::Result<DynamicImage> {
     let (source_path, sidecar_path) = parse_virtual_path(path_str);
     let source_path_str = source_path.to_string_lossy().to_string();
     let is_raw = is_raw_file(&source_path_str);
 
-    let metadata: Option<ImageMetadata> = if is_cloud_placeholder(&sidecar_path) {
+    if is_cloud_placeholder(&sidecar_path) {
         enqueue_metadata(
             app_handle,
             path_str.to_string(),
             source_path.clone(),
             sidecar_path.clone(),
         );
-        None
-    } else {
-        fs::read_to_string(&sidecar_path)
-            .ok()
-            .and_then(|content| serde_json::from_str(&content).ok())
+    }
+
+    let adjustments = match adjustments {
+        Some(a) => a.clone(),
+        None => metadata_store::load_adjustments(app_handle, None, path_str)
+            .map_err(|e| anyhow::anyhow!(e))?,
     };
 
-    let adjustments = metadata
-        .as_ref()
-        .map_or(serde_json::Value::Null, |m| m.adjustments.clone());
-
-    if let (Some(context), Some(meta)) = (gpu_context, metadata)
-        && !meta.adjustments.is_null()
+    if let Some(context) = gpu_context
+        && !adjustments.is_null()
     {
         let state = app_handle.state::<AppState>();
         let settings = load_settings(app_handle.clone()).unwrap_or_default();
         let target_res = settings.thumbnail_resolution.unwrap_or(720);
 
-        let geometry_hash = calculate_geometry_hash(&meta.adjustments);
+        let geometry_hash = calculate_geometry_hash(&adjustments);
 
-        let crop_data: Option<Crop> = serde_json::from_value(meta.adjustments["crop"].clone()).ok();
+        let crop_data: Option<Crop> = serde_json::from_value(adjustments["crop"].clone()).ok();
 
         let cached_base: Option<(DynamicImage, f32)> = {
             let cache = state.thumbnail_geometry_cache.lock().unwrap();
@@ -1270,9 +1268,9 @@ pub fn generate_thumbnail_data(
             };
 
             let warped_image =
-                apply_geometry_warp(Cow::Borrowed(&composite_image), &meta.adjustments);
+                apply_geometry_warp(Cow::Borrowed(&composite_image), &adjustments);
             let orientation_steps =
-                meta.adjustments["orientationSteps"].as_u64().unwrap_or(0) as u8;
+                adjustments["orientationSteps"].as_u64().unwrap_or(0) as u8;
             let coarse_rotated_image = apply_coarse_rotation(warped_image, orientation_steps);
 
             let (full_w, full_h) = coarse_rotated_image.dimensions();
@@ -1321,11 +1319,11 @@ pub fn generate_thumbnail_data(
             (base, total_scale)
         };
 
-        let rotation_degrees = meta.adjustments["rotation"].as_f64().unwrap_or(0.0) as f32;
-        let flip_horizontal = meta.adjustments["flipHorizontal"]
+        let rotation_degrees = adjustments["rotation"].as_f64().unwrap_or(0.0) as f32;
+        let flip_horizontal = adjustments["flipHorizontal"]
             .as_bool()
             .unwrap_or(false);
-        let flip_vertical = meta.adjustments["flipVertical"].as_bool().unwrap_or(false);
+        let flip_vertical = adjustments["flipVertical"].as_bool().unwrap_or(false);
 
         let flipped_image = apply_flip(Cow::Owned(processing_base), flip_horizontal, flip_vertical);
         let rotated_image = apply_rotation(flipped_image, rotation_degrees);
@@ -1346,8 +1344,7 @@ pub fn generate_thumbnail_data(
         let (preview_w, preview_h) = cropped_preview.dimensions();
         let unscaled_crop_offset = crop_data.map_or((0.0, 0.0), |c| (c.x as f32, c.y as f32));
 
-        let mask_definitions: Vec<MaskDefinition> = meta
-            .adjustments
+        let mask_definitions: Vec<MaskDefinition> = adjustments
             .get("masks")
             .and_then(|m| serde_json::from_value(m.clone()).ok())
             .unwrap_or_else(Vec::new);
@@ -1365,14 +1362,14 @@ pub fn generate_thumbnail_data(
                         unscaled_crop_offset.0 * total_scale,
                         unscaled_crop_offset.1 * total_scale,
                     ),
-                    &meta.adjustments,
+                    &adjustments,
                 )
             })
             .collect();
 
         let tm_override = crate::image_processing::resolve_tonemapper_override(&settings, is_raw);
-        let gpu_adjustments = get_all_adjustments_from_json(&meta.adjustments, is_raw, tm_override);
-        let lut_path = meta.adjustments["lutPath"].as_str();
+        let gpu_adjustments = get_all_adjustments_from_json(&adjustments, is_raw, tm_override);
+        let lut_path = adjustments["lutPath"].as_str();
         let lut = lut_path.and_then(|p| {
             let mut cache = state.lut_cache.lock().unwrap();
             if let Some(cached_lut) = cache.get(p) {
@@ -1388,7 +1385,7 @@ pub fn generate_thumbnail_data(
 
         let mut hasher = DefaultHasher::new();
         path_str.hash(&mut hasher);
-        meta.adjustments.to_string().hash(&mut hasher);
+        adjustments.to_string().hash(&mut hasher);
         let unique_hash = hasher.finish();
 
         if let Ok(processed_image) = gpu_processing::process_and_get_dynamic_image(
@@ -1484,30 +1481,25 @@ pub(crate) fn generate_single_thumbnail_and_cache(
 ) -> Option<(String, u8, bool)> {
     let (source_path, sidecar_path) = parse_virtual_path(path_str);
 
-    let (rating, is_edited, adjustments_bytes) = if is_cloud_placeholder(&sidecar_path) {
+    if is_cloud_placeholder(&sidecar_path) {
         enqueue_metadata(
             app_handle,
             path_str.to_string(),
             source_path.clone(),
             sidecar_path.clone(),
         );
-        (0, false, Vec::new())
-    } else if let Ok(content) = fs::read_to_string(&sidecar_path) {
-        if let Ok(meta) = serde_json::from_str::<ImageMetadata>(&content) {
-            let is_raw = crate::formats::is_raw_file(path_str);
-            let tm = crate::image_processing::resolve_tonemapper_override(settings, is_raw);
+    }
 
-            (
-                meta.rating,
-                crate::image_processing::is_image_edited(&meta.adjustments, is_raw, tm),
-                serde_json::to_vec(&meta.adjustments).unwrap_or_default(),
-            )
-        } else {
-            (0, false, Vec::new())
-        }
-    } else {
-        (0, false, Vec::new())
-    };
+    let metadata =
+        metadata_store::load_image_metadata(app_handle, file_id, path_str).unwrap_or_default();
+    let adjustments = &metadata.adjustments;
+
+    let is_raw = crate::formats::is_raw_file(path_str);
+    let tm = crate::image_processing::resolve_tonemapper_override(settings, is_raw);
+
+    let rating = metadata.rating;
+    let is_edited = crate::image_processing::is_image_edited(adjustments, is_raw, tm);
+    let adjustments_bytes = serde_json::to_vec(adjustments).unwrap_or_default();
 
     let cache_hash = compute_thumbnail_cache_hash(path_str, file_id, &adjustments_bytes)?;
 
@@ -1524,9 +1516,13 @@ pub(crate) fn generate_single_thumbnail_and_cache(
 
     let target_width = settings.thumbnail_resolution.unwrap_or(720);
 
-    if let Ok(thumb_image) =
-        generate_thumbnail_data(path_str, gpu_context, preloaded_image, app_handle)
-        && let Ok(thumb_data) = encode_thumbnail(&thumb_image, target_width)
+    if let Ok(thumb_image) = generate_thumbnail_data(
+        path_str,
+        gpu_context,
+        preloaded_image,
+        app_handle,
+        Some(adjustments),
+    ) && let Ok(thumb_data) = encode_thumbnail(&thumb_image, target_width)
     {
         let _ = fs::write(&cache_path, &thumb_data);
         return Some((cache_path.to_string_lossy().into_owned(), rating, is_edited));
@@ -2621,20 +2617,7 @@ pub fn set_flag_for_paths(
 
 #[tauri::command]
 pub fn load_metadata(path: String, app_handle: AppHandle) -> Result<ImageMetadata, String> {
-    let settings = load_settings(app_handle).unwrap_or_default();
-    let enable_xmp_sync = settings.enable_xmp_sync.unwrap_or(false);
-
-    let (source_path, sidecar_path) = parse_virtual_path(&path);
-    let mut metadata = crate::exif_processing::load_sidecar(&sidecar_path);
-
-    if enable_xmp_sync
-        && sync_metadata_from_xmp(&source_path, &mut metadata)
-        && let Ok(json) = serde_json::to_string_pretty(&metadata)
-    {
-        let _ = fs::write(&sidecar_path, json);
-    }
-
-    Ok(metadata)
+    metadata_store::load_image_metadata(&app_handle, None, &path)
 }
 
 fn get_presets_path(app_handle: &AppHandle) -> Result<std::path::PathBuf, String> {
@@ -3183,20 +3166,15 @@ pub fn get_thumb_cache_dir(app_handle: &AppHandle) -> Result<PathBuf, String> {
     Ok(thumb_cache_dir)
 }
 
-pub fn get_cache_key_hash(path_str: &str, file_id: Option<i64>) -> Option<String> {
-    let (_, sidecar_path) = parse_virtual_path(path_str);
-
-    let adjustments_bytes = if let Ok(content) = fs::read_to_string(&sidecar_path) {
-        if let Ok(meta) = serde_json::from_str::<ImageMetadata>(&content) {
-            serde_json::to_vec(&meta.adjustments).unwrap_or_default()
-        } else {
-            Vec::new()
-        }
-    } else {
-        Vec::new()
-    };
-
-    compute_thumbnail_cache_hash(path_str, file_id, &adjustments_bytes)
+pub fn get_cache_key_hash(
+    app_handle: &AppHandle,
+    path_str: &str,
+    file_id: Option<i64>,
+) -> Option<(String, Value)> {
+    let adjustments = metadata_store::load_adjustments(app_handle, file_id, path_str).ok()?;
+    let adjustments_bytes = serde_json::to_vec(&adjustments).ok()?;
+    let hash = compute_thumbnail_cache_hash(path_str, file_id, &adjustments_bytes)?;
+    Some((hash, adjustments))
 }
 
 pub fn get_cached_or_generate_thumbnail_image(
@@ -3212,7 +3190,8 @@ pub fn get_cached_or_generate_thumbnail_image(
     // written by the import phase / thumbnail workers; uncataloged files
     // fall back to path-keyed.
     let file_id = lookup_catalog_file_id(app_handle, path_str);
-    if let Some(cache_hash) = get_cache_key_hash(path_str, file_id) {
+
+    if let Some((cache_hash, adjustments)) = get_cache_key_hash(app_handle, path_str, file_id) {
         let cache_filename = format!("{}.jpg", cache_hash);
         let cache_path = thumb_cache_dir.join(cache_filename);
 
@@ -3226,13 +3205,19 @@ pub fn get_cached_or_generate_thumbnail_image(
             );
         }
 
-        let thumb_image = generate_thumbnail_data(path_str, gpu_context, None, app_handle)?;
+        let thumb_image = generate_thumbnail_data(
+            path_str,
+            gpu_context,
+            None,
+            app_handle,
+            Some(&adjustments),
+        )?;
         let thumb_data = encode_thumbnail(&thumb_image, target_width)?;
         fs::write(&cache_path, &thumb_data)?;
 
         Ok(thumb_image)
     } else {
-        generate_thumbnail_data(path_str, gpu_context, None, app_handle)
+        generate_thumbnail_data(path_str, gpu_context, None, app_handle, None)
     }
 }
 

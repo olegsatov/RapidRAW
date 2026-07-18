@@ -28,6 +28,7 @@
 use crate::app_state::AppState;
 use crate::file_management::parse_virtual_path;
 use crate::formats::is_raw_file;
+use crate::metadata_store;
 use crate::image_loader::load_and_composite;
 use base64::{Engine as _, engine::general_purpose};
 use image::{DynamicImage, ImageFormat, Rgb, Rgb32FImage};
@@ -482,14 +483,14 @@ pub(crate) fn load_processed_for_grain(
     progress_event: &str,
 ) -> Result<(DynamicImage, std::path::PathBuf), String> {
     let state = app_handle.state::<AppState>();
-    let (source_path, sidecar_path) = parse_virtual_path(path);
+    let (source_path, _sidecar_path) = parse_virtual_path(path);
     let source_str = source_path.to_string_lossy().to_string();
 
     let _ = app_handle.emit(progress_event, "Loading image...");
 
     let mut js_adjustments = match adjustments {
         Some(a) => a,
-        None => crate::exif_processing::load_sidecar(&sidecar_path).adjustments,
+        None => metadata_store::load_image_metadata(app_handle, None, path)?.adjustments,
     };
     crate::adjustment_utils::hydrate_adjustments(&state, &mut js_adjustments);
 

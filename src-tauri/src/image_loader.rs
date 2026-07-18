@@ -4,6 +4,7 @@ use crate::app_state::{AppState, LoadedImage};
 use crate::exif_processing;
 use crate::file_management::{parse_virtual_path, read_file_bytes};
 use crate::formats::is_raw_file;
+use crate::metadata_store;
 use crate::image_processing::ImageMetadata;
 use crate::image_processing::{
     apply_orientation, apply_srgb_to_linear, remove_raw_artifacts_and_enhance,
@@ -749,10 +750,10 @@ pub async fn load_image(
         *state.panorama_result.lock().unwrap() = None;
     }
 
-    let (source_path, sidecar_path) = parse_virtual_path(&path);
+    let (source_path, _) = parse_virtual_path(&path);
     let source_path_str = source_path.to_string_lossy().to_string();
 
-    let metadata: ImageMetadata = crate::exif_processing::load_sidecar(&sidecar_path);
+    let metadata: ImageMetadata = metadata_store::load_image_metadata(&app_handle, None, &path)?;
 
     let settings = load_settings(app_handle.clone()).unwrap_or_default();
 
