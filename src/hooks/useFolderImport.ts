@@ -196,8 +196,10 @@ export function useFolderImportMirror() {
       imageList: files,
       // Merge rather than replace: batches arrive incrementally, and a
       // wholesale replace would drop ratings/flags the user set mid-scan.
-      imageRatings: { ...state.imageRatings, ...ratings },
-      imageFlags: { ...state.imageFlags, ...flags },
+      // Existing user-set values take precedence over catalog/batch values
+      // so a later catalog refresh does not overwrite user edits.
+      imageRatings: { ...ratings, ...state.imageRatings },
+      imageFlags: { ...flags, ...state.imageFlags },
     }));
   }, [files]);
 }
