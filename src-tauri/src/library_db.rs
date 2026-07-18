@@ -16,7 +16,7 @@ fn db_path(app_handle: &AppHandle) -> Result<PathBuf, String> {
     Ok(data_dir.join("library.db"))
 }
 
-fn open_connection(app_handle: &AppHandle) -> Result<Connection, String> {
+pub(crate) fn open_connection(app_handle: &AppHandle) -> Result<Connection, String> {
     let path = db_path(app_handle)?;
     let conn = Connection::open(&path).map_err(|e| e.to_string())?;
     conn.execute_batch(
@@ -633,20 +633,7 @@ fn get_file_metadata_in_conn(
     .map_err(|e| e.to_string())
 }
 
-/// Writes the catalog-side adjustment state and EXIF cache for one file,
-/// stamping `metadata_modified` with the current Unix timestamp. Missing rows
-/// are silently ignored; callers already know the file id from the catalog.
-pub fn update_file_metadata(
-    app_handle: &AppHandle,
-    file_id: i64,
-    adjustments_json: &str,
-    exif_json: Option<&str>,
-) -> Result<(), String> {
-    let conn = open_connection(app_handle)?;
-    update_file_metadata_in_conn(&conn, file_id, adjustments_json, exif_json)
-}
-
-fn update_file_metadata_in_conn(
+pub(crate) fn update_file_metadata_in_conn(
     conn: &Connection,
     file_id: i64,
     adjustments_json: &str,
@@ -666,7 +653,7 @@ fn update_file_metadata_in_conn(
 ///
 /// `color:` tags are stored with source `color` in the `tags` table, but the
 /// canonical color label used for filtering remains `files.color`, which
-/// callers set separately via `update_file_metadata` or `upsert_files`.
+/// callers set separately via `update_file_metadata_in_conn` or `upsert_files`.
 pub fn update_file_rating_flag_tags(
     app_handle: &AppHandle,
     file_id: i64,
@@ -674,19 +661,18 @@ pub fn update_file_rating_flag_tags(
     flag: i8,
     tags: Option<Vec<String>>,
 ) -> Result<(), String> {
-    let mut conn = open_connection(app_handle)?;
-    update_file_rating_flag_tags_in_conn(&mut conn, file_id, rating, flag, tags.as_deref())
+    let conn = open_connection(app_handle)?;
+    update_file_rating_flag_tags_in_conn(&conn, file_id, rating, flag, tags.as_deref())
 }
 
-#[allow(dead_code)]
-fn update_file_rating_flag_tags_in_conn(
-    conn: &mut Connection,
+pub(crate) fn update_file_rating_flag_tags_in_conn(
+    conn: &Connection,
     file_id: i64,
     rating: u8,
     flag: i8,
     tags: Option<&[String]>,
 ) -> Result<(), String> {
-    let tx = conn.transaction().map_err(|e| e.to_string())?;
+    let tx = conn.unchecked_transaction().map_err(|e| e.to_string())?;
     tx.execute(
         "UPDATE files SET rating = ?1, flag = ?2, metadata_modified = ?3 WHERE id = ?4",
         params![rating as i32, flag as i32, now_secs(), file_id],
@@ -1884,7 +1870,7 @@ mod tests {
             "landscape".to_string(),
         ]);
         let before = now_secs();
-        update_file_rating_flag_tags_in_conn(&mut conn, file_id, 4, -1, tags.as_deref()).unwrap();
+        update_file_rating_flag_tags_in_conn(&conn, file_id, 4, -1, tags.as_deref()).unwrap();
 
         let (rating, flag, metadata_modified): (i64, i64, Option<i64>) = conn
             .query_row(
@@ -1918,7 +1904,7 @@ mod tests {
         );
 
         // Updating with no tags clears existing ones.
-        update_file_rating_flag_tags_in_conn(&mut conn, file_id, 4, -1, None).unwrap();
+        update_file_rating_flag_tags_in_conn(&conn, file_id, 4, -1, None).unwrap();
         let count: i64 = conn
             .query_row(
                 "SELECT COUNT(*) FROM tags WHERE file_id = ?1",

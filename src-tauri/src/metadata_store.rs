@@ -38,17 +38,36 @@ pub fn load_image_metadata(
         if let Some(sidecar_mtime) = sidecar_mtime(path)
             && sidecar_mtime > metadata_modified
         {
-            let legacy = load_sidecar_legacy(path);
-            save_image_metadata(app_handle, Some(file_id), path, &legacy)?;
-            return Ok(legacy);
+            match load_sidecar_legacy(path) {
+                Ok(legacy) => {
+                    save_image_metadata(app_handle, Some(file_id), path, &legacy)?;
+                    return Ok(legacy);
+                }
+                Err(e) => {
+                    log::warn!(
+                        "sidecar is newer than catalog but cannot be re-imported for {}: {}",
+                        path,
+                        e
+                    );
+                }
+            }
         }
         return parse_db_metadata(app_handle, file_id, &file_metadata);
     }
 
     // Catalog has no metadata yet — try legacy .rrdata.
-    let legacy = load_sidecar_legacy(path);
-    save_image_metadata(app_handle, Some(file_id), path, &legacy)?;
-    Ok(legacy)
+    if sidecar_mtime(path).is_some() {
+        match load_sidecar_legacy(path) {
+            Ok(legacy) => {
+                save_image_metadata(app_handle, Some(file_id), path, &legacy)?;
+                return Ok(legacy);
+            }
+            Err(e) => {
+                log::warn!("failed to import legacy sidecar for {}: {}", path, e);
+            }
+        }
+    }
+    Ok(ImageMetadata::default())
 }
 
 fn parse_db_metadata(
@@ -105,8 +124,12 @@ fn parse_sidecar_legacy(path: &str) -> Option<ImageMetadata> {
     serde_json::from_str::<ImageMetadata>(&content).ok()
 }
 
-fn load_sidecar_legacy(path: &str) -> ImageMetadata {
-    parse_sidecar_legacy(path).unwrap_or_default()
+fn load_sidecar_legacy(path: &str) -> Result<ImageMetadata, String> {
+    let sidecar = sidecar_path(path);
+    let content = std::fs::read_to_string(&sidecar)
+        .map_err(|e| format!("failed to read sidecar {}: {}", sidecar, e))?;
+    serde_json::from_str::<ImageMetadata>(&content)
+        .map_err(|e| format!("failed to parse sidecar {}: {}", sidecar, e))
 }
 
 /// Persist full `ImageMetadata` to the catalog, stamping `metadata_modified`.
@@ -124,15 +147,23 @@ pub fn save_image_metadata(
         .as_ref()
         .map(|m| serde_json::to_string(m).map_err(|e| e.to_string()))
         .transpose()?;
-    library_db::update_file_metadata(app_handle, file_id, &adjustments_json, exif_json.as_deref())?;
-    library_db::update_file_rating_flag_tags(
-        app_handle,
+
+    let mut conn = library_db::open_connection(app_handle)?;
+    let tx = conn.transaction().map_err(|e| e.to_string())?;
+    library_db::update_file_metadata_in_conn(
+        &tx,
+        file_id,
+        &adjustments_json,
+        exif_json.as_deref(),
+    )?;
+    library_db::update_file_rating_flag_tags_in_conn(
+        &tx,
         file_id,
         metadata.rating,
         metadata.flag,
-        metadata.tags.clone(),
+        metadata.tags.as_deref(),
     )?;
-    Ok(())
+    tx.commit().map_err(|e| e.to_string())
 }
 
 fn resolve_file_id(
@@ -149,7 +180,10 @@ fn resolve_file_id(
 
     // The file is not in the catalog yet; create a minimal stub row so writes
     // have a target. Folder import will flesh out the remaining columns later.
-    let path_obj = Path::new(path);
+    // Virtual-copy paths carry a `?vc=<id>` query suffix; strip it before
+    // deriving file-level attributes, but keep the full path in the catalog.
+    let base_path = path.split_once("?vc=").map(|(base, _)| base).unwrap_or(path);
+    let path_obj = Path::new(base_path);
     let folder_path = path_obj
         .parent()
         .and_then(|p| p.to_str())
@@ -160,7 +194,7 @@ fn resolve_file_id(
     let name = path_obj
         .file_name()
         .and_then(|n| n.to_str())
-        .unwrap_or(path)
+        .unwrap_or(base_path)
         .to_string();
     let extension = path_obj
         .extension()
@@ -175,7 +209,7 @@ fn resolve_file_id(
         size: None,
         sidecar_modified: None,
         extension,
-        is_raw: is_raw_file(path),
+        is_raw: is_raw_file(base_path),
         is_edited: false,
         is_virtual_copy: path.contains("?vc="),
         is_cloud_placeholder: false,
@@ -198,16 +232,7 @@ pub fn load_adjustments(
     file_id: Option<i64>,
     path: &str,
 ) -> Result<Value, String> {
-    let catalog_id = file_id
-        .or_else(|| library_db::get_file_id_by_path(app_handle, path).ok().flatten());
-    if let Some(file_id) = catalog_id
-        && let Some(file_metadata) = library_db::get_file_metadata(app_handle, file_id)?
-        && file_metadata.metadata_modified.is_some()
-    {
-        return serde_json::from_str(&file_metadata.adjustments_json)
-            .map_err(|e| e.to_string());
-    }
-    Ok(load_sidecar_legacy(path).adjustments)
+    Ok(load_image_metadata(app_handle, file_id, path)?.adjustments)
 }
 
 /// Apply a deep patch to the current adjustments and persist the result.
@@ -223,6 +248,10 @@ pub fn patch_adjustments(
 }
 
 fn merge_values(current: &mut Value, patch: &Value) {
+    if current.is_null() && patch.is_object() {
+        *current = patch.clone();
+        return;
+    }
     if let (Some(current_obj), Some(patch_obj)) = (current.as_object_mut(), patch.as_object()) {
         for (key, patch_val) in patch_obj {
             match current_obj.get_mut(key) {
