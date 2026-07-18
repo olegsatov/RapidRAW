@@ -104,6 +104,18 @@ with extra care, and keep this list current as features are added:
   `read_file_bytes` in `src-tauri/src/file_management.rs` and its call sites in
   `src-tauri/src/image_loader.rs` / `export_processing.rs` /
   `negative_conversion.rs` / `lib.rs`.
+- Non-blocking folder import / SQLite catalog (background folder scanning,
+  thumbnail generation, delta sync, and relocate with `file_id` cache key
+  plumbing): `src-tauri/src/library_db.rs`, `src-tauri/src/folder_import.rs`,
+  `src-tauri/src/app_state.rs` (folder_import_jobs),
+  `src-tauri/src/file_management.rs` (file_id cache key plumbing),
+  `src-tauri/src/lib.rs` (command registration + init_catalog),
+  `src/store/useFolderImportStore.ts`, `src/hooks/useFolderImport.ts`
+  (exports `useFolderImportMirror`), `src/hooks/useTauriListeners.ts`
+  (folder-import-* events), `src/hooks/useAppNavigation.ts` (openFolder wiring),
+  `src/hooks/useAppContextMenus.ts` (sync/locate),
+  `src/hooks/useAppInitialization.ts` (availability checks),
+  `src/components/ui/ImportJobsIndicator.tsx`, `src/i18n/locales/*.json`.
 - Locale strings for the above: `src/i18n/locales/*.json`.
 
 ## Verification

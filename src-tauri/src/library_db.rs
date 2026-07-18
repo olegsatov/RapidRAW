@@ -1293,16 +1293,15 @@ mod tests {
         );
         // Ids are round-trippable through get_file_id_by_path.
         for (id, path) in &rows {
-            assert_eq!(
-                get_file_id_by_path_in_conn(&conn, path).unwrap(),
-                Some(*id)
-            );
+            assert_eq!(get_file_id_by_path_in_conn(&conn, path).unwrap(), Some(*id));
         }
 
         // Another folder's rows are not included.
-        assert!(get_all_file_paths_in_conn(&conn, folder_id + 1)
-            .unwrap()
-            .is_empty());
+        assert!(
+            get_all_file_paths_in_conn(&conn, folder_id + 1)
+                .unwrap()
+                .is_empty()
+        );
     }
 
     #[test]
@@ -1321,13 +1320,18 @@ mod tests {
         let fps = get_folder_file_fingerprints_in_conn(&conn, folder_id).unwrap();
         assert_eq!(fps.len(), 3);
         assert_eq!(fps["/tmp/x/a.jpg"], (Some(100), Some(10), Some(90)));
-        assert_eq!(fps["/tmp/x/a.jpg?vc=abc123"], (Some(100), Some(10), Some(95)));
+        assert_eq!(
+            fps["/tmp/x/a.jpg?vc=abc123"],
+            (Some(100), Some(10), Some(95))
+        );
         assert_eq!(fps["/tmp/x/b.jpg"], (Some(100), Some(10), None));
 
         // Another folder's rows are not included.
-        assert!(get_folder_file_fingerprints_in_conn(&conn, folder_id + 1)
-            .unwrap()
-            .is_empty());
+        assert!(
+            get_folder_file_fingerprints_in_conn(&conn, folder_id + 1)
+                .unwrap()
+                .is_empty()
+        );
     }
 
     #[test]
@@ -1383,9 +1387,11 @@ mod tests {
         assert!(relocate_folder_in_conn(&conn, "/tmp/x", "/tmp/y").unwrap());
 
         let folder_path: String = conn
-            .query_row("SELECT path FROM folders WHERE id = ?1", params![folder_id], |r| {
-                r.get(0)
-            })
+            .query_row(
+                "SELECT path FROM folders WHERE id = ?1",
+                params![folder_id],
+                |r| r.get(0),
+            )
             .unwrap();
         assert_eq!(folder_path, "/tmp/y");
 
@@ -1404,9 +1410,11 @@ mod tests {
 
         // A trailing separator on the old path still matches.
         assert!(relocate_folder_in_conn(&conn, "/tmp/y/", "/tmp/z").unwrap());
-        assert!(get_file_id_by_path_in_conn(&conn, "/tmp/z/a.jpg")
-            .unwrap()
-            .is_some());
+        assert!(
+            get_file_id_by_path_in_conn(&conn, "/tmp/z/a.jpg")
+                .unwrap()
+                .is_some()
+        );
 
         // An uncataloged old path relocates nothing and reports false.
         assert!(!relocate_folder_in_conn(&conn, "/tmp/never-cataloged", "/tmp/w").unwrap());

@@ -98,7 +98,13 @@ pub fn start_folder_import(
         return Ok(key);
     }
 
-    start_job(&app_handle, &state, normalized, recursive, FolderJobKind::Import)
+    start_job(
+        &app_handle,
+        &state,
+        normalized,
+        recursive,
+        FolderJobKind::Import,
+    )
 }
 
 /// Starts (or attaches to) a delta sync of a cataloged folder: new files are
@@ -112,7 +118,13 @@ pub fn sync_folder(
     recursive: bool,
 ) -> Result<String, String> {
     let normalized = normalize_folder_path(&path);
-    start_job(&app_handle, &state, normalized, recursive, FolderJobKind::Sync)
+    start_job(
+        &app_handle,
+        &state,
+        normalized,
+        recursive,
+        FolderJobKind::Sync,
+    )
 }
 
 /// Spawns and tracks a folder job, or attaches to the one already running
@@ -254,10 +266,7 @@ pub fn locate_folder(
     }
 
     if !library_db::relocate_folder(&app_handle, &normalized_old, &normalized_new)? {
-        return Err(format!(
-            "folder is not in the catalog: {}",
-            normalized_old
-        ));
+        return Err(format!("folder is not in the catalog: {}", normalized_old));
     }
     crate::file_management::sync_album_path_changes(
         &app_handle,
@@ -979,7 +988,10 @@ fn compute_sync_delta(
         let mut needs_upsert = false;
         for sidecar in &entry.sidecars {
             let (catalog_path, sidecar_filename) = match sidecar {
-                None => (entry.path_str.clone(), format!("{}.rrdata", entry.file_name)),
+                None => (
+                    entry.path_str.clone(),
+                    format!("{}.rrdata", entry.file_name),
+                ),
                 Some(id) => (
                     format!("{}?vc={}", entry.path_str, id),
                     format!("{}.{}.rrdata", entry.file_name, id),

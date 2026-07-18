@@ -14,13 +14,13 @@ mod app_settings;
 mod app_state;
 mod bw_decolor;
 mod cache_utils;
+pub mod crystal_grain;
 mod culling;
 mod denoising;
 mod exif_processing;
 mod export_processing;
-pub mod crystal_grain;
-pub mod film_grain;
 mod file_management;
+pub mod film_grain;
 mod folder_import;
 mod formats;
 mod gpu_processing;
@@ -511,9 +511,8 @@ fn process_preview_job(
     //              std(mip 0)/std(mip λ) ratio as the contrast boost;
     //   accurate — display-matched mip, boost 1: strict WYSIWYG (the export
     //              viewed at the same window size).
-    let base_grain_level = grain_mip_level.unwrap_or_else(|| {
-        crate::image_processing::grain_mip_level_from_scale(effective_scale)
-    });
+    let base_grain_level = grain_mip_level
+        .unwrap_or_else(|| crate::image_processing::grain_mip_level_from_scale(effective_scale));
     let (req_grain_level, req_grain_boost) = match settings.grain_preview_mode.as_deref() {
         Some("accurate") => (base_grain_level, 1.0),
         Some("balanced") => {
