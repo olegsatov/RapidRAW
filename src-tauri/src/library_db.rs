@@ -22,7 +22,7 @@ pub(crate) fn open_connection<R: Runtime>(app_handle: &AppHandle<R>) -> Result<C
     conn.execute_batch(
         "PRAGMA journal_mode = WAL;
          PRAGMA foreign_keys = ON;
-         PRAGMA busy_timeout = 5000;",
+         PRAGMA busy_timeout = 30000;",
     )
     .map_err(|e| e.to_string())?;
     migrate(&conn)?;
@@ -972,16 +972,23 @@ fn mark_exif_scanned_in_conn(
         exif_map.map(|_| structured),
     )?;
 
-    // Virtual copies share the source file's EXIF. `instr(...) = 1` is an
-    // exact prefix match, unlike LIKE which would treat `%`/`_` in paths as
-    // wildcards.
+    // Virtual copies share the source file's EXIF. The range scan uses the
+    // implicit unique index on `path` (from the UNIQUE constraint) instead of
+    // a full-table `instr(...)` scan.
     let vc_prefix = format!("{}?vc=", source_path);
+    let mut vc_upper = vc_prefix.clone();
+    vc_upper.push('\x7f'); // one past every possible `?vc=...` suffix
     let vc_rows: Vec<(i64, String)> = {
         let mut stmt = tx
-            .prepare("SELECT id, metadata_json FROM files WHERE instr(path, ?1) = 1")
+            .prepare(
+                "SELECT id, metadata_json FROM files
+                 WHERE path >= ?1 AND path < ?2",
+            )
             .map_err(|e| e.to_string())?;
         let rows = stmt
-            .query_map(params![vc_prefix], |row| Ok((row.get(0)?, row.get(1)?)))
+            .query_map(params![&vc_prefix, &vc_upper], |row| {
+                Ok((row.get(0)?, row.get(1)?))
+            })
             .map_err(|e| e.to_string())?;
         rows.collect::<Result<Vec<_>, _>>()
             .map_err(|e| e.to_string())?
