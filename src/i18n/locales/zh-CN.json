@@ -697,6 +697,10 @@
         "tool": "工具"
       }
     },
+    "history": {
+      "title": "历史记录",
+      "empty": "暂无编辑"
+    },
     "switcher": {
       "tooltips": {
         "adjust": "调整",

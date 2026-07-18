@@ -18,6 +18,7 @@ import {
 import { calculateCenteredCrop } from '../utils/cropUtils';
 import { Invokes } from '../components/ui/AppProperties';
 import { globalImageCache } from '../utils/ImageLRUCache';
+import { globalHistoryCache } from '../utils/historyCache';
 import { PRESET_SECTION_VISIBILITY_KEYS } from '../utils/presetUtils';
 import { lutParamsToAdjustments, resolveLutParams } from '../utils/lutSettings';
 
@@ -144,6 +145,7 @@ export function useEditorActions() {
       if (pathsToReset.length === 0) return;
 
       pathsToReset.forEach((p) => globalImageCache.delete(p));
+      pathsToReset.forEach((p) => globalHistoryCache.delete(p));
       debouncedSetHistory.cancel();
 
       invoke(Invokes.ResetAdjustmentsForPaths, { paths: pathsToReset })
@@ -275,6 +277,7 @@ export function useEditorActions() {
       if (pathsToUpdate.length === 0) return;
 
       pathsToUpdate.forEach((p) => globalImageCache.delete(p));
+      pathsToUpdate.forEach((p) => globalHistoryCache.delete(p));
 
       if (selectedImage && pathsToUpdate.includes(selectedImage.path)) {
         setAdjustments({

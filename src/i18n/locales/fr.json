@@ -697,6 +697,10 @@
         "tool": "Outil"
       }
     },
+    "history": {
+      "title": "Historique",
+      "empty": "Aucune modification"
+    },
     "switcher": {
       "tooltips": {
         "adjust": "Ajuster",

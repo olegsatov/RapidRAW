@@ -697,6 +697,10 @@
         "tool": "Strumento"
       }
     },
+    "history": {
+      "title": "Cronologia",
+      "empty": "Nessuna modifica"
+    },
     "switcher": {
       "tooltips": {
         "adjust": "Regola",

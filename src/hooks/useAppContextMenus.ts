@@ -66,6 +66,7 @@ import TaggingSubMenu from '../context/TaggingSubMenu';
 import { useEditorActions } from './useEditorActions';
 import { useLibraryActions } from './useLibraryActions';
 import { globalImageCache } from '../utils/ImageLRUCache';
+import { globalHistoryCache } from '../utils/historyCache';
 import { EDITOR_BACKGROUND_OPTIONS } from '../utils/editorBackground';
 
 export interface UseAppContextMenusProps {
@@ -478,6 +479,7 @@ export function useAppContextMenus(props: UseAppContextMenusProps) {
       const handleApplyAutoAdjustmentsToSelection = () => {
         if (finalSelection.length === 0) return;
         finalSelection.forEach((p) => globalImageCache.delete(p));
+        finalSelection.forEach((p) => globalHistoryCache.delete(p));
 
         invoke(Invokes.ApplyAutoAdjustmentsToPaths, { paths: finalSelection })
           .then(async () => {

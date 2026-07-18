@@ -11,6 +11,7 @@ import { useSettingsStore } from '../store/useSettingsStore';
 import { Invokes, LibraryViewMode, ImageFile } from '../components/ui/AppProperties';
 import { INITIAL_ADJUSTMENTS, normalizeLoadedAdjustments } from '../utils/adjustments';
 import { globalImageCache } from '../utils/ImageLRUCache';
+import { globalHistoryCache } from '../utils/historyCache';
 import { debouncedSave, debouncedSetHistory } from './useEditorActions';
 
 export interface AppNavigationProps {
@@ -71,9 +72,14 @@ export function useAppNavigation({ clearThumbnailQueue, refs }: AppNavigationPro
     setEditor({ zoom: 1 });
 
     debouncedSave.flush();
-    debouncedSetHistory.cancel();
+    debouncedSetHistory.flush();
 
     const lastActivePath = selectedImage?.path ?? null;
+
+    const { selectedImage: prevImage, history: prevHistory, historyIndex: prevIndex } = useEditorStore.getState();
+    if (prevImage?.path && prevHistory.length > 0) {
+      globalHistoryCache.set(prevImage.path, { history: prevHistory, historyIndex: prevIndex });
+    }
 
     setEditor({
       hasRenderedFirstFrame: false,
@@ -108,7 +114,7 @@ export function useAppNavigation({ clearThumbnailQueue, refs }: AppNavigationPro
 
   const handleImageSelect = useCallback(
     async (path: string) => {
-      const { selectedImage, isSliderDragging, resetHistory, setEditor } = useEditorStore.getState();
+      const { selectedImage, isSliderDragging, resetHistory, restoreHistory, setEditor } = useEditorStore.getState();
       const { setLibrary } = useLibraryStore.getState();
       const { setUI } = useUIStore.getState();
 
@@ -116,10 +122,18 @@ export function useAppNavigation({ clearThumbnailQueue, refs }: AppNavigationPro
 
       useEditorStore.getState().patchesSentToBackend.clear();
       debouncedSave.flush();
-      debouncedSetHistory.cancel();
+      debouncedSetHistory.flush();
 
       if (selectedImage?.path && cachedEditStateRef.current) {
         globalImageCache.set(selectedImage.path, cachedEditStateRef.current);
+      }
+
+      const { history: outgoingHistory, historyIndex: outgoingIndex } = useEditorStore.getState();
+      if (selectedImage?.path && outgoingHistory.length > 0) {
+        globalHistoryCache.set(selectedImage.path, {
+          history: outgoingHistory,
+          historyIndex: outgoingIndex,
+        });
       }
 
       const cached = globalImageCache.get(path);
@@ -169,9 +183,14 @@ export function useAppNavigation({ clearThumbnailQueue, refs }: AppNavigationPro
           uncroppedAdjustedPreviewUrl: cached.uncroppedPreviewUrl,
         });
 
-        setEditor({ adjustments: cached.adjustments });
-        resetHistory(cached.adjustments);
-        prevAdjustmentsRef.current = { path, adjustments: cached.adjustments };
+        const cachedHistory = globalHistoryCache.get(path);
+        if (cachedHistory) {
+          restoreHistory(cachedHistory.history, cachedHistory.historyIndex);
+        } else {
+          setEditor({ adjustments: cached.adjustments });
+          resetHistory(cached.adjustments);
+        }
+        prevAdjustmentsRef.current = { path, adjustments: useEditorStore.getState().adjustments };
 
         setLibrary({ isViewLoading: false });
 
@@ -202,7 +221,11 @@ export function useAppNavigation({ clearThumbnailQueue, refs }: AppNavigationPro
             } else {
               freshAdjustments = { ...INITIAL_ADJUSTMENTS };
             }
-            if (!isSliderDragging && JSON.stringify(cached.adjustments) !== JSON.stringify(freshAdjustments)) {
+            if (
+              !cachedHistory &&
+              !isSliderDragging &&
+              JSON.stringify(cached.adjustments) !== JSON.stringify(freshAdjustments)
+            ) {
               setEditor({ adjustments: freshAdjustments });
               resetHistory(freshAdjustments);
               prevAdjustmentsRef.current = { path, adjustments: freshAdjustments };
@@ -280,6 +303,7 @@ export function useAppNavigation({ clearThumbnailQueue, refs }: AppNavigationPro
         useLibraryStore.getState().setSearchCriteria({ tags: [], text: '', mode: 'OR' });
         setProcess({ thumbnails: {} });
         globalImageCache.clear();
+        globalHistoryCache.clear();
         setUI({ activeView: 'library' });
       } else {
         setLibrary({ isViewLoading: true });
@@ -323,7 +347,11 @@ export function useAppNavigation({ clearThumbnailQueue, refs }: AppNavigationPro
 
         if (!preserveEditor && selectedImage) {
           debouncedSave.flush();
-          debouncedSetHistory.cancel();
+          debouncedSetHistory.flush();
+          const { selectedImage: prevImage, history: prevHistory, historyIndex: prevIndex } = useEditorStore.getState();
+          if (prevImage?.path && prevHistory.length > 0) {
+            globalHistoryCache.set(prevImage.path, { history: prevHistory, historyIndex: prevIndex });
+          }
           setEditor({ selectedImage: null, finalPreviewUrl: null, uncroppedAdjustedPreviewUrl: null, histogram: null });
           setEditor({ adjustments: INITIAL_ADJUSTMENTS });
           resetHistory(INITIAL_ADJUSTMENTS);
@@ -410,6 +438,7 @@ export function useAppNavigation({ clearThumbnailQueue, refs }: AppNavigationPro
         useLibraryStore.getState().setSearchCriteria({ tags: [], text: '', mode: 'OR' });
         setLibrary({ libraryScrollTop: 0 });
         globalImageCache.clear();
+        globalHistoryCache.clear();
         setUI({ activeView: 'library' });
       }
 

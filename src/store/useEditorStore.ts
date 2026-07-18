@@ -1,10 +1,13 @@
 import { create } from 'zustand';
 import { Adjustments, INITIAL_ADJUSTMENTS, MaskContainer, AiPatch } from '../utils/adjustments';
+import { arraysEqual, getChangedTopLevelKeys } from '../utils/historyUtils';
 import { SelectedImage, WaveformData, BrushSettings } from '../components/ui/AppProperties';
 import { ChannelConfig } from '../components/adjustments/Curves';
 import { ImageDimensions } from '../hooks/useImageRenderSize';
 import { ToolType } from '../components/panel/right/Masks';
 import { OverlayMode } from '../components/panel/right/CropPanel';
+
+export const HISTORY_LIMIT = 100;
 
 export interface InteractivePatch {
   url: string;
@@ -83,6 +86,7 @@ interface EditorState {
   undo: () => void;
   redo: () => void;
   resetHistory: (initialState: Adjustments) => void;
+  restoreHistory: (history: Adjustments[], index: number) => void;
   goToHistoryIndex: (index: number) => void;
 }
 
@@ -141,10 +145,25 @@ export const useEditorStore = create<EditorState>((set) => ({
 
   pushHistory: (newAdj) =>
     set((state) => {
+      const current = state.history[state.historyIndex];
+      if (JSON.stringify(current) === JSON.stringify(newAdj)) return state;
+
+      const newChanged = getChangedTopLevelKeys(current, newAdj);
+      const atEnd = state.historyIndex === state.history.length - 1;
+
+      if (atEnd && state.historyIndex > 0) {
+        const lastChanged = getChangedTopLevelKeys(state.history[state.historyIndex - 1], current);
+        if (arraysEqual(newChanged, lastChanged)) {
+          const newHistory = state.history.slice(0, state.historyIndex);
+          newHistory.push(newAdj);
+          return { history: newHistory, historyIndex: state.historyIndex, adjustments: newAdj };
+        }
+      }
+
       const newHistory = state.history.slice(0, state.historyIndex + 1);
       newHistory.push(newAdj);
-      if (newHistory.length > 50) newHistory.shift();
-      return { history: newHistory, historyIndex: newHistory.length - 1 };
+      if (newHistory.length > HISTORY_LIMIT) newHistory.shift();
+      return { history: newHistory, historyIndex: newHistory.length - 1, adjustments: newAdj };
     }),
 
   undo: () =>
@@ -170,6 +189,13 @@ export const useEditorStore = create<EditorState>((set) => ({
       history: [initialState],
       historyIndex: 0,
       adjustments: initialState,
+    }),
+
+  restoreHistory: (history, index) =>
+    set((state) => {
+      if (history.length === 0) return state;
+      const clamped = Math.min(Math.max(index, 0), history.length - 1);
+      return { history, historyIndex: clamped, adjustments: history[clamped] };
     }),
 
   goToHistoryIndex: (index) =>

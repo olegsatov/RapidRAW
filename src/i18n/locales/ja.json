@@ -697,6 +697,10 @@
         "tool": "ツール"
       }
     },
+    "history": {
+      "title": "履歴",
+      "empty": "編集はまだありません"
+    },
     "switcher": {
       "tooltips": {
         "adjust": "補正",

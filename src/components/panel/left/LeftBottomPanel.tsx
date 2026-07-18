@@ -5,6 +5,7 @@ import { useUIStore } from '../../../store/useUIStore';
 import { useEditorStore } from '../../../store/useEditorStore';
 import LeftPanelTabs from './LeftPanelTabs';
 import PresetsBrowser from '../../presets/PresetsBrowser';
+import HistoryPanel from './HistoryPanel';
 
 export default function LeftBottomPanel() {
   const isVisible = useUIStore((state) => state.uiVisibility.leftBottomPanel);
@@ -33,6 +34,7 @@ export default function LeftBottomPanel() {
             <PresetsBrowser isInstantTransition={isInstantTransition} isVisible={isVisible} />
           </MotionConfig>
         )}
+        {activeLeftBottomTab === LeftPanelTab.History && <HistoryPanel />}
       </div>
     </div>
   );
