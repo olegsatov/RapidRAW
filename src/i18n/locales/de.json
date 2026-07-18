@@ -216,7 +216,12 @@
       "unpin": "Ordner lösen",
       "syncFolder": "Synchronize folder",
       "locateFolder": "Locate folder...",
-      "lastSynced": "Synced {{time}} ago"
+      "lastSynced": "Synced {{time}} ago",
+      "lastSyncedAt": "Zuletzt synchronisiert {{time}}",
+      "neverSynced": "Noch nie synchronisiert",
+      "statusOnline": "online",
+      "statusOffline": "offline",
+      "statusChecking": "prüft..."
     },
     "library": {
       "addCopiedToAlbum_one": "Kopiertes Bild zum Album hinzufügen",
@@ -726,6 +731,12 @@
       },
       "vc": "VK"
     }
+  },
+  "folderImport": {
+    "complete": "Ordnerimport abgeschlossen: {{folder}}",
+    "completeWithErrors": "Ordnerimport abgeschlossen mit {{count}} Fehler(n): {{folder}}",
+    "cancelled": "Ordnerimport abgebrochen: {{folder}}",
+    "error": "Ordnerimport fehlgeschlagen für {{folder}}: {{message}}"
   },
   "export": {
     "advanced": {

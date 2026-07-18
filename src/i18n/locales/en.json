@@ -266,7 +266,12 @@
       "showExplorer": "Show in File Explorer",
       "syncFolder": "Sync Folder",
       "unpin": "Unpin Folder",
-      "lastSynced": "Synced {{time}} ago"
+      "lastSynced": "Synced {{time}} ago",
+      "lastSyncedAt": "Last synced {{time}}",
+      "neverSynced": "Never synced",
+      "statusOnline": "online",
+      "statusOffline": "offline",
+      "statusChecking": "checking..."
     },
     "library": {
       "addCopiedToAlbum_one": "Add copied image to album",
@@ -849,6 +854,12 @@
       },
       "vc": "VC"
     }
+  },
+  "folderImport": {
+    "complete": "Folder import complete: {{folder}}",
+    "completeWithErrors": "Folder import complete with {{count}} error(s): {{folder}}",
+    "cancelled": "Folder import cancelled: {{folder}}",
+    "error": "Folder import failed for {{folder}}: {{message}}"
   },
   "export": {
     "advanced": {
