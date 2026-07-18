@@ -326,7 +326,6 @@ pub struct FileRowInput {
     pub name: String,
     pub modified: Option<u64>,
     pub size: Option<u64>,
-    pub sidecar_modified: Option<u64>,
     pub extension: String,
     pub is_raw: bool,
     pub is_edited: bool,
@@ -361,16 +360,15 @@ fn upsert_files_in_conn(
         let file_id: i64 = tx
             .query_row(
                 "INSERT INTO files(
-                    folder_id, path, name, modified, size, sidecar_modified,
+                    folder_id, path, name, modified, size,
                     extension, is_raw, is_edited, is_virtual_copy, is_cloud_placeholder,
-                    rating, flag, color, exif_scanned, metadata_json
+                    rating, flag, color, exif_scanned, metadata_json, metadata_modified
                 ) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16)
                  ON CONFLICT(path) DO UPDATE SET
                     folder_id=excluded.folder_id,
                     name=excluded.name,
                     modified=excluded.modified,
                     size=excluded.size,
-                    sidecar_modified=excluded.sidecar_modified,
                     extension=excluded.extension,
                     is_raw=excluded.is_raw,
                     is_edited=excluded.is_edited,
@@ -383,7 +381,8 @@ fn upsert_files_in_conn(
                         WHEN files.modified IS NOT excluded.modified
                           OR files.size IS NOT excluded.size
                         THEN 0 ELSE files.exif_scanned END,
-                    metadata_json=excluded.metadata_json
+                    metadata_json=excluded.metadata_json,
+                    metadata_modified=0
                  RETURNING id",
                 params![
                     folder_id,
@@ -391,7 +390,6 @@ fn upsert_files_in_conn(
                     &f.name,
                     f.modified.map(|v| v as i64),
                     f.size.map(|v| v as i64),
-                    f.sidecar_modified.map(|v| v as i64),
                     &f.extension,
                     f.is_raw as i32,
                     f.is_edited as i32,
@@ -401,7 +399,8 @@ fn upsert_files_in_conn(
                     f.flag as i32,
                     &f.color,
                     0i32,
-                    &f.metadata_json
+                    &f.metadata_json,
+                    0i64
                 ],
                 |row| row.get(0),
             )
@@ -996,9 +995,11 @@ fn mark_exif_scanned_in_conn(
 }
 
 /// Fingerprint of one catalog row used by folder sync to detect changes:
-/// `(modified, size, sidecar_modified)`. All three columns are nullable, so
-/// the fingerprint keeps the `Option`s — a NULL on either side must compare
-/// equal to a missing value on the other, not force a re-upsert.
+/// `(modified, size, metadata_modified)`. `metadata_modified` is treated as a
+/// dirty flag: it is stamped by `metadata_store` on every metadata write and
+/// reset to `0` when the folder-import sync (re-)upserts the row. A `NULL`
+/// `metadata_modified` is treated as `0` so a clean row compares equal to a
+/// disk entry that has no metadata change pending.
 pub type FileFingerprint = (Option<u64>, Option<u64>, Option<u64>);
 
 /// Returns the fingerprints of every catalog row in `folder_id`, keyed by the
@@ -1018,7 +1019,7 @@ fn get_folder_file_fingerprints_in_conn(
 ) -> Result<HashMap<String, FileFingerprint>, String> {
     let mut stmt = conn
         .prepare(
-            "SELECT path, modified, size, sidecar_modified FROM files
+            "SELECT path, modified, size, metadata_modified FROM files
              WHERE folder_id = ?1 ORDER BY id",
         )
         .map_err(|e| e.to_string())?;
@@ -1029,7 +1030,8 @@ fn get_folder_file_fingerprints_in_conn(
                 (
                     row.get::<_, Option<i64>>(1)?.map(|v| v as u64),
                     row.get::<_, Option<i64>>(2)?.map(|v| v as u64),
-                    row.get::<_, Option<i64>>(3)?.map(|v| v as u64),
+                    // Treat a NULL metadata_modified as the clean sentinel 0.
+                    Some(row.get::<_, Option<i64>>(3)?.unwrap_or(0) as u64),
                 ),
             ))
         })
@@ -1178,7 +1180,6 @@ mod tests {
             name: "a.jpg".to_string(),
             modified: Some(100),
             size: Some(10),
-            sidecar_modified: Some(90),
             extension: "jpg".to_string(),
             is_raw: false,
             is_edited: true,
@@ -1668,21 +1669,20 @@ mod tests {
         let mut vc = sample_file();
         vc.path = "/tmp/x/a.jpg?vc=abc123".to_string();
         vc.is_virtual_copy = true;
-        vc.sidecar_modified = Some(95);
         let mut no_sidecar = sample_file();
         no_sidecar.path = "/tmp/x/b.jpg".to_string();
         no_sidecar.name = "b.jpg".to_string();
-        no_sidecar.sidecar_modified = None;
         upsert_files_in_conn(&mut conn, folder_id, &[sample_file(), vc, no_sidecar]).unwrap();
 
         let fps = get_folder_file_fingerprints_in_conn(&conn, folder_id).unwrap();
         assert_eq!(fps.len(), 3);
-        assert_eq!(fps["/tmp/x/a.jpg"], (Some(100), Some(10), Some(90)));
+        // `upsert_files` resets metadata_modified to the clean sentinel 0.
+        assert_eq!(fps["/tmp/x/a.jpg"], (Some(100), Some(10), Some(0)));
         assert_eq!(
             fps["/tmp/x/a.jpg?vc=abc123"],
-            (Some(100), Some(10), Some(95))
+            (Some(100), Some(10), Some(0))
         );
-        assert_eq!(fps["/tmp/x/b.jpg"], (Some(100), Some(10), None));
+        assert_eq!(fps["/tmp/x/b.jpg"], (Some(100), Some(10), Some(0)));
 
         // Another folder's rows are not included.
         assert!(

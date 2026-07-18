@@ -433,14 +433,9 @@ fn collect_image_paths(
 /// (possibly virtual) path, so each virtual copy gets its own row with
 /// `is_virtual_copy = 1` while `name`/`extension`/`size` describe the real file.
 fn file_row_input(image_file: &ImageFile) -> Result<FileRowInput, String> {
-    let (source_path, sidecar_path) = file_management::parse_virtual_path(&image_file.path);
+    let source_path = file_management::parse_virtual_path(&image_file.path).0;
 
     let size = fs::metadata(&source_path).ok().map(|m| m.len());
-    let sidecar_modified = fs::metadata(&sidecar_path)
-        .ok()
-        .and_then(|m| m.modified().ok())
-        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
-        .map(|d| d.as_secs());
 
     let name = source_path
         .file_name()
@@ -474,7 +469,6 @@ fn file_row_input(image_file: &ImageFile) -> Result<FileRowInput, String> {
         name,
         modified: Some(image_file.modified),
         size,
-        sidecar_modified,
         extension,
         is_raw: is_raw_file(&source_path),
         is_edited: image_file.is_edited,
@@ -979,9 +973,10 @@ async fn run_import_job(
 /// its base path or any of its virtual copies is new or has a changed
 /// fingerprint — plus the catalog paths to delete.
 ///
-/// The fingerprint mirrors `file_row_input` exactly (`modified`/`size` of the
-/// source file, `sidecar_modified` of the matching `.rrdata`), so an
-/// unchanged file compares equal and is never re-upserted.
+/// The fingerprint is `(modified, size, metadata_modified)`. `metadata_modified`
+/// is a catalog dirty flag stamped by `metadata_store` on every metadata write
+/// and reset to `0` when the sync (re-)upserts the row. The disk side has no
+/// pending metadata change, so it compares against the clean sentinel `0`.
 ///
 /// Rows missing from the walk are double-checked on disk before being
 /// removed: the walk's `filter_map` silently swallows per-entry IO errors
@@ -1013,23 +1008,15 @@ fn compute_sync_delta(
 
         let mut needs_upsert = false;
         for sidecar in &entry.sidecars {
-            let (catalog_path, sidecar_filename) = match sidecar {
-                None => (
-                    entry.path_str.clone(),
-                    format!("{}.rrdata", entry.file_name),
-                ),
-                Some(id) => (
-                    format!("{}?vc={}", entry.path_str, id),
-                    format!("{}.{}.rrdata", entry.file_name, id),
-                ),
+            let catalog_path = match sidecar {
+                None => entry.path_str.clone(),
+                Some(id) => format!("{}?vc={}", entry.path_str, id),
             };
-            let sidecar_modified = fs::metadata(entry.path_buf.with_file_name(sidecar_filename))
-                .ok()
-                .and_then(|m| m.modified().ok())
-                .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
-                .map(|d| d.as_secs());
             disk_paths.insert(catalog_path.clone());
-            let fingerprint = (Some(modified), size, sidecar_modified);
+            // Disk has no pending metadata change, so compare against the clean
+            // sentinel `0`. A catalog `metadata_modified` of `NULL` is also
+            // treated as `0` by `get_folder_file_fingerprints`.
+            let fingerprint = (Some(modified), size, Some(0));
             if fingerprints.get(&catalog_path) != Some(&fingerprint) {
                 needs_upsert = true;
             }
@@ -1352,11 +1339,11 @@ mod tests {
             .into_owned();
 
         let fingerprints: HashMap<String, library_db::FileFingerprint> = [
-            (kept.clone(), (Some(1), Some(1), None)),
-            (kept_vc.clone(), (Some(1), Some(1), Some(2))),
-            (gone.clone(), (Some(1), Some(1), None)),
-            (gone_vc.clone(), (Some(1), Some(1), Some(3))),
-            (orphan_vc.clone(), (Some(1), Some(1), Some(4))),
+            (kept.clone(), (Some(1), Some(1), Some(0))),
+            (kept_vc.clone(), (Some(1), Some(1), Some(0))),
+            (gone.clone(), (Some(1), Some(1), Some(0))),
+            (gone_vc.clone(), (Some(1), Some(1), Some(0))),
+            (orphan_vc.clone(), (Some(1), Some(1), Some(0))),
         ]
         .into_iter()
         .collect();

@@ -207,7 +207,6 @@ fn resolve_file_id(
         name,
         modified: None,
         size: None,
-        sidecar_modified: None,
         extension,
         is_raw: is_raw_file(base_path),
         is_edited: false,
