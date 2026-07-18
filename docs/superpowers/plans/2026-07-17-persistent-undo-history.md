@@ -10,7 +10,7 @@
 
 **Repo constraints (from AGENTS.md):** new features in new files; surgical edits to shared upstream files (`useAppNavigation.ts`, `useImageLoader.ts`, `EditorToolbar.tsx`, `AppProperties.tsx`, locale JSONs); no cosmetic changes; commit style is lowercase, concise, no conventional-commit prefixes; commit only when the user asks.
 
-**Verification baseline:** `npm run build` must pass; `npx prettier --check <changed files>` must pass; `npm run i18n:check` must pass after locale edits; `tsc` and eslint have pre-existing red baselines — judge only by *new* errors. There is no frontend test runner in this repo, so Phase 1 verification is build + manual QA checklist (Task 8). Phase 2 Rust code gets `cargo test` unit tests following the existing pattern in `src-tauri/src/library_db.rs:143-168`.
+**Verification baseline:** `npm run build` must pass; `npx prettier --check <changed files>` must pass; `npm run i18n:check` must pass after locale edits; `tsc` and eslint have pre-existing red baselines — judge only by _new_ errors. There is no frontend test runner in this repo, so Phase 1 verification is build + manual QA checklist (Task 8). Phase 2 Rust code gets `cargo test` unit tests following the existing pattern in `src-tauri/src/library_db.rs:143-168`.
 
 ---
 
@@ -34,6 +34,7 @@
 ### Task 1: `HISTORY_LIMIT` constant and `restoreHistory` action in the editor store
 
 **Files:**
+
 - Modify: `src/store/useEditorStore.ts:82-87,142-148`
 
 - [ ] **Step 1: Add the `restoreHistory` action signature to the `EditorState` interface**
@@ -55,7 +56,7 @@ export const HISTORY_LIMIT = 100;
 Replace the `pushHistory` cap (line 146) `if (newHistory.length > 50) newHistory.shift();` with:
 
 ```ts
-      if (newHistory.length > HISTORY_LIMIT) newHistory.shift();
+if (newHistory.length > HISTORY_LIMIT) newHistory.shift();
 ```
 
 Add the action implementation after `resetHistory` (after line 173):
@@ -83,6 +84,7 @@ git commit -m "add restoreHistory action and raise history limit to 100"
 ### Task 2: In-memory per-image history cache
 
 **Files:**
+
 - Create: `src/utils/historyCache.ts`
 
 - [ ] **Step 1: Create the cache module**
@@ -158,6 +160,7 @@ git commit -m "add per-image undo history cache"
 All edits in this task are surgical insertions into shared upstream files — no reformatting, no unrelated changes.
 
 **Files:**
+
 - Modify: `src/hooks/useAppNavigation.ts:109-215` (cached branch + cache-write on switch), `:80-99` (`handleBackToLibrary`), ~`:329` (`handleSelectSubfolder`)
 - Modify: `src/hooks/useImageLoader.ts:32-52` (non-cached load branch)
 
@@ -172,27 +175,27 @@ import { globalHistoryCache } from '../utils/historyCache';
 In `handleImageSelect`, extend the destructuring at line 111 to include `restoreHistory`:
 
 ```ts
-      const { selectedImage, isSliderDragging, resetHistory, restoreHistory, setEditor } = useEditorStore.getState();
+const { selectedImage, isSliderDragging, resetHistory, restoreHistory, setEditor } = useEditorStore.getState();
 ```
 
 Immediately after the existing outgoing-cache write (lines 121-123):
 
 ```ts
-      if (selectedImage?.path && cachedEditStateRef.current) {
-        globalImageCache.set(selectedImage.path, cachedEditStateRef.current);
-      }
+if (selectedImage?.path && cachedEditStateRef.current) {
+  globalImageCache.set(selectedImage.path, cachedEditStateRef.current);
+}
 ```
 
 insert:
 
 ```ts
-      const { history: outgoingHistory, historyIndex: outgoingIndex } = useEditorStore.getState();
-      if (selectedImage?.path && outgoingHistory.length > 0) {
-        globalHistoryCache.set(selectedImage.path, {
-          history: outgoingHistory,
-          historyIndex: outgoingIndex,
-        });
-      }
+const { history: outgoingHistory, historyIndex: outgoingIndex } = useEditorStore.getState();
+if (selectedImage?.path && outgoingHistory.length > 0) {
+  globalHistoryCache.set(selectedImage.path, {
+    history: outgoingHistory,
+    historyIndex: outgoingIndex,
+  });
+}
 ```
 
 - [ ] **Step 2: Restore history in the cached branch**
@@ -200,22 +203,22 @@ insert:
 In `handleImageSelect`, replace lines 172-174:
 
 ```ts
-        setEditor({ adjustments: cached.adjustments });
-        resetHistory(cached.adjustments);
-        prevAdjustmentsRef.current = { path, adjustments: cached.adjustments };
+setEditor({ adjustments: cached.adjustments });
+resetHistory(cached.adjustments);
+prevAdjustmentsRef.current = { path, adjustments: cached.adjustments };
 ```
 
 with:
 
 ```ts
-        const cachedHistory = globalHistoryCache.get(path);
-        if (cachedHistory) {
-          restoreHistory(cachedHistory.history, cachedHistory.historyIndex);
-        } else {
-          setEditor({ adjustments: cached.adjustments });
-          resetHistory(cached.adjustments);
-        }
-        prevAdjustmentsRef.current = { path, adjustments: useEditorStore.getState().adjustments };
+const cachedHistory = globalHistoryCache.get(path);
+if (cachedHistory) {
+  restoreHistory(cachedHistory.history, cachedHistory.historyIndex);
+} else {
+  setEditor({ adjustments: cached.adjustments });
+  resetHistory(cached.adjustments);
+}
+prevAdjustmentsRef.current = { path, adjustments: useEditorStore.getState().adjustments };
 ```
 
 In the background metadata sync (lines 205-210), guard the reset so a restored history is not clobbered when the sidecar differs (the autosave effect will re-persist the restored adjustments to the sidecar):
@@ -237,26 +240,26 @@ import { globalHistoryCache } from '../utils/historyCache';
 Add a store selector near the existing ones (top of the hook):
 
 ```ts
-  const restoreHistory = useEditorStore((state) => state.restoreHistory);
+const restoreHistory = useEditorStore((state) => state.restoreHistory);
 ```
 
 In `loadMetadataEarly`, replace lines 47-48:
 
 ```ts
-          setEditor({ adjustments: initialAdjusts });
-          resetHistory(initialAdjusts);
+setEditor({ adjustments: initialAdjusts });
+resetHistory(initialAdjusts);
 ```
 
 with:
 
 ```ts
-          const cachedHistory = globalHistoryCache.get(selectedImage.path);
-          if (cachedHistory) {
-            restoreHistory(cachedHistory.history, cachedHistory.historyIndex);
-          } else {
-            setEditor({ adjustments: initialAdjusts });
-            resetHistory(initialAdjusts);
-          }
+const cachedHistory = globalHistoryCache.get(selectedImage.path);
+if (cachedHistory) {
+  restoreHistory(cachedHistory.history, cachedHistory.historyIndex);
+} else {
+  setEditor({ adjustments: initialAdjusts });
+  resetHistory(initialAdjusts);
+}
 ```
 
 Add `restoreHistory` to the effect dependency array (lines 131-138).
@@ -266,10 +269,10 @@ Add `restoreHistory` to the effect dependency array (lines 131-138).
 In `src/hooks/useAppNavigation.ts` `handleBackToLibrary`, before the `setEditor({ ... selectedImage: null ... })` block (line 80), insert:
 
 ```ts
-    const { selectedImage: prevImage, history: prevHistory, historyIndex: prevIndex } = useEditorStore.getState();
-    if (prevImage?.path && prevHistory.length > 0) {
-      globalHistoryCache.set(prevImage.path, { history: prevHistory, historyIndex: prevIndex });
-    }
+const { selectedImage: prevImage, history: prevHistory, historyIndex: prevIndex } = useEditorStore.getState();
+if (prevImage?.path && prevHistory.length > 0) {
+  globalHistoryCache.set(prevImage.path, { history: prevHistory, historyIndex: prevIndex });
+}
 ```
 
 Apply the same insertion in `handleSelectSubfolder` (~line 329), before its `resetHistory(INITIAL_ADJUSTMENTS)` call.
@@ -295,6 +298,7 @@ git commit -m "restore per-image undo history on image switch"
 The naming logic currently lives inline in `EditorToolbar.tsx` (lines 157-312). Move it verbatim into a new hook so both the toolbar dropdown and the new panel use it.
 
 **Files:**
+
 - Create: `src/hooks/useHistoryNames.ts`
 - Modify: `src/components/panel/editor/EditorToolbar.tsx:157-312`
 
@@ -322,6 +326,7 @@ export function useHistoryNames(adjustmentsHistory: Adjustments[]): string[] {
 - [ ] **Step 2: Rewire `EditorToolbar`**
 
 In `src/components/panel/editor/EditorToolbar.tsx`:
+
 - Add import: `import { useHistoryNames } from '../../../hooks/useHistoryNames';`
 - Delete lines 157-312 (`prevNamesRef` + the whole `historyNames` `useMemo`).
 - Where `historyNames` was computed, add: `const historyNames = useHistoryNames(adjustmentsHistory);`
@@ -342,6 +347,7 @@ git commit -m "extract history entry naming into useHistoryNames hook"
 ### Task 5: History panel component
 
 **Files:**
+
 - Create: `src/components/panel/left/HistoryPanel.tsx`
 
 - [ ] **Step 1: Create the component**
@@ -421,6 +427,7 @@ git commit -m "add history panel component"
 ### Task 6: Wire the History tab into the left bottom panel
 
 **Files:**
+
 - Modify: `src/components/ui/AppProperties.tsx:134-136`
 - Modify: `src/components/panel/left/LeftPanelTabs.tsx:1,13`
 - Modify: `src/components/panel/left/LeftBottomPanel.tsx:1-7,30-36`
@@ -464,7 +471,9 @@ import HistoryPanel from './HistoryPanel';
 and inside the content `div` (after the `Presets` branch, lines 31-35), add:
 
 ```tsx
-        {activeLeftBottomTab === LeftPanelTab.History && <HistoryPanel />}
+{
+  activeLeftBottomTab === LeftPanelTab.History && <HistoryPanel />;
+}
 ```
 
 - [ ] **Step 4: Verify build**
@@ -482,26 +491,27 @@ git commit -m "add history tab to left bottom panel"
 ### Task 7: Locale strings
 
 **Files:**
+
 - Modify: `src/i18n/locales/en.json`, `ru.json`, `de.json`, `fr.json`, `es.json`, `it.json`, `ja.json`, `ko.json`, `pl.json`, `pt.json`, `zh-CN.json`, `zh-TW.json` (all under the `editor` object, next to `presets`)
 
 - [ ] **Step 1: Add `editor.history` keys to all 12 locales**
 
 Add under `editor` (sibling of `"presets"`):
 
-| Locale | `title` | `empty` |
-|---|---|---|
-| en | History | No edits yet |
-| ru | История | Изменений пока нет |
-| de | Verlauf | Noch keine Bearbeitungen |
-| fr | Historique | Aucune modification |
-| es | Historial | Sin ediciones todavía |
-| it | Cronologia | Nessuna modifica |
-| ja | 履歴 | 編集はまだありません |
-| ko | 기록 | 아직 편집 내용이 없습니다 |
-| pl | Historia | Brak zmian |
-| pt | Histórico | Sem edições ainda |
-| zh-CN | 历史记录 | 暂无编辑 |
-| zh-TW | 歷史記錄 | 尚無編輯 |
+| Locale | `title`    | `empty`                   |
+| ------ | ---------- | ------------------------- |
+| en     | History    | No edits yet              |
+| ru     | История    | Изменений пока нет        |
+| de     | Verlauf    | Noch keine Bearbeitungen  |
+| fr     | Historique | Aucune modification       |
+| es     | Historial  | Sin ediciones todavía     |
+| it     | Cronologia | Nessuna modifica          |
+| ja     | 履歴       | 編集はまだありません      |
+| ko     | 기록       | 아직 편집 내용이 없습니다 |
+| pl     | Historia   | Brak zmian                |
+| pt     | Histórico  | Sem edições ainda         |
+| zh-CN  | 历史记录   | 暂无编辑                  |
+| zh-TW  | 歷史記錄   | 尚無編輯                  |
 
 JSON shape (example for en):
 
@@ -534,7 +544,7 @@ Expected: all pass (run `npx prettier --write` on any failure and re-check).
 - [ ] **Step 2: Full build + typecheck delta**
 
 Run: `npm run build` and `npm run typecheck 2>&1 | grep -E "historyCache|HistoryPanel|useHistoryNames|useEditorStore|useAppNavigation|useImageLoader|LeftBottomPanel|LeftPanelTabs"`
-Expected: build passes; grep output is empty (no *new* type errors in touched files — the repo has a pre-existing red `tsc` baseline).
+Expected: build passes; grep output is empty (no _new_ type errors in touched files — the repo has a pre-existing red `tsc` baseline).
 
 - [ ] **Step 3: Manual QA checklist** (`npm start`)
 
@@ -547,39 +557,436 @@ Expected: build passes; grep output is empty (no *new* type errors in touched fi
 
 ---
 
-## Phase 2 — persistence in the SQLite catalog (PRELIMINARY)
+## Phase 2 — delta-based edit history persistence in the SQLite catalog
 
-> Depends on the parallel session's folder-import/catalog work on `main` (`src-tauri/src/library_db.rs`, schema v1 committed; import pipeline still in flight). **Detail this phase into bite-sized tasks only after that work lands and this branch is rebased onto it.** What follows is the agreed direction and the concrete integration points known today.
+**Goal:** Persist per-image undo/redo history in the SQLite library catalog, using the existing `file_adjustment_deltas` / `file_adjustment_snapshots` schema, so history survives app restarts and re-appears in the History panel when the image is reopened.
 
-**Storage decision (agreed with user):** history lives in SQLite only. The `.rrdata` sidecar remains the source of truth for *current* adjustments; history is secondary data. Consequence: a full catalog rebuild loses history — accepted.
+**Architecture:** The frontend keeps its in-memory `history: Adjustments[]` model (Phase 1). The backend stores history compactly as **one base snapshot + per-step top-level-key deltas**. On image load the backend reconstructs the full history list from the snapshot + deltas and sends it to the frontend. This avoids duplicating heavy immutable data (AI patches, masks, LUT tables) on every minor slider tweak.
 
-**Schema v2 migration** (extend `migrate()` in `src-tauri/src/library_db.rs:28`, bump `CURRENT_SCHEMA_VERSION` to 2):
+**Catalog integration points (now resolved):**
 
-```sql
-CREATE TABLE IF NOT EXISTS edit_history (
-  file_id INTEGER NOT NULL REFERENCES files(id) ON DELETE CASCADE,
-  idx INTEGER NOT NULL,
-  label TEXT,
-  adjustments_json TEXT NOT NULL,
-  created_at INTEGER NOT NULL,
-  PRIMARY KEY (file_id, idx)
-);
+- Path → `file_id` resolution: `library_db::get_file_id_by_path` / `metadata_store::resolve_file_id`. Uncataloged files get a minimal stub row on first history write.
+- Virtual-copy paths use the `{source_path}?vc=<id>` suffix and are separate `files` rows.
+- Current adjustments source of truth: `files.adjustments_json`.
+- Existing stubs: `metadata_store::record_delta` / `take_snapshot` become production code.
+
+**Storage decisions:**
+
+- One base snapshot (`file_adjustment_snapshots`) per file, captured before the first edit.
+- Each history step produces one or more delta rows (`file_adjustment_deltas`) grouped by `step_index`.
+- `files.history_index` stores the number of applied steps.
+- Labels are written from the frontend (`useHistoryNames`) into the `description` column of the first delta of each step.
+- History lives in SQLite only; `.rrdata` is not written. A full catalog rebuild loses history — accepted.
+
+---
+
+### Task 1: Schema v3 migration
+
+**Files:**
+
+- Modify: `src-tauri/src/library_db.rs:8,32-46,220-248`
+
+- [ ] **Step 1: Bump schema version and add SCHEMA_V3**
+
+Add after `SCHEMA_V2`:
+
+```rust
+const SCHEMA_V3: &str = r#"
+ALTER TABLE file_adjustment_deltas ADD COLUMN step_index INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE file_adjustment_deltas ADD COLUMN idx INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE file_adjustment_snapshots ADD COLUMN idx INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE files ADD COLUMN history_index INTEGER;
+
+CREATE INDEX IF NOT EXISTS idx_deltas_file_step ON file_adjustment_deltas(file_id, step_index);
+CREATE INDEX IF NOT EXISTS idx_deltas_file_idx ON file_adjustment_deltas(file_id, idx);
+CREATE INDEX IF NOT EXISTS idx_snapshots_file_idx ON file_adjustment_snapshots(file_id, idx);
+"#;
 ```
 
-**Rust operations** in `library_db.rs` (with `cargo test` unit tests following the existing pattern at `library_db.rs:143-168`):
-- `save_edit_history(conn, file_id, entries: &[(idx, label, adjustments_json)], history_index)` — replace-all in one transaction + prune to the last 100 (`DELETE FROM edit_history WHERE file_id = ?1 AND idx < ?2`).
-- `load_edit_history(conn, file_id) -> (Vec<Entry>, Option<i64>)`.
+Change:
 
-**Tauri commands:** `load_edit_history(path)` / `save_edit_history(path, entries, history_index)`, registered in `lib.rs`. Path → `file_id` resolution is the main open integration point (see below).
+```rust
+const CURRENT_SCHEMA_VERSION: i32 = 3;
+```
 
-**Frontend:** new `src/utils/historyPersistence.ts` — debounced (~2 s) writer subscribed to `useEditorStore` history changes, flushed on image switch and app close; loader on image select with priority **DB → in-memory LRU** (Task 2-3 code becomes the L1 fallback for paths not yet in the catalog).
+Update `migrate()` to run the correct schema block:
 
-**Open questions to resolve at Phase 2 start:**
-1. Final catalog command/API surface (depends on the parallel session's finished work).
-2. What to do when the edited file has no `files` row yet (never imported): upsert a minimal row by path, or keep history memory-only until import.
-3. Virtual-copy path format in the DB (`?vc=` suffix per the catalog spec) — confirm against the landed implementation.
-4. Whether `label` is written from the frontend (`useHistoryNames`) or recomputed — leaning frontend-written, since names are already computed there.
-5. History panel badge/count for persisted-but-not-currently-loaded images (nice-to-have, not committed).
+```rust
+fn migrate(conn: &Connection) -> Result<(), String> {
+    let user_version: i32 = conn
+        .query_row("PRAGMA user_version", [], |row| row.get(0))
+        .map_err(|e| e.to_string())?;
+    if user_version < CURRENT_SCHEMA_VERSION {
+        if user_version < 1 {
+            conn.execute_batch(SCHEMA_V1).map_err(|e| e.to_string())?;
+        }
+        if user_version < 2 {
+            conn.execute_batch(SCHEMA_V2).map_err(|e| e.to_string())?;
+        }
+        if user_version < 3 {
+            conn.execute_batch(SCHEMA_V3).map_err(|e| e.to_string())?;
+        }
+        conn.pragma_update(None, "user_version", CURRENT_SCHEMA_VERSION)
+            .map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+```
 
-**Phase 2 verification:** `cargo test` (new unit tests), `cargo check`, `npm run build`, plus a restart-persistence QA pass (edit → quit app → relaunch → history and panel restored).
+- [ ] **Step 2: Verify build and existing tests**
+
+Run: `cargo check` in `src-tauri/` and `cargo test --lib library_db`.
+Expected: passes; no new warnings in changed code.
+
+- [ ] **Step 3: Commit** (only when the user asks)
+
+```bash
+git add src-tauri/src/library_db.rs
+git commit -m "add schema v3 for delta-based edit history"
+```
+
+---
+
+### Task 2: Rust delta/snapshot persistence helpers
+
+**Files:**
+
+- Modify: `src-tauri/src/library_db.rs`
+- Modify: `src-tauri/src/metadata_store.rs:336-349`
+
+- [ ] **Step 1: Add data types in `library_db.rs`**
+
+After the existing public structs, add:
+
+```rust
+pub struct AdjustmentDelta {
+    pub step_index: i64,
+    pub idx: i64,
+    pub adjustment_key: String,
+    pub old_value: Option<String>,
+    pub new_value: String,
+    pub description: Option<String>,
+    pub created_at: i64,
+}
+
+pub struct AdjustmentSnapshot {
+    pub idx: i64,
+    pub adjustments_json: String,
+    pub description: Option<String>,
+    pub created_at: i64,
+}
+
+pub struct EditHistory {
+    pub snapshot: AdjustmentSnapshot,
+    pub deltas: Vec<AdjustmentDelta>,
+    pub history_index: i64,
+}
+```
+
+- [ ] **Step 2: Add `save_edit_history` in `library_db.rs`**
+
+Replace all deltas for `file_id` with the supplied batch, update `files.history_index`, and update `files.adjustments_json` to the current state. Prune steps beyond `HISTORY_LIMIT`.
+
+Signature:
+
+```rust
+pub fn save_edit_history<R: Runtime>(
+    app_handle: &AppHandle<R>,
+    file_id: i64,
+    snapshot: &AdjustmentSnapshot,
+    deltas: &[AdjustmentDelta],
+    history_index: i64,
+    current_adjustments_json: &str,
+) -> Result<(), String>;
+```
+
+Implementation outline:
+
+1. `DELETE FROM file_adjustment_deltas WHERE file_id = ?1`
+2. `DELETE FROM file_adjustment_snapshots WHERE file_id = ?1`
+3. `INSERT INTO file_adjustment_snapshots ...` for the base snapshot.
+4. `INSERT INTO file_adjustment_deltas ...` for each delta.
+5. If `deltas.len()` maps to more than `HISTORY_LIMIT` steps, delete oldest steps (`DELETE ... WHERE step_index < ?`).
+6. `UPDATE files SET adjustments_json = ?2, history_index = ?3 WHERE id = ?1`
+7. All inside a transaction.
+
+- [ ] **Step 3: Add `load_edit_history` in `library_db.rs`**
+
+Signature:
+
+```rust
+pub fn load_edit_history<R: Runtime>(
+    app_handle: &AppHandle<R>,
+    file_id: i64,
+) -> Result<Option<EditHistory>, String>;
+```
+
+Load the single base snapshot, all deltas ordered by `step_index, idx`, and the current `files.history_index`. Return `Ok(None)` if no snapshot exists.
+
+- [ ] **Step 4: Add `reconstruct_history` helper**
+
+Signature:
+
+```rust
+pub fn reconstruct_history(
+    snapshot: &AdjustmentSnapshot,
+    deltas: &[AdjustmentDelta],
+    history_index: i64,
+) -> Result<(Vec<String>, i64), String>;
+```
+
+Returns `(Vec<adjustments_json>, active_index)` where each entry is a full state. Steps:
+
+1. Parse `snapshot.adjustments_json` into `serde_json::Value`.
+2. Group deltas by `step_index`.
+3. For each step, clone the previous state and apply all deltas of that step (`state[key] = new_value`).
+4. Serialize each state to JSON.
+5. `active_index = min(history_index, number of steps)`.
+
+- [ ] **Step 5: Implement `metadata_store::record_delta` and `take_snapshot` stubs**
+
+These become thin wrappers over `library_db::save_edit_history` / `load_edit_history` for callers that already have `file_id`.
+
+```rust
+pub fn record_delta(...) {
+    // Not used directly by the frontend path; kept for future internal callers.
+}
+
+pub fn take_snapshot(app_handle: &AppHandle, file_id: i64, description: &str, source: &str) {
+    // Internal helper: captures current files.adjustments_json as base snapshot.
+}
+```
+
+- [ ] **Step 6: Unit tests**
+
+Add tests in `library_db.rs` following the existing pattern:
+
+- Save and load a 3-step history; assert reconstructed states and active index.
+- Verify pruning drops oldest steps when limit exceeded.
+- Verify `files.adjustments_json` matches the active state after save.
+- Virtual-copy isolation: two paths with `?vc=` suffix get independent histories.
+
+Run: `cargo test --lib library_db` and `cargo check`.
+Expected: passes.
+
+- [ ] **Step 7: Commit** (only when the user asks)
+
+```bash
+git add src-tauri/src/library_db.rs src-tauri/src/metadata_store.rs
+git commit -m "add delta-based edit history persistence in library_db"
+```
+
+---
+
+### Task 3: Tauri commands for history load/save
+
+**Files:**
+
+- Create: `src-tauri/src/history_commands.rs`
+- Modify: `src-tauri/src/lib.rs` (command registration)
+
+- [ ] **Step 1: Create `src-tauri/src/history_commands.rs`**
+
+Commands:
+
+```rust
+#[tauri::command]
+pub fn load_edit_history(path: String) -> Result<LoadEditHistoryResponse, String>;
+
+#[tauri::command]
+pub fn save_edit_history(payload: SaveEditHistoryPayload) -> Result<(), String>;
+```
+
+`LoadEditHistoryResponse`:
+
+```rust
+pub struct LoadEditHistoryResponse {
+    pub history: Vec<HistoryEntry>,
+    pub history_index: i64,
+}
+
+pub struct HistoryEntry {
+    pub adjustments_json: String,
+    pub label: Option<String>,
+}
+```
+
+`SaveEditHistoryPayload`:
+
+```rust
+pub struct SaveEditHistoryPayload {
+    pub path: String,
+    pub base_snapshot: SnapshotPayload,
+    pub deltas: Vec<DeltaPayload>,
+    pub history_index: i64,
+    pub current_adjustments_json: String,
+}
+```
+
+Implementation:
+
+- Resolve `file_id` via `metadata_store::resolve_file_id`.
+- For `load_edit_history`: call `library_db::load_edit_history`, reconstruct, return.
+- For `save_edit_history`: convert payload into `AdjustmentSnapshot` / `AdjustmentDelta`, call `library_db::save_edit_history`.
+
+- [ ] **Step 2: Register commands in `src-tauri/src/lib.rs`**
+
+Add `history_commands::load_edit_history` and `history_commands::save_edit_history` to the `generate_handler!` list.
+
+- [ ] **Step 3: Verify build**
+
+Run: `cargo check` and `npm run build`.
+Expected: passes.
+
+- [ ] **Step 4: Commit** (only when the user asks)
+
+```bash
+git add src-tauri/src/history_commands.rs src-tauri/src/lib.rs
+git commit -m "add load/save_edit_history tauri commands"
+```
+
+---
+
+### Task 4: Frontend diff computation
+
+**Files:**
+
+- Modify: `src/utils/historyUtils.ts`
+- Modify: `src/store/useEditorStore.ts:pushHistory`
+
+- [ ] **Step 1: Add delta serialization helper in `historyUtils.ts`**
+
+```ts
+export interface HistoryDelta {
+  adjustment_key: string;
+  old_value: string | null;
+  new_value: string;
+}
+
+export function computeHistoryDeltas(prev: Adjustments, next: Adjustments): HistoryDelta[] {
+  const keys = new Set([...Object.keys(prev), ...Object.keys(next)]) as Set<keyof Adjustments>;
+  const deltas: HistoryDelta[] = [];
+  for (const key of keys) {
+    const oldJson = JSON.stringify(prev[key]);
+    const newJson = JSON.stringify(next[key]);
+    if (oldJson !== newJson) {
+      deltas.push({ adjustment_key: key as string, old_value: oldJson, new_value: newJson });
+    }
+  }
+  return deltas.sort((a, b) => a.adjustment_key.localeCompare(b.adjustment_key));
+}
+```
+
+- [ ] **Step 2: Change `pushHistory` to record the diff instead of full state**
+
+This is a refactor: the in-memory `history` array still stores full states (needed for instant undo/redo UI), but we also store the delta that produced each step so it can be persisted.
+
+Add to `EditorState`:
+
+```ts
+historyDeltas: HistoryDelta[][];
+setHistoryDeltas: (deltas: HistoryDelta[][]) => void;
+```
+
+Update `pushHistory` to compute and store deltas alongside the new state.
+
+- [ ] **Step 3: Verify build**
+
+Run: `npm run build`.
+Expected: passes.
+
+- [ ] **Step 4: Commit** (only when the user asks)
+
+```bash
+git add src/utils/historyUtils.ts src/store/useEditorStore.ts
+git commit -m "compute top-level adjustment deltas for history persistence"
+```
+
+---
+
+### Task 5: Frontend persistence layer
+
+**Files:**
+
+- Create: `src/utils/historyPersistence.ts`
+- Modify: `src/hooks/useAppNavigation.ts`
+- Modify: `src/hooks/useImageLoader.ts`
+
+- [ ] **Step 1: Create `src/utils/historyPersistence.ts`**
+
+Responsibilities:
+
+- Subscribe to `useEditorStore` history changes.
+- Debounce save (~2 s).
+- Flush on image switch / app close.
+- Call Tauri `save_edit_history`.
+- Call Tauri `load_edit_history` on image load; fall back to `globalHistoryCache` if DB has no history.
+
+Key function signatures:
+
+```ts
+export function flushHistoryPersistence(): Promise<void>;
+export function loadPersistedHistory(path: string): Promise<{ history: Adjustments[]; historyIndex: number } | null>;
+export function subscribeHistoryPersistence(): () => void;
+```
+
+- [ ] **Step 2: Wire loader into `useImageLoader.ts` and `useAppNavigation.ts`**
+
+When an image is selected, after `file_id`/path is known:
+
+1. Try `loadPersistedHistory(path)`.
+2. If it returns history, call `restoreHistory(history, historyIndex)`.
+3. If it returns null, fall back to `globalHistoryCache.get(path)` (Phase 1 in-memory cache).
+4. If neither has history, initialize fresh history from current adjustments (`resetHistory`).
+
+On image switch / back to library, call `flushHistoryPersistence()` before resetting history.
+
+- [ ] **Step 3: Verify build + smoke**
+
+Run: `npm run build`.
+Expected: passes.
+
+Manual smoke: edit image, switch away, switch back → history restored from DB.
+
+- [ ] **Step 4: Commit** (only when the user asks)
+
+```bash
+git add src/utils/historyPersistence.ts src/hooks/useAppNavigation.ts src/hooks/useImageLoader.ts
+git commit -m "wire frontend history persistence to sqlite catalog"
+```
+
+---
+
+### Task 6: Final integration and verification
+
+- [ ] **Step 1: Formatting**
+
+Run: `npx prettier --check` on all changed files.
+Fix with `npx prettier --write` if needed.
+
+- [ ] **Step 2: Rust tests**
+
+Run: `cargo test --lib` in `src-tauri/`.
+Expected: all new and existing tests pass.
+
+- [ ] **Step 3: Full build + typecheck delta**
+
+Run: `npm run build`, `cargo check`, and `npm run typecheck 2>&1 | grep -E "history|library_db|metadata_store|historyPersistence"`.
+Expected: build passes; grep shows only pre-existing baseline errors.
+
+- [ ] **Step 4: Manual restart-persistence QA**
+
+1. Open image A, change exposure/saturation several times, undo a step.
+2. Switch to image B, edit it.
+3. Switch back to A → history and panel restored.
+4. Quit app, relaunch, reopen A → history and panel restored from SQLite.
+5. Edit past 100 steps → oldest steps pruned.
+6. Reset adjustments → history truncated to reset state in DB.
+7. Virtual copy: edit VC, switch to original, back → independent histories.
+
+- [ ] **Step 5: Commit** (only when the user asks)
+
+```bash
+git add ...
+git commit -m "persist per-image edit history in sqlite catalog (phase 2)"
+```
