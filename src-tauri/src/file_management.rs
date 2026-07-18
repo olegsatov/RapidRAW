@@ -39,6 +39,7 @@ use crate::image_processing::{
     get_all_adjustments_from_json, perform_auto_analysis,
 };
 use crate::mask_generation::MaskDefinition;
+use crate::metadata_store;
 use crate::preset_converter;
 use crate::tagging::COLOR_TAG_PREFIX;
 
@@ -2167,9 +2168,10 @@ pub fn save_metadata_and_update_thumbnail(
     app_handle: AppHandle,
     state: tauri::State<AppState>,
 ) -> Result<(), String> {
-    let (source_path, sidecar_path) = parse_virtual_path(&path);
+    let (source_path, _) = parse_virtual_path(&path);
 
-    let mut metadata = crate::exif_processing::load_sidecar(&sidecar_path);
+    let mut metadata = metadata_store::load_image_metadata(&app_handle, None, &path)
+        .map_err(|e| e.to_string())?;
 
     let mut final_adjustments = adjustments;
     {
@@ -2183,8 +2185,8 @@ pub fn save_metadata_and_update_thumbnail(
 
     metadata.adjustments = final_adjustments;
 
-    let json_string = serde_json::to_string_pretty(&metadata).map_err(|e| e.to_string())?;
-    std::fs::write(&sidecar_path, json_string).map_err(|e| e.to_string())?;
+    metadata_store::save_image_metadata(&app_handle, None, &path, &metadata)
+        .map_err(|e| e.to_string())?;
 
     if let Ok(settings) = load_settings(app_handle.clone())
         && settings.enable_xmp_sync.unwrap_or(false)
@@ -2279,9 +2281,8 @@ pub async fn apply_adjustments_to_paths(
             .clone();
 
         paths.par_iter().for_each(|path| {
-            let (_, sidecar_path) = parse_virtual_path(path);
-
-            let mut existing_metadata = crate::exif_processing::load_sidecar(&sidecar_path);
+            let mut existing_metadata =
+                metadata_store::load_image_metadata(&app_handle, None, path).unwrap_or_default();
 
             let mut new_adjustments = existing_metadata.adjustments;
             if new_adjustments.is_null() {
@@ -2304,9 +2305,8 @@ pub async fn apply_adjustments_to_paths(
 
             existing_metadata.adjustments = new_adjustments;
 
-            if let Ok(json_string) = serde_json::to_string_pretty(&existing_metadata) {
-                let _ = std::fs::write(&sidecar_path, json_string);
-            }
+            let _ =
+                metadata_store::save_image_metadata(&app_handle, None, path, &existing_metadata);
 
             if enable_xmp_sync {
                 let source_path = parse_virtual_path(path).0;
@@ -2369,15 +2369,13 @@ pub async fn reset_adjustments_for_paths(
         let create_xmp_if_missing = settings.create_xmp_if_missing.unwrap_or(false);
 
         paths.par_iter().for_each(|path| {
-            let (_, sidecar_path) = parse_virtual_path(path);
-
-            let mut existing_metadata = crate::exif_processing::load_sidecar(&sidecar_path);
+            let mut existing_metadata =
+                metadata_store::load_image_metadata(&app_handle, None, path).unwrap_or_default();
 
             existing_metadata.adjustments = serde_json::json!({});
 
-            if let Ok(json_string) = serde_json::to_string_pretty(&existing_metadata) {
-                let _ = std::fs::write(&sidecar_path, json_string);
-            }
+            let _ =
+                metadata_store::save_image_metadata(&app_handle, None, path, &existing_metadata);
 
             if enable_xmp_sync {
                 let source_path = parse_virtual_path(path).0;
@@ -2458,7 +2456,7 @@ pub async fn apply_auto_adjustments_to_paths(
 
         paths.par_iter().for_each(|path| {
             let loaded_image: Option<DynamicImage> = (|| -> Result<DynamicImage, String> {
-                let (source_path, sidecar_path) = parse_virtual_path(path);
+                let (source_path, _) = parse_virtual_path(path);
                 let source_path_str = source_path.to_string_lossy().to_string();
 
                 let file_bytes = fs::read(&source_path).map_err(|e| e.to_string())?;
@@ -2474,7 +2472,9 @@ pub async fn apply_auto_adjustments_to_paths(
                 let auto_results = perform_auto_analysis(&image);
                 let auto_adjustments_json = auto_results_to_json(&auto_results);
 
-                let mut existing_metadata = crate::exif_processing::load_sidecar(&sidecar_path);
+                let mut existing_metadata =
+                    metadata_store::load_image_metadata(&app_handle, None, path)
+                        .unwrap_or_default();
 
                 if existing_metadata.adjustments.is_null() {
                     existing_metadata.adjustments = serde_json::json!({});
@@ -2503,9 +2503,12 @@ pub async fn apply_auto_adjustments_to_paths(
                     }
                 }
 
-                if let Ok(json_string) = serde_json::to_string_pretty(&existing_metadata) {
-                    let _ = std::fs::write(&sidecar_path, json_string);
-                }
+                let _ = metadata_store::save_image_metadata(
+                    &app_handle,
+                    None,
+                    path,
+                    &existing_metadata,
+                );
 
                 if enable_xmp_sync {
                     sync_metadata_to_xmp(&source_path, &existing_metadata, create_xmp_if_missing);
