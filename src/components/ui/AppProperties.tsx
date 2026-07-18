@@ -203,7 +203,8 @@ export interface AppSettings {
   lastFolderState?: LastFolderState | null;
   activeRightPanel?: Panel | null;
   leftBottomPanelHeight?: number;
-  pinnedFolders?: any;
+  pinnedFolders?: string[];
+  rootFolders?: string[];
   lastRootPath: string | null;
   libraryViewMode?: LibraryViewMode;
   sortCriteria?: SortCriteria;

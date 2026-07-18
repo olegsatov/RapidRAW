@@ -3,7 +3,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { useLibraryStore } from '../store/useLibraryStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { folderJobKey, useFolderImportStore, type FolderImportJob } from '../store/useFolderImportStore';
-import { LibraryViewMode, type ImageFile } from '../components/ui/AppProperties';
+import { LibraryViewMode, type ImageFile, type AppSettings } from '../components/ui/AppProperties';
 
 // A job in one of these phases no longer receives events and only lingers
 // for the auto-dismiss window, so it is safe to drop before a fresh import.
@@ -138,21 +138,16 @@ export function applyFolderRelocation(oldPath: string, newPath: string): boolean
   folderImportStore.setAvailability(newPath, 'online');
 
   if (appSettings) {
-    const settingsAny = appSettings as any;
-    const newSettings: any = { ...appSettings };
-    newSettings.rootFolders = (settingsAny.rootFolders || []).map((p: string) =>
-      replacePathPrefix(p, oldPath, newPath),
-    );
-    newSettings.pinnedFolders = (settingsAny.pinnedFolders || []).map((p: string) =>
-      replacePathPrefix(p, oldPath, newPath),
-    );
+    const newSettings: AppSettings = { ...appSettings };
+    newSettings.rootFolders = (appSettings.rootFolders || []).map((p) => replacePathPrefix(p, oldPath, newPath));
+    newSettings.pinnedFolders = (appSettings.pinnedFolders || []).map((p) => replacePathPrefix(p, oldPath, newPath));
     newSettings.lastRootPath = appSettings.lastRootPath
       ? replacePathPrefix(appSettings.lastRootPath, oldPath, newPath)
       : null;
 
-    if (settingsAny.folderIcons) {
+    if (appSettings.folderIcons) {
       newSettings.folderIcons = {};
-      for (const [key, value] of Object.entries(settingsAny.folderIcons)) {
+      for (const [key, value] of Object.entries(appSettings.folderIcons)) {
         newSettings.folderIcons[replacePathPrefix(key, oldPath, newPath)] = value;
       }
     }
@@ -163,7 +158,7 @@ export function applyFolderRelocation(oldPath: string, newPath: string): boolean
         currentFolderPath: appSettings.lastFolderState.currentFolderPath
           ? replacePathPrefix(appSettings.lastFolderState.currentFolderPath, oldPath, newPath)
           : null,
-        expandedFolders: (appSettings.lastFolderState.expandedFolders || []).map((p: string) =>
+        expandedFolders: (appSettings.lastFolderState.expandedFolders || []).map((p) =>
           replacePathPrefix(p, oldPath, newPath),
         ),
         lastSelectedImage: appSettings.lastFolderState.lastSelectedImage
