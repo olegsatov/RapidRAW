@@ -1,6 +1,8 @@
 import { useEffect, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
 import { listen } from '@tauri-apps/api/event';
 import { convertFileSrc } from '@tauri-apps/api/core';
+import { toast } from 'react-toastify';
 import { Status } from '../components/ui/ExportImportProperties';
 import { LibraryViewMode } from '../components/ui/AppProperties';
 import { useProcessStore } from '../store/useProcessStore';
@@ -13,6 +15,7 @@ import {
   folderJobKey,
   useFolderImportStore,
   type FolderImportBatchPayload,
+  type FolderImportCancelledPayload,
   type FolderImportCatalogReadyPayload,
   type FolderImportCompletePayload,
   type FolderImportErrorPayload,
@@ -30,12 +33,20 @@ interface TauriListenerProps {
   markGenerated: (path: string) => void;
 }
 
+function isFolderOnScreen(path: string, recursive: boolean): boolean {
+  const currentFolder = useLibraryStore.getState().currentFolderPath;
+  if (currentFolder === null) return false;
+  const viewRecursive = useSettingsStore.getState().appSettings?.libraryViewMode === LibraryViewMode.Recursive;
+  return recursive === viewRecursive && currentFolder.replace(/[/\\]+$/, '') === path.replace(/[/\\]+$/, '');
+}
+
 export function useTauriListeners({
   refreshAllFolderTrees,
   handleSelectSubfolder,
   refreshImageList,
   markGenerated,
 }: TauriListenerProps) {
+  const { t } = useTranslation();
   const refs = useRef({ refreshAllFolderTrees, handleSelectSubfolder, refreshImageList, markGenerated });
 
   useEffect(() => {
@@ -385,9 +396,15 @@ export function useTauriListeners({
         }
       }),
       listen<FolderImportBatchPayload>('folder-import-batch', (event) => {
-        if (isEffectActive) {
-          const { path, recursive, files, scanned, total } = event.payload;
-          useFolderImportStore.getState().appendBatch(folderJobKey(path, recursive), files, scanned, total);
+        if (!isEffectActive) return;
+        const { path, recursive, files, scanned, total } = event.payload;
+        const key = folderJobKey(path, recursive);
+        const store = useFolderImportStore.getState();
+        const job = store.jobs[key];
+        const isFirstBatch = job && !job.hasReceivedBatch;
+        store.appendBatch(key, files, scanned, total);
+        if (isFirstBatch && isFolderOnScreen(path, recursive)) {
+          useLibraryStore.getState().setLibrary({ isViewLoading: false });
         }
       }),
       listen<FolderImportPhaseStartPayload>('folder-import-exif-started', (event) => {
@@ -419,18 +436,17 @@ export function useTauriListeners({
         const { path, recursive, errors } = event.payload;
         const key = folderJobKey(path, recursive);
         useFolderImportStore.getState().completeJob(key, errors);
+        if (errors > 0) {
+          toast.warn(t('folderImport.completeWithErrors', { folder: path, count: errors }));
+        } else {
+          toast.success(t('folderImport.complete', { folder: path }));
+        }
         // Batch files streamed during the import carry exif: null (phase 2
         // writes EXIF only to the catalog). When the completed folder is the
         // one on screen, reload its catalog pages so imageList gains exif for
         // sorting and the metadata columns; background folders keep their
         // batch files. On failure the existing files stay as they are.
-        const currentFolder = useLibraryStore.getState().currentFolderPath;
-        const viewRecursive = useSettingsStore.getState().appSettings?.libraryViewMode === LibraryViewMode.Recursive;
-        const isCurrentFolder =
-          currentFolder !== null &&
-          recursive === viewRecursive &&
-          currentFolder.replace(/[/\\]+$/, '') === path.replace(/[/\\]+$/, '');
-        if (!isCurrentFolder) {
+        if (!isFolderOnScreen(path, recursive)) {
           return;
         }
         loadFolderFromCatalog(path, recursive)
@@ -440,17 +456,17 @@ export function useTauriListeners({
           })
           .catch((err) => console.error('Failed to refresh folder files from catalog:', err));
       }),
-      listen<FolderImportEventPayload>('folder-import-cancelled', (event) => {
-        if (isEffectActive) {
-          const { path, recursive } = event.payload;
-          useFolderImportStore.getState().cancelJob(folderJobKey(path, recursive));
-        }
+      listen<FolderImportCancelledPayload>('folder-import-cancelled', (event) => {
+        if (!isEffectActive) return;
+        const { path, recursive } = event.payload;
+        useFolderImportStore.getState().cancelJob(folderJobKey(path, recursive));
+        toast.info(t('folderImport.cancelled', { folder: path }));
       }),
       listen<FolderImportErrorPayload>('folder-import-error', (event) => {
-        if (isEffectActive) {
-          const { path, recursive, message } = event.payload;
-          useFolderImportStore.getState().failJob(folderJobKey(path, recursive), message);
-        }
+        if (!isEffectActive) return;
+        const { path, recursive, message } = event.payload;
+        useFolderImportStore.getState().failJob(folderJobKey(path, recursive), message);
+        toast.error(t('folderImport.error', { folder: path, message }));
       }),
       listen<FolderLocatedPayload>('folder-located', (event) => {
         if (!isEffectActive) return;
@@ -475,6 +491,9 @@ export function useTauriListeners({
         // canonical path differs from the optimistic raw-path key no job
         // exists here yet (startJob no-ops when one does).
         useFolderImportStore.getState().startJob(path, recursive);
+        if (isFolderOnScreen(path, recursive)) {
+          useLibraryStore.getState().setLibrary({ isViewLoading: false });
+        }
         loadFolderFromCatalog(path, recursive, (page, scanned) => {
           if (!isEffectActive) return;
           useFolderImportStore.getState().appendBatch(key, page, scanned, 0);

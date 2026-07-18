@@ -143,6 +143,9 @@ pub type TransformedImageCache = (u64, Arc<DynamicImage>, (f32, f32));
 pub struct FolderImportHandle {
     pub cancel: Arc<AtomicBool>,
     pub handle: JoinHandle<()>,
+    /// Number of files processed by the scan phase; used when the job is
+    /// cancelled so the frontend can show how far it got.
+    pub processed: Arc<AtomicUsize>,
 }
 
 pub struct AppState {

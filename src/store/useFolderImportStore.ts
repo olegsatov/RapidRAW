@@ -19,6 +19,7 @@ export interface FolderImportJob {
   files: ImageFile[];
   errors: number;
   errorMessage?: string;
+  hasReceivedBatch: boolean;
 }
 
 export type FolderAvailability = 'unknown' | 'online' | 'offline';
@@ -77,7 +78,12 @@ export interface FolderImportPhaseProgressPayload extends FolderImportEventPaylo
 }
 
 export interface FolderImportCompletePayload extends FolderImportEventPayload {
+  total: number;
   errors: number;
+}
+
+export interface FolderImportCancelledPayload extends FolderImportEventPayload {
+  processed: number;
 }
 
 export interface FolderImportErrorPayload extends FolderImportEventPayload {
@@ -125,6 +131,7 @@ export const useFolderImportStore = create<FolderImportState>((set) => {
               thumbsTotal: 0,
               files: [],
               errors: 0,
+              hasReceivedBatch: false,
             },
           },
         };
@@ -136,6 +143,7 @@ export const useFolderImportStore = create<FolderImportState>((set) => {
         files: [...job.files, ...files],
         scanned,
         total,
+        hasReceivedBatch: true,
       })),
 
     setPhase: (key, phase) => updateJob(key, () => ({ phase })),
