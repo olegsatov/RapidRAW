@@ -2,6 +2,7 @@ use crate::app_settings::load_settings;
 use crate::app_state::AppState;
 use crate::file_management::parse_virtual_path;
 use crate::formats::is_raw_file;
+use crate::metadata_store;
 use crate::image_loader::load_base_image_from_bytes;
 use crate::image_processing::apply_cpu_default_raw_processing;
 use base64::{Engine as _, engine::general_purpose};
@@ -120,8 +121,7 @@ pub async fn batch_denoise_images(
                 }),
             );
 
-            let (source_path, source_sidecar_path) =
-                crate::file_management::parse_virtual_path(path_str);
+            let (source_path, _) = crate::file_management::parse_virtual_path(path_str);
             let real_path = source_path.to_string_lossy().to_string();
 
             match crate::denoising::denoise_image(
@@ -162,13 +162,22 @@ pub async fn batch_denoise_images(
 
                     let _ = crate::exif_processing::write_rrexif_sidecar(&app_handle, &real_path, &output_path);
 
-                    if source_sidecar_path.exists()
-                        && let Some(output_path_str) = output_path.to_str()
-                    {
-                        let (_, dest_sidecar_path) =
-                            crate::file_management::parse_virtual_path(output_path_str);
-                        if let Err(e) = std::fs::copy(&source_sidecar_path, &dest_sidecar_path) {
-                            log::warn!("Failed to copy sidecar file for denoised image: {}", e);
+                    if let Some(output_path_str) = output_path.to_str() {
+                        if let Ok(source_metadata) =
+                            metadata_store::load_image_metadata(&app_handle, None, path_str)
+                        {
+                            if let Err(e) = metadata_store::save_image_metadata(
+                                &app_handle,
+                                None,
+                                output_path_str,
+                                &source_metadata,
+                            ) {
+                                log::warn!(
+                                    "Failed to copy metadata for denoised image {}: {}",
+                                    output_path_str,
+                                    e
+                                );
+                            }
                         }
                     }
 
@@ -202,8 +211,7 @@ pub async fn save_denoised_image(
 
     let is_raw = crate::formats::is_raw_file(&original_path_str);
 
-    let (first_path, source_sidecar_path) =
-        crate::file_management::parse_virtual_path(&original_path_str);
+    let (first_path, _) = crate::file_management::parse_virtual_path(&original_path_str);
     let parent_dir = first_path
         .parent()
         .ok_or_else(|| "Could not determine parent directory.".to_string())?;
@@ -236,12 +244,22 @@ pub async fn save_denoised_image(
         &output_path,
     );
 
-    if source_sidecar_path.exists()
-        && let Some(output_path_str) = output_path.to_str()
-    {
-        let (_, dest_sidecar_path) = crate::file_management::parse_virtual_path(output_path_str);
-        if let Err(e) = std::fs::copy(&source_sidecar_path, &dest_sidecar_path) {
-            log::warn!("Failed to copy sidecar file for denoised image: {}", e);
+    if let Some(output_path_str) = output_path.to_str() {
+        if let Ok(source_metadata) =
+            metadata_store::load_image_metadata(&app_handle, None, &original_path_str)
+        {
+            if let Err(e) = metadata_store::save_image_metadata(
+                &app_handle,
+                None,
+                output_path_str,
+                &source_metadata,
+            ) {
+                log::warn!(
+                    "Failed to copy metadata for denoised image {}: {}",
+                    output_path_str,
+                    e
+                );
+            }
         }
     }
 

@@ -40,7 +40,9 @@ pub fn truncate_large_exif(value: &str) -> String {
     value.to_string()
 }
 
-pub fn load_sidecar(sidecar_path: &Path) -> ImageMetadata {
+/// Read a legacy `.rrdata` sidecar from disk. This is a read-only fallback;
+/// production writes must go through `metadata_store`.
+pub fn load_sidecar_legacy(sidecar_path: &Path) -> ImageMetadata {
     if !sidecar_path.exists() {
         return ImageMetadata::default();
     }
@@ -1064,7 +1066,9 @@ pub fn write_image_with_metadata(
     Ok(())
 }
 
-pub fn get_primary_sidecar_path(image_path: &Path) -> PathBuf {
+/// Returns the legacy `.rrdata` sidecar path for an image. This is read-only;
+/// production writes must go through `metadata_store`.
+pub fn get_primary_sidecar_path_legacy(image_path: &Path) -> PathBuf {
     let mut filename = image_path.file_name().unwrap_or_default().to_os_string();
     filename.push(".rrdata");
     image_path.with_file_name(filename)
@@ -1077,8 +1081,8 @@ pub fn get_rrexif_path(image_path: &Path) -> PathBuf {
 }
 
 fn load_primary_metadata(image_path: &Path) -> ImageMetadata {
-    let primary = get_primary_sidecar_path(image_path);
-    load_sidecar(&primary)
+    let primary = get_primary_sidecar_path_legacy(image_path);
+    load_sidecar_legacy(&primary)
 }
 
 pub fn read_rrexif_sidecar(image_path: &Path) -> Option<HashMap<String, String>> {
@@ -1128,7 +1132,7 @@ pub fn read_exif_data(path: &str, file_bytes: &[u8]) -> HashMap<String, String> 
 
 /// Persist structured EXIF columns for a catalog row. The caller is expected to
 /// have already stored `exif_json` via `metadata_store::save_image_metadata`.
-fn persist_structured_exif(
+pub(crate) fn persist_structured_exif(
     app_handle: &AppHandle,
     source_path_str: &str,
     exif_map: &HashMap<String, String>,

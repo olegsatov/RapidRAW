@@ -14,7 +14,7 @@ use tokenizers::Tokenizer;
 use tokio::task::JoinHandle;
 use walkdir::WalkDir;
 
-use crate::file_management::{self, parse_virtual_path};
+use crate::file_management;
 use crate::formats::is_supported_image_file;
 use crate::hierarchy::TAG_HIERARCHY;
 use crate::image_processing::ImageMetadata;
@@ -314,8 +314,7 @@ pub async fn start_background_indexing(
 
         println!(
             "Found {} images to process in {}",
-            image_paths.len(),
-            folder_path
+            image_paths.len(), folder_path
         );
         let total_images = image_paths.len();
         let processed_count = Arc::new(Mutex::new(0));
@@ -331,9 +330,18 @@ pub async fn start_background_indexing(
 
                 async move {
                     let path_str = path.to_string_lossy().to_string();
-                    let (_, sidecar_path) = parse_virtual_path(&path_str);
 
-                    let mut metadata = crate::exif_processing::load_sidecar(&sidecar_path);
+                    let mut metadata = match metadata_store::load_image_metadata(
+                        &app_handle_inner,
+                        None,
+                        &path_str,
+                    ) {
+                        Ok(m) => m,
+                        Err(e) => {
+                            log::warn!("failed to load metadata for tagging {}: {}", path_str, e);
+                            ImageMetadata::default()
+                        }
+                    };
 
                     let should_generate_tags = match &metadata.tags {
                         None => true,
@@ -371,9 +379,16 @@ pub async fn start_background_indexing(
 
                                     metadata.tags = Some(final_tags);
 
-                                    if let Ok(json_string) = serde_json::to_string_pretty(&metadata)
-                                    {
-                                        let _ = fs::write(sidecar_path, json_string);
+                                    if let Err(e) = metadata_store::save_image_metadata(
+                                        &app_handle_inner,
+                                        None,
+                                        &path_str,
+                                        &metadata,
+                                    ) {
+                                        log::warn!(
+                                            "failed to save AI tags for {}: {}",
+                                            path_str, e
+                                        );
                                     }
                                 }
                             }
@@ -473,7 +488,7 @@ pub fn remove_tag_for_paths(
 }
 
 #[tauri::command]
-pub fn clear_ai_tags(root_path: String) -> Result<usize, String> {
+pub fn clear_ai_tags(root_path: String, app_handle: AppHandle) -> Result<usize, String> {
     if !Path::new(&root_path).exists() {
         return Err(format!("Root path does not exist: {}", root_path));
     }
@@ -483,12 +498,28 @@ pub fn clear_ai_tags(root_path: String) -> Result<usize, String> {
 
     for entry in walker.filter_map(|e| e.ok()) {
         let path = entry.path();
-        if path.is_file()
-            && path.extension().and_then(|s| s.to_str()) == Some("rrdata")
-            && let Ok(content) = fs::read_to_string(path)
-            && let Ok(mut metadata) = serde_json::from_str::<ImageMetadata>(&content)
-            && let Some(tags) = &mut metadata.tags
-        {
+        if !path.is_file() {
+            continue;
+        }
+
+        let Some(file_name) = path.file_name().and_then(|s| s.to_str()) else {
+            continue;
+        };
+        if !is_supported_image_file(file_name) {
+            continue;
+        }
+
+        let path_str = path.to_string_lossy().to_string();
+        let mut metadata = match metadata_store::load_image_metadata(&app_handle, None, &path_str) {
+            Ok(m) => m,
+            Err(e) => {
+                eprintln!("Failed to load metadata for {}: {}", path_str, e);
+                continue;
+            }
+        };
+
+        let mut modified = false;
+        if let Some(tags) = metadata.tags.as_mut() {
             let original_len = tags.len();
             // Keep color tags and user tags, remove others (AI tags)
             tags.retain(|tag| {
@@ -496,22 +527,29 @@ pub fn clear_ai_tags(root_path: String) -> Result<usize, String> {
             });
 
             if tags.len() < original_len {
+                modified = true;
                 if tags.is_empty() {
                     metadata.tags = None;
                 }
-                if let Ok(json_string) = serde_json::to_string_pretty(&metadata)
-                    && fs::write(path, json_string).is_ok()
-                {
-                    updated_count += 1;
-                }
+            }
+        }
+
+        if modified {
+            if let Err(e) =
+                metadata_store::save_image_metadata(&app_handle, None, &path_str, &metadata)
+            {
+                eprintln!("Failed to save cleared AI tags for {}: {}", path_str, e);
+            } else {
+                updated_count += 1;
             }
         }
     }
+
     Ok(updated_count)
 }
 
 #[tauri::command]
-pub fn clear_all_tags(root_path: String) -> Result<usize, String> {
+pub fn clear_all_tags(root_path: String, app_handle: AppHandle) -> Result<usize, String> {
     if !Path::new(&root_path).exists() {
         return Err(format!("Root path does not exist: {}", root_path));
     }
@@ -521,27 +559,50 @@ pub fn clear_all_tags(root_path: String) -> Result<usize, String> {
 
     for entry in walker.filter_map(|e| e.ok()) {
         let path = entry.path();
-        if path.is_file()
-            && path.extension().and_then(|s| s.to_str()) == Some("rrdata")
-            && let Ok(content) = fs::read_to_string(path)
-            && let Ok(mut metadata) = serde_json::from_str::<ImageMetadata>(&content)
-            && let Some(tags) = &mut metadata.tags
-        {
+        if !path.is_file() {
+            continue;
+        }
+
+        let Some(file_name) = path.file_name().and_then(|s| s.to_str()) else {
+            continue;
+        };
+        if !is_supported_image_file(file_name) {
+            continue;
+        }
+
+        let path_str = path.to_string_lossy().to_string();
+        let mut metadata = match metadata_store::load_image_metadata(&app_handle, None, &path_str) {
+            Ok(m) => m,
+            Err(e) => {
+                eprintln!("Failed to load metadata for {}: {}", path_str, e);
+                continue;
+            }
+        };
+
+        let mut modified = false;
+        if let Some(tags) = metadata.tags.as_mut() {
             let original_len = tags.len();
             // Keep only color tags, remove AI and user tags
             tags.retain(|tag| tag.starts_with(COLOR_TAG_PREFIX));
 
             if tags.len() < original_len {
+                modified = true;
                 if tags.is_empty() {
                     metadata.tags = None;
                 }
-                if let Ok(json_string) = serde_json::to_string_pretty(&metadata)
-                    && fs::write(path, json_string).is_ok()
-                {
-                    updated_count += 1;
-                }
+            }
+        }
+
+        if modified {
+            if let Err(e) =
+                metadata_store::save_image_metadata(&app_handle, None, &path_str, &metadata)
+            {
+                eprintln!("Failed to save cleared tags for {}: {}", path_str, e);
+            } else {
+                updated_count += 1;
             }
         }
     }
+
     Ok(updated_count)
 }
