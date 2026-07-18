@@ -270,7 +270,7 @@ pub fn init_catalog(app_handle: &AppHandle) -> Result<(), String> {
                 );
                 // Move aside WAL/shm files so the fresh database starts clean.
                 for ext in ["-wal", "-shm"] {
-                    let sidecar = path.with_extension(&format!("db{}", ext));
+                    let sidecar = path.with_extension(format!("db{}", ext));
                     if sidecar.exists() {
                         let _ = std::fs::remove_file(&sidecar);
                     }
@@ -652,13 +652,9 @@ fn update_file_metadata_in_conn(
     adjustments_json: &str,
     exif_json: Option<&str>,
 ) -> Result<(), String> {
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_secs())
-        .unwrap_or(0);
     conn.execute(
         "UPDATE files SET adjustments_json = ?2, metadata_modified = ?3, exif_json = ?4 WHERE id = ?1",
-        params![file_id, adjustments_json, now as i64, exif_json],
+        params![file_id, adjustments_json, now_secs(), exif_json],
     )
     .map_err(|e| e.to_string())?;
     Ok(())
@@ -667,16 +663,19 @@ fn update_file_metadata_in_conn(
 /// Updates the rating, flag, and tags for a single catalog row in one
 /// transaction, stamping `metadata_modified`. Tags are parsed from prefixed
 /// strings: `user:`, `color:`, or default `ai`.
-#[allow(dead_code)]
+///
+/// `color:` tags are stored with source `color` in the `tags` table, but the
+/// canonical color label used for filtering remains `files.color`, which
+/// callers set separately via `update_file_metadata` or `upsert_files`.
 pub fn update_file_rating_flag_tags(
     app_handle: &AppHandle,
     file_id: i64,
     rating: u8,
     flag: i8,
-    tags: &Option<Vec<String>>,
+    tags: Option<Vec<String>>,
 ) -> Result<(), String> {
     let mut conn = open_connection(app_handle)?;
-    update_file_rating_flag_tags_in_conn(&mut conn, file_id, rating, flag, tags)
+    update_file_rating_flag_tags_in_conn(&mut conn, file_id, rating, flag, tags.as_deref())
 }
 
 #[allow(dead_code)]
@@ -685,7 +684,7 @@ fn update_file_rating_flag_tags_in_conn(
     file_id: i64,
     rating: u8,
     flag: i8,
-    tags: &Option<Vec<String>>,
+    tags: Option<&[String]>,
 ) -> Result<(), String> {
     let tx = conn.transaction().map_err(|e| e.to_string())?;
     tx.execute(
@@ -706,7 +705,7 @@ fn update_file_rating_flag_tags_in_conn(
                 ("ai", tag.as_str())
             };
             tx.execute(
-                "INSERT INTO tags(file_id, tag, source) VALUES (?1, ?2, ?3)",
+                "INSERT OR IGNORE INTO tags(file_id, tag, source) VALUES (?1, ?2, ?3)",
                 params![file_id, tag_name, source],
             )
             .map_err(|e| e.to_string())?;
@@ -1808,30 +1807,6 @@ mod tests {
     }
 
     #[test]
-    fn test_update_file_metadata_stamps_timestamp() {
-        let (mut conn, folder_id) = setup_conn();
-        upsert_files_in_conn(&mut conn, folder_id, std::slice::from_ref(&sample_file()))
-            .unwrap();
-        let file_id: i64 = conn
-            .query_row(
-                "SELECT id FROM files WHERE path = '/tmp/x/a.jpg'",
-                [],
-                |r| r.get(0),
-            )
-            .unwrap();
-
-        let before = now_secs();
-        update_file_metadata_in_conn(&conn, file_id, r#"{"exposure":0.5}"#, None).unwrap();
-
-        let meta = get_file_metadata_in_conn(&conn, file_id).unwrap().unwrap();
-        assert_eq!(meta.adjustments_json, r#"{"exposure":0.5}"#);
-        assert!(
-            meta.metadata_modified.unwrap() >= before,
-            "metadata_modified should be stamped with the current time"
-        );
-    }
-
-    #[test]
     fn test_update_file_rating_flag_tags() {
         let (mut conn, folder_id) = setup_conn();
         conn.execute_batch("PRAGMA foreign_keys = ON").unwrap();
@@ -1850,7 +1825,8 @@ mod tests {
             "color:red".to_string(),
             "landscape".to_string(),
         ]);
-        update_file_rating_flag_tags_in_conn(&mut conn, file_id, 4, -1, &tags).unwrap();
+        let before = now_secs();
+        update_file_rating_flag_tags_in_conn(&mut conn, file_id, 4, -1, tags.as_deref()).unwrap();
 
         let (rating, flag, metadata_modified): (i64, i64, Option<i64>) = conn
             .query_row(
@@ -1860,7 +1836,10 @@ mod tests {
             )
             .unwrap();
         assert_eq!((rating, flag), (4, -1));
-        assert!(metadata_modified.is_some());
+        assert!(
+            metadata_modified.unwrap() >= before,
+            "metadata_modified should be stamped with the current time"
+        );
 
         let stored_tags: Vec<(String, String)> = {
             let mut stmt = conn
@@ -1881,7 +1860,7 @@ mod tests {
         );
 
         // Updating with no tags clears existing ones.
-        update_file_rating_flag_tags_in_conn(&mut conn, file_id, 4, -1, &None).unwrap();
+        update_file_rating_flag_tags_in_conn(&mut conn, file_id, 4, -1, None).unwrap();
         let count: i64 = conn
             .query_row(
                 "SELECT COUNT(*) FROM tags WHERE file_id = ?1",
