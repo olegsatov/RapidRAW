@@ -95,6 +95,92 @@ export async function loadFolderFromCatalog(
   return files;
 }
 
+/// Replaces a folder path prefix, preserving children. Used after a folder
+/// is relocated so frontend paths stay in sync with the catalog.
+export function replacePathPrefix(path: string, oldPrefix: string, newPrefix: string): string {
+  if (path === oldPrefix) {
+    return newPrefix;
+  }
+  const forwardSep = `${oldPrefix}/`;
+  const backSep = `${oldPrefix}\\`;
+  if (path.startsWith(forwardSep)) {
+    return `${newPrefix}/${path.slice(forwardSep.length)}`;
+  }
+  if (path.startsWith(backSep)) {
+    return `${newPrefix}\\${path.slice(backSep.length)}`;
+  }
+  return path;
+}
+
+export interface FolderLocatedPayload {
+  oldPath: string;
+  newPath: string;
+}
+
+/// Updates all frontend state after a folder has been relocated in the
+/// catalog. Returns true when the currently displayed folder was under the
+/// relocated tree, so callers can refresh the image list.
+export function applyFolderRelocation(oldPath: string, newPath: string): boolean {
+  const { appSettings, setAppSettings, handleSettingsChange } = useSettingsStore.getState();
+  const { rootPaths, currentFolderPath, expandedFolders, setLibrary } = useLibraryStore.getState();
+  const folderImportStore = useFolderImportStore.getState();
+
+  const newRootPaths = rootPaths.map((p) => replacePathPrefix(p, oldPath, newPath));
+  const newCurrentFolderPath = currentFolderPath ? replacePathPrefix(currentFolderPath, oldPath, newPath) : null;
+  const newExpandedFolders = new Set(Array.from(expandedFolders).map((p) => replacePathPrefix(p, oldPath, newPath)));
+
+  setLibrary({
+    rootPaths: newRootPaths,
+    currentFolderPath: newCurrentFolderPath,
+    expandedFolders: newExpandedFolders,
+  });
+
+  folderImportStore.setAvailability(newPath, 'online');
+
+  if (appSettings) {
+    const settingsAny = appSettings as any;
+    const newSettings: any = { ...appSettings };
+    newSettings.rootFolders = (settingsAny.rootFolders || []).map((p: string) =>
+      replacePathPrefix(p, oldPath, newPath),
+    );
+    newSettings.pinnedFolders = (settingsAny.pinnedFolders || []).map((p: string) =>
+      replacePathPrefix(p, oldPath, newPath),
+    );
+    newSettings.lastRootPath = appSettings.lastRootPath
+      ? replacePathPrefix(appSettings.lastRootPath, oldPath, newPath)
+      : null;
+
+    if (settingsAny.folderIcons) {
+      newSettings.folderIcons = {};
+      for (const [key, value] of Object.entries(settingsAny.folderIcons)) {
+        newSettings.folderIcons[replacePathPrefix(key, oldPath, newPath)] = value;
+      }
+    }
+
+    if (appSettings.lastFolderState) {
+      newSettings.lastFolderState = {
+        ...appSettings.lastFolderState,
+        currentFolderPath: appSettings.lastFolderState.currentFolderPath
+          ? replacePathPrefix(appSettings.lastFolderState.currentFolderPath, oldPath, newPath)
+          : null,
+        expandedFolders: (appSettings.lastFolderState.expandedFolders || []).map((p: string) =>
+          replacePathPrefix(p, oldPath, newPath),
+        ),
+        lastSelectedImage: appSettings.lastFolderState.lastSelectedImage
+          ? replacePathPrefix(appSettings.lastFolderState.lastSelectedImage, oldPath, newPath)
+          : null,
+      };
+    }
+
+    setAppSettings(newSettings);
+    handleSettingsChange(newSettings).catch((err) => {
+      console.error('Failed to save settings after folder relocation:', err);
+    });
+  }
+
+  return currentFolderPath !== null && newCurrentFolderPath !== currentFolderPath;
+}
+
 // Pure folder-import command API. Safe to call from any component (e.g. the
 // Task 12 ImportJobsIndicator): it mounts no effects and subscribes to no
 // store slices. The imageList mirror lives in useFolderImportMirror below,

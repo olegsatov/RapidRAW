@@ -8,7 +8,7 @@ import { useEditorStore } from '../store/useEditorStore';
 import { useUIStore } from '../store/useUIStore';
 import { useLibraryStore } from '../store/useLibraryStore';
 import { useSettingsStore } from '../store/useSettingsStore';
-import { loadFolderFromCatalog } from './useFolderImport';
+import { loadFolderFromCatalog, applyFolderRelocation, type FolderLocatedPayload } from './useFolderImport';
 import {
   folderJobKey,
   useFolderImportStore,
@@ -450,6 +450,15 @@ export function useTauriListeners({
         if (isEffectActive) {
           const { path, recursive, message } = event.payload;
           useFolderImportStore.getState().failJob(folderJobKey(path, recursive), message);
+        }
+      }),
+      listen<FolderLocatedPayload>('folder-located', (event) => {
+        if (!isEffectActive) return;
+        const { oldPath, newPath } = event.payload;
+        const currentFolderAffected = applyFolderRelocation(oldPath, newPath);
+        refs.current.refreshAllFolderTrees();
+        if (currentFolderAffected) {
+          refs.current.refreshImageList();
         }
       }),
       listen<FolderImportCatalogReadyPayload>('folder-import-catalog-ready', (event) => {

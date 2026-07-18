@@ -67,7 +67,7 @@ import { Color, COLOR_LABELS, INITIAL_ADJUSTMENTS, normalizeLoadedAdjustments } 
 import TaggingSubMenu from '../context/TaggingSubMenu';
 import { useEditorActions } from './useEditorActions';
 import { useLibraryActions } from './useLibraryActions';
-import { useFolderImport } from './useFolderImport';
+import { useFolderImport, applyFolderRelocation } from './useFolderImport';
 import { useFolderImportStore } from '../store/useFolderImportStore';
 import { globalImageCache } from '../utils/ImageLRUCache';
 import { EDITOR_BACKGROUND_OPTIONS } from '../utils/editorBackground';
@@ -1028,10 +1028,15 @@ export function useAppContextMenus(props: UseAppContextMenusProps) {
                 label: t('contextMenus.folders.locateFolder'),
                 onClick: async () => {
                   try {
-                    const newPath = await open({ directory: true });
-                    if (newPath) {
-                      await invoke('locate_folder', { oldPath: targetPath, newPath });
-                      useFolderImportStore.getState().setAvailability(targetPath, 'online');
+                    const newPath = await open({ directory: true, multiple: false });
+                    if (!newPath || typeof newPath !== 'string') {
+                      return;
+                    }
+                    await invoke('locate_folder', { oldPath: targetPath, newPath });
+                    const currentFolderAffected = applyFolderRelocation(targetPath, newPath);
+                    await props.refreshAllFolderTrees();
+                    if (currentFolderAffected) {
+                      await props.refreshImageList();
                     }
                   } catch (err) {
                     console.error('Failed to locate folder:', err);
