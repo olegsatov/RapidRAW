@@ -213,7 +213,10 @@
       "removeRoot": "移除根資料夾",
       "renameFolder": "重新命名資料夾",
       "showExplorer": "在檔案資源管理器中顯示",
-      "unpin": "取消固定資料夾"
+      "unpin": "取消固定資料夾",
+      "syncFolder": "Synchronize folder",
+      "locateFolder": "Locate folder...",
+      "lastSynced": "Synced {{time}} ago"
     },
     "library": {
       "addCopiedToAlbum_one": "將複製的影像新增到相簿",
@@ -1792,5 +1795,19 @@
         "vectorscope": "向量示波器"
       }
     }
+  },
+  "importJobs": {
+    "scan": "Scanning",
+    "exif": "Reading EXIF",
+    "thumbnails": "Building previews",
+    "complete": "Done",
+    "cancelled": "Cancelled",
+    "error": "Error",
+    "kind": {
+      "import": "Import",
+      "sync": "Sync"
+    },
+    "dismiss": "Dismiss import job",
+    "cancel": "Cancel import"
   }
 }

@@ -219,7 +219,10 @@
       "removeRoot": "Usuń folder główny",
       "renameFolder": "Zmień nazwę folderu",
       "showExplorer": "Pokaż w eksploratorze plików",
-      "unpin": "Odepnij folder"
+      "unpin": "Odepnij folder",
+      "syncFolder": "Synchronize folder",
+      "locateFolder": "Locate folder...",
+      "lastSynced": "Synced {{time}} ago"
     },
     "library": {
       "addCopiedToAlbum_few": "Dodaj {{count}} skopiowane obrazy do albumu",
@@ -1856,5 +1859,19 @@
         "vectorscope": "Wektroskop"
       }
     }
+  },
+  "importJobs": {
+    "scan": "Scanning",
+    "exif": "Reading EXIF",
+    "thumbnails": "Building previews",
+    "complete": "Done",
+    "cancelled": "Cancelled",
+    "error": "Error",
+    "kind": {
+      "import": "Import",
+      "sync": "Sync"
+    },
+    "dismiss": "Dismiss import job",
+    "cancel": "Cancel import"
   }
 }

@@ -213,7 +213,10 @@
       "removeRoot": "ルートフォルダを解除",
       "renameFolder": "フォルダ名を変更",
       "showExplorer": "エクスプローラーで表示",
-      "unpin": "フォルダのピン留めを解除"
+      "unpin": "フォルダのピン留めを解除",
+      "syncFolder": "Synchronize folder",
+      "locateFolder": "Locate folder...",
+      "lastSynced": "Synced {{time}} ago"
     },
     "library": {
       "addCopiedToAlbum_one": "コピーした画像をアルバムに追加",
@@ -1791,5 +1794,19 @@
         "vectorscope": "ベクトルスコープ"
       }
     }
+  },
+  "importJobs": {
+    "scan": "Scanning",
+    "exif": "Reading EXIF",
+    "thumbnails": "Building previews",
+    "complete": "Done",
+    "cancelled": "Cancelled",
+    "error": "Error",
+    "kind": {
+      "import": "Import",
+      "sync": "Sync"
+    },
+    "dismiss": "Dismiss import job",
+    "cancel": "Cancel import"
   }
 }

@@ -265,7 +265,8 @@
       "renameFolder": "Rename Folder",
       "showExplorer": "Show in File Explorer",
       "syncFolder": "Sync Folder",
-      "unpin": "Unpin Folder"
+      "unpin": "Unpin Folder",
+      "lastSynced": "Synced {{time}} ago"
     },
     "library": {
       "addCopiedToAlbum_one": "Add copied image to album",
@@ -1968,5 +1969,19 @@
         "vectorscope": "Vectorscope"
       }
     }
+  },
+  "importJobs": {
+    "scan": "Scanning",
+    "exif": "Reading EXIF",
+    "thumbnails": "Building previews",
+    "complete": "Done",
+    "cancelled": "Cancelled",
+    "error": "Error",
+    "kind": {
+      "import": "Import",
+      "sync": "Sync"
+    },
+    "dismiss": "Dismiss import job",
+    "cancel": "Cancel import"
   }
 }

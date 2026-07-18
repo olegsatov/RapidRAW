@@ -213,7 +213,10 @@
       "removeRoot": "루트 폴더 제거",
       "renameFolder": "폴더 이름 변경",
       "showExplorer": "파일 탐색기에서 표시",
-      "unpin": "폴더 고정 해제"
+      "unpin": "폴더 고정 해제",
+      "syncFolder": "Synchronize folder",
+      "locateFolder": "Locate folder...",
+      "lastSynced": "Synced {{time}} ago"
     },
     "library": {
       "addCopiedToAlbum_one": "복사한 이미지를 앨범에 추가",
@@ -1792,5 +1795,19 @@
         "vectorscope": "벡터스코프"
       }
     }
+  },
+  "importJobs": {
+    "scan": "Scanning",
+    "exif": "Reading EXIF",
+    "thumbnails": "Building previews",
+    "complete": "Done",
+    "cancelled": "Cancelled",
+    "error": "Error",
+    "kind": {
+      "import": "Import",
+      "sync": "Sync"
+    },
+    "dismiss": "Dismiss import job",
+    "cancel": "Cancel import"
   }
 }

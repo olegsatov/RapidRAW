@@ -213,7 +213,10 @@
       "removeRoot": "移除根文件夹",
       "renameFolder": "重命名文件夹",
       "showExplorer": "在文件资源管理器中显示",
-      "unpin": "取消固定文件夹"
+      "unpin": "取消固定文件夹",
+      "syncFolder": "Synchronize folder",
+      "locateFolder": "Locate folder...",
+      "lastSynced": "Synced {{time}} ago"
     },
     "library": {
       "addCopiedToAlbum_one": "将复制的图像添加到相册",
@@ -1792,5 +1795,19 @@
         "vectorscope": "矢量示波器"
       }
     }
+  },
+  "importJobs": {
+    "scan": "Scanning",
+    "exif": "Reading EXIF",
+    "thumbnails": "Building previews",
+    "complete": "Done",
+    "cancelled": "Cancelled",
+    "error": "Error",
+    "kind": {
+      "import": "Import",
+      "sync": "Sync"
+    },
+    "dismiss": "Dismiss import job",
+    "cancel": "Cancel import"
   }
 }

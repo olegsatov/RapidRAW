@@ -1,11 +1,12 @@
 import { useEffect, useMemo } from 'react';
 import { X } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 
 import { useFolderImportStore, type FolderImportJob } from '../../store/useFolderImportStore';
 import { useFolderImport } from '../../hooks/useFolderImport';
 
-// Raw phase/kind strings are shown for now; Task 16 swaps in i18n keys.
 function ImportJobCard({ jobKey, job }: { jobKey: string; job: FolderImportJob }) {
+  const { t } = useTranslation();
   const clearJob = useFolderImportStore((s) => s.clearJob);
   const { cancelFolderImport } = useFolderImport();
   const isFinished = job.phase === 'complete' || job.phase === 'cancelled' || job.phase === 'error';
@@ -33,14 +34,16 @@ function ImportJobCard({ jobKey, job }: { jobKey: string; job: FolderImportJob }
         <button
           onClick={() => (isFinished ? clearJob(jobKey) : cancelFolderImport(job.path, job.recursive))}
           className="shrink-0 text-text-secondary hover:text-text-primary transition-colors"
-          aria-label={isFinished ? 'Dismiss import job' : 'Cancel import'}
+          aria-label={isFinished ? t('importJobs.dismiss') : t('importJobs.cancel')}
         >
           <X size={14} />
         </button>
       </div>
       <div className="text-xs text-text-secondary mb-1 truncate">
-        {job.kind ? `${job.kind} · ` : ''}
-        {job.phase === 'error' ? (job.errorMessage ?? 'error') : `${job.phase} ${current}/${total}`}
+        {job.kind ? `${t(`importJobs.kind.${job.kind}`)} · ` : ''}
+        {job.phase === 'error'
+          ? (job.errorMessage ?? t('importJobs.error'))
+          : `${t(`importJobs.${job.phase}`)} ${current}/${total}`}
       </div>
       <div className="h-1.5 w-full bg-bg-primary rounded-full overflow-hidden">
         <div

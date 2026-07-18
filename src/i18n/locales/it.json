@@ -213,7 +213,10 @@
       "removeRoot": "Rimuovi Cartella Principale",
       "renameFolder": "Rinomina Cartella",
       "showExplorer": "Mostra in Esplora File",
-      "unpin": "Sblocca Cartella"
+      "unpin": "Sblocca Cartella",
+      "syncFolder": "Synchronize folder",
+      "locateFolder": "Locate folder...",
+      "lastSynced": "Synced {{time}} ago"
     },
     "library": {
       "addCopiedToAlbum_one": "Aggiungi l'immagine copiata all'album",
@@ -1792,5 +1795,19 @@
         "vectorscope": "Vettorscopio"
       }
     }
+  },
+  "importJobs": {
+    "scan": "Scanning",
+    "exif": "Reading EXIF",
+    "thumbnails": "Building previews",
+    "complete": "Done",
+    "cancelled": "Cancelled",
+    "error": "Error",
+    "kind": {
+      "import": "Import",
+      "sync": "Sync"
+    },
+    "dismiss": "Dismiss import job",
+    "cancel": "Cancel import"
   }
 }

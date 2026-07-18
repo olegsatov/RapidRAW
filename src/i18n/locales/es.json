@@ -213,7 +213,10 @@
       "removeRoot": "Quitar carpeta raíz",
       "renameFolder": "Renombrar carpeta",
       "showExplorer": "Mostrar en el Explorador de archivos",
-      "unpin": "Desfijar carpeta"
+      "unpin": "Desfijar carpeta",
+      "syncFolder": "Synchronize folder",
+      "locateFolder": "Locate folder...",
+      "lastSynced": "Synced {{time}} ago"
     },
     "library": {
       "addCopiedToAlbum_one": "Agregar imagen copiada al álbum",
@@ -1792,5 +1795,19 @@
         "vectorscope": "Vectorescopio"
       }
     }
+  },
+  "importJobs": {
+    "scan": "Scanning",
+    "exif": "Reading EXIF",
+    "thumbnails": "Building previews",
+    "complete": "Done",
+    "cancelled": "Cancelled",
+    "error": "Error",
+    "kind": {
+      "import": "Import",
+      "sync": "Sync"
+    },
+    "dismiss": "Dismiss import job",
+    "cancel": "Cancel import"
   }
 }
