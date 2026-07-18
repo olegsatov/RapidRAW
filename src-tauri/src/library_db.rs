@@ -130,7 +130,10 @@ pub fn init_catalog(app_handle: &AppHandle) -> Result<(), String> {
                 }
                 std::fs::rename(&path, &corrupt_path)
                     .map_err(|err| format!("failed to rename corrupt catalog: {}", err))?;
-                log::info!("Renamed corrupt library catalog to {}", corrupt_path.display());
+                log::info!(
+                    "Renamed corrupt library catalog to {}",
+                    corrupt_path.display()
+                );
                 // Move aside WAL/shm files so the fresh database starts clean.
                 for ext in ["-wal", "-shm"] {
                     let sidecar = path.with_extension(&format!("db{}", ext));
