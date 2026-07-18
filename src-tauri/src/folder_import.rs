@@ -635,9 +635,11 @@ async fn run_exif_phase(
         serde_json::json!({ "path": path, "recursive": recursive, "total": total_exif }),
     );
 
-    // Two files at a time: EXIF parsing of RAWs is CPU-heavy and the reads
-    // may hit slow external volumes.
-    let semaphore = Arc::new(Semaphore::new(2));
+    // One file at a time: EXIF parsing of RAWs is CPU-heavy, but SQLite only
+    // allows one writer in WAL mode. Concurrent DB transactions from this phase
+    // contend for the write lock and trip busy timeouts on slow or loaded
+    // volumes; serialize the writes and keep the reads sequential too.
+    let semaphore = Arc::new(Semaphore::new(1));
     let processed = Arc::new(AtomicUsize::new(0));
     let failed = Arc::new(AtomicUsize::new(0));
     let mut handles = Vec::new();
