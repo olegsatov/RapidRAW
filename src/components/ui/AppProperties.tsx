@@ -61,6 +61,7 @@ export enum Invokes {
   GeneratePresetPreview = 'generate_preset_preview',
   GenerateThumbnailsProgressive = 'generate_thumbnails_progressive',
   GenerateUncroppedPreview = 'generate_uncropped_preview',
+  GetCatalogedFolderPaths = 'get_cataloged_folder_paths',
   GetFolderTree = 'get_folder_tree',
   GetFolderChildren = 'get_folder_children',
   GetFolderLastSynced = 'get_folder_last_synced',

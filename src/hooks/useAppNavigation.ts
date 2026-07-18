@@ -476,30 +476,47 @@ export function useAppNavigation({ clearThumbnailQueue, refs }: AppNavigationPro
 
       if (rootFolders.length === 0) return;
 
-      const folderState = appSettings?.lastFolderState;
-      const pathToSelect = folderState?.currentFolderPath || rootFolders[0];
-
-      setLibrary({ rootPaths: rootFolders });
-
-      if (folderState?.expandedFolders) {
-        const newExpandedFolders = new Set<string>(folderState.expandedFolders);
-        setLibrary({ expandedFolders: newExpandedFolders });
-      } else {
-        setLibrary({ expandedFolders: new Set(rootFolders) });
+      setLibrary({ isTreeLoading: true });
+      let activeRoots: string[] = [];
+      try {
+        const catalogedFolders = await invoke<string[]>(Invokes.GetCatalogedFolderPaths);
+        const catalogedSet = new Set(catalogedFolders);
+        activeRoots = rootFolders.filter((p) => catalogedSet.has(p));
+      } catch (err) {
+        console.error('Failed to load cataloged folders, falling back to settings list:', err);
+        activeRoots = rootFolders;
       }
 
-      setLibrary({ isTreeLoading: true });
+      if (activeRoots.length === 0) {
+        setLibrary({ rootPaths: [], folderTrees: [], isTreeLoading: false });
+        return;
+      }
+
+      const folderState = appSettings?.lastFolderState;
+      const pathToSelect = folderState?.currentFolderPath || activeRoots[0];
+
+      setLibrary({ rootPaths: activeRoots });
+
+      if (folderState?.expandedFolders) {
+        const newExpandedFolders = new Set(
+          Array.from(folderState.expandedFolders).filter((p) => activeRoots.includes(p)),
+        );
+        setLibrary({ expandedFolders: newExpandedFolders });
+      } else {
+        setLibrary({ expandedFolders: new Set(activeRoots) });
+      }
+
       try {
         let treesData;
-        if (preloadedDataRef.current?.rootPaths?.join() === rootFolders.join() && preloadedDataRef.current.trees) {
+        if (preloadedDataRef.current?.rootPaths?.join() === activeRoots.join() && preloadedDataRef.current.trees) {
           treesData = await preloadedDataRef.current.trees;
           preloadedDataRef.current.trees = undefined;
         } else {
           const expandedArr = folderState?.expandedFolders
             ? Array.from(new Set(folderState.expandedFolders))
-            : rootFolders;
+            : activeRoots;
           treesData = await invoke(Invokes.GetPinnedFolderTrees, {
-            paths: rootFolders,
+            paths: activeRoots,
             expandedFolders: expandedArr,
             showImageCounts: appSettings?.enableFolderImageCounts || appSettings?.folderTreeSort?.key === 'imageCount',
           });

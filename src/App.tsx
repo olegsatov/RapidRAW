@@ -571,14 +571,24 @@ function App() {
   };
 
   useEffect(() => {
-    const appWindow = getCurrentWindow();
+    let appWindow: ReturnType<typeof getCurrentWindow> | null = null;
+    try {
+      appWindow = getCurrentWindow();
+    } catch (error) {
+      console.error('Failed to get current window:', error);
+      return;
+    }
     const checkFullscreen = async () => {
-      setUI({ isWindowFullScreen: await appWindow.isFullscreen() });
+      try {
+        setUI({ isWindowFullScreen: await appWindow!.isFullscreen() });
+      } catch (e) {
+        console.error('Failed to check fullscreen:', e);
+      }
     };
     checkFullscreen();
     const unlistenPromise = appWindow.onResized(checkFullscreen);
     return () => {
-      unlistenPromise.then((unlisten: any) => unlisten());
+      unlistenPromise.then((unlisten: any) => unlisten()).catch(() => {});
     };
   }, [setUI]);
 

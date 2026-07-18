@@ -2294,6 +2294,18 @@ pub fn run() {
 
             let window = window_builder.build().expect("Failed to build window");
 
+            // Force the window visible immediately from the main setup. The
+            // previous approach relied on the frontend calling frontend_ready,
+            // but on some macOS/Tauri combinations an async failsafe show() from
+            // a spawned task does not bring the window up, leaving the app
+            // running with no visible window.
+            #[cfg(not(target_os = "android"))]
+            {
+                let _ = window.center();
+                let _ = window.show();
+                let _ = window.set_focus();
+            }
+
             #[cfg(target_os = "android")]
             android_integration::initialize_android(&window);
 
@@ -2531,6 +2543,7 @@ pub fn run() {
             file_management::read_exif_for_paths,
             file_management::list_images_in_dir,
             file_management::list_images_recursive,
+            file_management::get_cataloged_folder_paths,
             file_management::get_folder_tree,
             file_management::get_folder_children,
             file_management::get_pinned_folder_trees,

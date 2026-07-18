@@ -23,8 +23,15 @@ const RestoreDownIcon = ({ size = 14, className = '' }) => (
 export default function TitleBar() {
   const [osPlatform, setOsPlatform] = useState('');
   const [isMaximized, setIsMaximized] = useState(false);
+  const [appWindow, setAppWindow] = useState<ReturnType<typeof getCurrentWindow> | null>(null);
 
-  const appWindow = getCurrentWindow();
+  useEffect(() => {
+    try {
+      setAppWindow(getCurrentWindow());
+    } catch (error) {
+      console.error('Failed to get current window:', error);
+    }
+  }, []);
 
   useEffect(() => {
     const getPlatform = async () => {
@@ -40,6 +47,8 @@ export default function TitleBar() {
   }, []);
 
   useEffect(() => {
+    if (!appWindow) return;
+
     const updateMaximizedState = async () => {
       try {
         const max = await appWindow.isMaximized();
@@ -63,10 +72,11 @@ export default function TitleBar() {
     };
   }, [appWindow]);
 
-  const handleMinimize = () => appWindow.minimize();
-  const handleClose = () => appWindow.close();
+  const handleMinimize = () => appWindow?.minimize();
+  const handleClose = () => appWindow?.close();
 
   const handleMaximize = useCallback(async () => {
+    if (!appWindow) return;
     try {
       if (osPlatform === 'macos') {
         const isFullscreen = await appWindow.isFullscreen();

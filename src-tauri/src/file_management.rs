@@ -1,6 +1,6 @@
 use std::borrow::Cow;
 use std::collections::hash_map::DefaultHasher;
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fmt;
 use std::fs;
 use std::hash::{Hash, Hasher};
@@ -514,124 +514,132 @@ pub(crate) fn build_image_files(
 }
 
 #[tauri::command]
-pub fn list_images_in_dir(path: String, app_handle: AppHandle) -> Result<Vec<ImageFile>, String> {
-    let settings = load_settings(app_handle.clone()).unwrap_or_default();
-    let enable_xmp_sync = settings.enable_xmp_sync.unwrap_or(false);
+pub async fn list_images_in_dir(path: String, app_handle: AppHandle) -> Result<Vec<ImageFile>, String> {
+    tokio::task::spawn_blocking(move || {
+        let settings = load_settings(app_handle.clone()).unwrap_or_default();
+        let enable_xmp_sync = settings.enable_xmp_sync.unwrap_or(false);
 
-    let entries = fs::read_dir(&path).map_err(|e| e.to_string())?;
-    let mut images = Vec::new();
-    let mut sidecars_by_filename: HashMap<String, Vec<Option<String>>> = HashMap::new();
+        let entries = fs::read_dir(&path).map_err(|e| e.to_string())?;
+        let mut images = Vec::new();
+        let mut sidecars_by_filename: HashMap<String, Vec<Option<String>>> = HashMap::new();
 
-    for entry in entries.filter_map(Result::ok) {
-        let entry_path = entry.path();
-        let file_name = entry
-            .file_name()
-            .into_string()
-            .unwrap_or_else(|os| os.to_string_lossy().into_owned());
+        for entry in entries.filter_map(Result::ok) {
+            let entry_path = entry.path();
+            let file_name = entry
+                .file_name()
+                .into_string()
+                .unwrap_or_else(|os| os.to_string_lossy().into_owned());
 
-        if let Some((source_filename, copy_id)) = parse_sidecar_filename(&file_name) {
-            sidecars_by_filename
-                .entry(source_filename)
-                .or_default()
-                .push(copy_id);
-        } else if is_supported_image_file(&file_name) {
-            images.push((file_name, entry_path));
+            if let Some((source_filename, copy_id)) = parse_sidecar_filename(&file_name) {
+                sidecars_by_filename
+                    .entry(source_filename)
+                    .or_default()
+                    .push(copy_id);
+            } else if is_supported_image_file(&file_name) {
+                images.push((file_name, entry_path));
+            }
         }
-    }
 
-    let tasks: Vec<_> = images
-        .into_iter()
-        .map(|(file_name, path_buf)| {
-            let sidecars = sidecars_by_filename
-                .remove(&file_name)
-                .unwrap_or_else(|| vec![None]);
-            let path_str = path_buf.to_string_lossy().into_owned();
-            (path_str, file_name, path_buf, sidecars)
-        })
-        .collect();
+        let tasks: Vec<_> = images
+            .into_iter()
+            .map(|(file_name, path_buf)| {
+                let sidecars = sidecars_by_filename
+                    .remove(&file_name)
+                    .unwrap_or_else(|| vec![None]);
+                let path_str = path_buf.to_string_lossy().into_owned();
+                (path_str, file_name, path_buf, sidecars)
+            })
+            .collect();
 
-    let result_list: Vec<ImageFile> = tasks
-        .into_par_iter()
-        .flat_map(|(path_str, file_name, path_buf, sidecars)| {
-            build_image_files(
-                &app_handle,
-                &path_str,
-                &file_name,
-                &path_buf,
-                sidecars,
-                enable_xmp_sync,
-                &settings,
-            )
-        })
-        .collect();
+        let result_list: Vec<ImageFile> = tasks
+            .into_par_iter()
+            .flat_map(|(path_str, file_name, path_buf, sidecars)| {
+                build_image_files(
+                    &app_handle,
+                    &path_str,
+                    &file_name,
+                    &path_buf,
+                    sidecars,
+                    enable_xmp_sync,
+                    &settings,
+                )
+            })
+            .collect();
 
-    Ok(result_list)
+        Ok(result_list)
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
-pub fn list_images_recursive(
+pub async fn list_images_recursive(
     path: String,
     app_handle: AppHandle,
 ) -> Result<Vec<ImageFile>, String> {
-    let settings = load_settings(app_handle.clone()).unwrap_or_default();
-    let enable_xmp_sync = settings.enable_xmp_sync.unwrap_or(false);
+    tokio::task::spawn_blocking(move || {
+        let settings = load_settings(app_handle.clone()).unwrap_or_default();
+        let enable_xmp_sync = settings.enable_xmp_sync.unwrap_or(false);
 
-    let root_path = Path::new(&path);
-    let mut images = Vec::new();
+        let root_path = Path::new(&path);
+        let mut images = Vec::new();
 
-    let mut sidecars_by_path: HashMap<PathBuf, Vec<Option<String>>> = HashMap::new();
+        let mut sidecars_by_path: HashMap<PathBuf, Vec<Option<String>>> = HashMap::new();
 
-    for entry in WalkDir::new(root_path).into_iter().filter_map(Result::ok) {
-        let entry_path = entry.path();
-        if !entry_path.is_file() {
-            continue;
-        }
-
-        let file_name = entry_path.file_name().unwrap_or_default().to_string_lossy();
-        if let Some((source_filename, copy_id)) = parse_sidecar_filename(&file_name) {
-            if let Some(parent) = entry_path.parent() {
-                sidecars_by_path
-                    .entry(parent.join(source_filename))
-                    .or_default()
-                    .push(copy_id);
+        for entry in WalkDir::new(root_path).into_iter().filter_map(Result::ok) {
+            let entry_path = entry.path();
+            if !entry_path.is_file() {
+                continue;
             }
-        } else if is_supported_image_file(entry_path.to_string_lossy().as_ref()) {
-            images.push(entry_path.to_path_buf());
+
+            let file_name = entry_path.file_name().unwrap_or_default().to_string_lossy();
+            if let Some((source_filename, copy_id)) = parse_sidecar_filename(&file_name) {
+                if let Some(parent) = entry_path.parent() {
+                    sidecars_by_path
+                        .entry(parent.join(source_filename))
+                        .or_default()
+                        .push(copy_id);
+                }
+            } else if is_supported_image_file(entry_path.to_string_lossy().as_ref()) {
+                images.push(entry_path.to_path_buf());
+            }
         }
-    }
 
-    let tasks: Vec<_> = images
-        .into_iter()
-        .map(|path_buf| {
-            let sidecars = sidecars_by_path
-                .remove(&path_buf)
-                .unwrap_or_else(|| vec![None]);
-            let path_str = path_buf.to_string_lossy().into_owned();
-            let file_name = path_buf
-                .file_name()
-                .unwrap_or_default()
-                .to_string_lossy()
-                .into_owned();
-            (path_str, file_name, path_buf, sidecars)
-        })
-        .collect();
+        let tasks: Vec<_> = images
+            .into_iter()
+            .map(|path_buf| {
+                let sidecars = sidecars_by_path
+                    .remove(&path_buf)
+                    .unwrap_or_else(|| vec![None]);
+                let path_str = path_buf.to_string_lossy().into_owned();
+                let file_name = path_buf
+                    .file_name()
+                    .unwrap_or_default()
+                    .to_string_lossy()
+                    .into_owned();
+                (path_str, file_name, path_buf, sidecars)
+            })
+            .collect();
 
-    let result_list: Vec<ImageFile> = tasks
-        .into_par_iter()
-        .flat_map(|(path_str, file_name, path_buf, sidecars)| {
-            build_image_files(
-                &app_handle,
-                &path_str,
-                &file_name,
-                &path_buf,
-                sidecars,
-                enable_xmp_sync,
-                &settings,
-            )
-        })
-        .collect();
+        let result_list: Vec<ImageFile> = tasks
+            .into_par_iter()
+            .flat_map(|(path_str, file_name, path_buf, sidecars)| {
+                build_image_files(
+                    &app_handle,
+                    &path_str,
+                    &file_name,
+                    &path_buf,
+                    sidecars,
+                    enable_xmp_sync,
+                    &settings,
+                )
+            })
+            .collect();
 
-    Ok(result_list)
+        Ok(result_list)
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -925,6 +933,166 @@ fn has_subdirs(path: &Path) -> bool {
     false
 }
 
+#[derive(Default)]
+struct CatalogFolderNode {
+    name: String,
+    path: String,
+    modified: u64,
+    image_count: usize,
+    children: BTreeMap<String, CatalogFolderNode>,
+}
+
+/// Builds a folder tree from the catalog for a previously imported folder.
+/// The tree is built from two catalog sources:
+///   1. Explicit `folders` rows at or under the root (so empty imported folders
+///      are still visible).
+///   2. The actual file paths stored under those folders, which are used to
+///      derive subfolder nodes and direct file counts. This means a recursive
+///      import that stores all files under the root folder_id still shows the
+///      correct subfolder hierarchy instead of a flat root with all files.
+/// Returns `None` when the folder is not cataloged.
+fn build_folder_tree_from_catalog(
+    app_handle: &AppHandle,
+    root_path: &str,
+    _recursive: bool,
+) -> Result<Option<FolderNode>, String> {
+    let folder_rows = crate::library_db::get_folder_subtree_paths(app_handle, root_path)?;
+    if folder_rows.is_empty() {
+        log::debug!("[folder-tree] no catalog entry for {}", root_path);
+        return Ok(None);
+    }
+    log::debug!(
+        "[folder-tree] building catalog tree for {} from {} folder rows",
+        root_path,
+        folder_rows.len()
+    );
+
+    let root_normalized = root_path.trim_end_matches(|c| c == '/' || c == '\\').to_string();
+    let mut nodes: BTreeMap<String, CatalogFolderNode> = BTreeMap::new();
+
+    let node_name = |path: &str| {
+        Path::new(path)
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_else(|| path.to_string())
+    };
+
+    // 1. Create a node for every explicitly cataloged folder in the subtree,
+    //    aggregating duplicate paths (e.g. recursive + non-recursive rows).
+    for (path, _id, _recursive) in folder_rows {
+        nodes.entry(path.clone()).or_insert_with(|| CatalogFolderNode {
+            name: node_name(&path),
+            path,
+            modified: 0,
+            image_count: 0,
+            children: BTreeMap::new(),
+        });
+    }
+
+    // Ensure the requested root always exists, even if it has no direct files.
+    nodes.entry(root_normalized.clone()).or_insert_with(|| CatalogFolderNode {
+        name: node_name(&root_normalized),
+        path: root_normalized.clone(),
+        modified: 0,
+        image_count: 0,
+        children: BTreeMap::new(),
+    });
+
+    // 2. Derive directory nodes and direct file counts from the actual file
+    //    paths stored in the catalog under this subtree.
+    let file_rows = crate::library_db::get_files_under_folder_subtree(app_handle, root_path)?;
+    for (file_path, modified) in file_rows {
+        let mut ancestor = Path::new(&file_path)
+            .parent()
+            .map(|p| p.to_string_lossy().into_owned())
+            .unwrap_or_else(|| root_normalized.clone());
+
+        if !ancestor.starts_with(&root_normalized) {
+            continue;
+        }
+
+        // Ensure nodes exist for every directory from the file's parent up to
+        // the root. These derived nodes make subfolders visible even when only
+        // the root was explicitly imported.
+        loop {
+            nodes.entry(ancestor.clone()).or_insert_with(|| CatalogFolderNode {
+                name: node_name(&ancestor),
+                path: ancestor.clone(),
+                modified: 0,
+                image_count: 0,
+                children: BTreeMap::new(),
+            });
+            if ancestor == root_normalized {
+                break;
+            }
+            if let Some(parent) = Path::new(&ancestor).parent() {
+                ancestor = parent.to_string_lossy().into_owned();
+            } else {
+                break;
+            }
+        }
+
+        // Count the file against its immediate parent directory only. The
+        // convert() step will roll counts up to ancestors.
+        let parent = Path::new(&file_path)
+            .parent()
+            .map(|p| p.to_string_lossy().into_owned())
+            .unwrap_or_else(|| root_normalized.clone());
+        if let Some(parent_node) = nodes.get_mut(&parent) {
+            parent_node.image_count += 1;
+            if let Some(m) = modified {
+                parent_node.modified = parent_node.modified.max(m as u64);
+            }
+        }
+    }
+
+    // 3. Attach children to their parents, processing shallower paths first so
+    //    parent nodes are guaranteed to exist.
+    let mut sorted_paths: Vec<String> = nodes.keys().cloned().collect();
+    sorted_paths.sort_by(|a, b| {
+        let depth_a = a.chars().filter(|c| *c == '/').count();
+        let depth_b = b.chars().filter(|c| *c == '/').count();
+        depth_a.cmp(&depth_b).then_with(|| a.cmp(b))
+    });
+
+    for path in sorted_paths {
+        if path == root_normalized {
+            continue;
+        }
+        let parent_path = Path::new(&path)
+            .parent()
+            .map(|p| p.to_string_lossy().into_owned())
+            .unwrap_or_else(|| root_normalized.clone());
+        let name = nodes[&path].name.clone();
+        let child = nodes.remove(&path).unwrap();
+        if let Some(parent) = nodes.get_mut(&parent_path) {
+            parent.children.insert(name, child);
+        } else if let Some(root) = nodes.get_mut(&root_normalized) {
+            // Parent is not cataloged; keep the folder reachable under the root.
+            root.children.insert(name, child);
+        }
+    }
+
+    fn convert(node: CatalogFolderNode) -> FolderNode {
+        let children: Vec<FolderNode> = node.children.into_values().map(convert).collect();
+        let has_subdirs = !children.is_empty();
+        let children_sum: usize = children.iter().map(|c| c.image_count).sum();
+        let max_child_modified = children.iter().map(|c| c.modified).max().unwrap_or(0);
+        FolderNode {
+            name: node.name,
+            path: node.path,
+            children,
+            is_dir: true,
+            image_count: node.image_count + children_sum,
+            has_subdirs,
+            modified: node.modified.max(max_child_modified),
+            created: 0,
+        }
+    }
+
+    Ok(nodes.remove(&root_normalized).map(convert))
+}
+
 fn scan_dir_lazy(
     path: &Path,
     expanded_folders: &HashSet<&str>,
@@ -987,19 +1155,12 @@ fn scan_dir_lazy(
                     next_prefetch,
                 )?
             } else {
-                let count = if show_image_counts {
-                    WalkDir::new(&current_path)
-                        .into_iter()
-                        .filter_map(Result::ok)
-                        .filter(|e| {
-                            e.file_type().is_file()
-                                && crate::formats::is_supported_image_file(e.path())
-                        })
-                        .count()
-                } else {
-                    0
-                };
-                (Vec::new(), count)
+                // Collapsed folders are not walked for counts: on a large or
+                // offline network volume that would block the tree load for
+                // minutes. The catalog path above provides accurate counts for
+                // imported folders; for uncataloged folders we show 0 until the
+                // folder is expanded or imported.
+                (Vec::new(), 0)
             };
 
             let has_any_subdirs = if should_scan {
@@ -1035,63 +1196,21 @@ fn scan_dir_lazy(
 }
 
 fn get_folder_tree_sync(
+    app_handle: &AppHandle,
     path: String,
-    expanded_folders: Vec<String>,
-    show_image_counts: bool,
+    _expanded_folders: Vec<String>,
+    _show_image_counts: bool,
 ) -> Result<FolderNode, String> {
-    let root_path = Path::new(&path);
-    if !root_path.is_dir() {
-        return Err(format!("Directory does not exist: {}", path));
+    // The folder tree is always driven by the catalog. The user explicitly
+    // imports/syncs folders; we never reflect filesystem changes that have not
+    // been written to the catalog.
+    if let Some(node) = build_folder_tree_from_catalog(app_handle, &path, true)? {
+        return Ok(node);
     }
 
-    let (modified, created) = root_path
-        .metadata()
-        .map(|m| {
-            let mod_time = m.modified().unwrap_or(std::time::SystemTime::UNIX_EPOCH);
-            let cre_time = m.created().unwrap_or(mod_time);
-            (
-                mod_time
-                    .duration_since(std::time::SystemTime::UNIX_EPOCH)
-                    .unwrap_or_default()
-                    .as_secs(),
-                cre_time
-                    .duration_since(std::time::SystemTime::UNIX_EPOCH)
-                    .unwrap_or_default()
-                    .as_secs(),
-            )
-        })
-        .unwrap_or((0, 0));
-
-    let expanded_set: HashSet<&str> = expanded_folders.iter().map(|s| s.as_str()).collect();
-
-    let (children, own_count) = scan_dir_lazy(root_path, &expanded_set, show_image_counts, true)
-        .map_err(|e| e.to_string())?;
-
-    let children_sum: usize = children.iter().map(|c| c.image_count).sum();
-    let has_subdirs = children.iter().any(|c| c.is_dir);
-
-    let name = match root_path.file_name() {
-        Some(n) => n.to_string_lossy().into_owned(),
-        None => {
-            let trimmed = path.trim_end_matches(&['/', '\\'][..]);
-            if trimmed.is_empty() {
-                path.clone()
-            } else {
-                trimmed.to_string()
-            }
-        }
-    };
-
-    Ok(FolderNode {
-        name,
-        path: path.clone(),
-        children,
-        is_dir: true,
-        image_count: own_count + children_sum,
-        has_subdirs,
-        modified,
-        created,
-    })
+    // The folder tree is authoritative: if the folder is not in the catalog it
+    // has not been imported and should not be displayed at all.
+    Err(format!("Folder not cataloged: {}", path))
 }
 
 #[tauri::command]
@@ -1119,13 +1238,27 @@ pub async fn get_folder_children(
 }
 
 #[tauri::command]
+pub async fn get_cataloged_folder_paths(app_handle: AppHandle) -> Result<Vec<String>, String> {
+    match tauri::async_runtime::spawn_blocking(move || {
+        crate::library_db::get_cataloged_folder_paths(&app_handle)
+    })
+    .await
+    {
+        Ok(Ok(paths)) => Ok(paths),
+        Ok(Err(e)) => Err(e),
+        Err(e) => Err(format!("Failed to execute folder paths task: {}", e)),
+    }
+}
+
+#[tauri::command]
 pub async fn get_folder_tree(
+    app_handle: AppHandle,
     path: String,
     expanded_folders: Vec<String>,
     show_image_counts: bool,
 ) -> Result<FolderNode, String> {
     match tauri::async_runtime::spawn_blocking(move || {
-        get_folder_tree_sync(path, expanded_folders, show_image_counts)
+        get_folder_tree_sync(&app_handle, path, expanded_folders, show_image_counts)
     })
     .await
     {
@@ -1137,15 +1270,16 @@ pub async fn get_folder_tree(
 
 #[tauri::command]
 pub async fn get_pinned_folder_trees(
+    app_handle: AppHandle,
     paths: Vec<String>,
     expanded_folders: Vec<String>,
     show_image_counts: bool,
 ) -> Result<Vec<FolderNode>, String> {
     let result = tauri::async_runtime::spawn_blocking(move || {
         let results: Vec<Result<FolderNode, String>> = paths
-            .par_iter()
+            .iter()
             .map(|path| {
-                get_folder_tree_sync(path.clone(), expanded_folders.clone(), show_image_counts)
+                get_folder_tree_sync(&app_handle, path.clone(), expanded_folders.clone(), show_image_counts)
             })
             .collect();
 
@@ -1153,7 +1287,13 @@ pub async fn get_pinned_folder_trees(
         for result in results {
             match result {
                 Ok(node) => folder_nodes.push(node),
-                Err(e) => log::warn!("Failed to get tree for pinned folder: {}", e),
+                Err(e) => {
+                    // Pinned folders that have not been imported are silently
+                    // skipped; they will appear once the user imports them.
+                    if !e.starts_with("Folder not cataloged") {
+                        log::warn!("Failed to get tree for pinned folder: {}", e);
+                    }
+                }
             }
         }
         folder_nodes

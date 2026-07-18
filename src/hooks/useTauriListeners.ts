@@ -57,6 +57,7 @@ export function useTauriListeners({
   const ratingBuffer = useRef<Record<string, number>>({});
   const editStatusBuffer = useRef<Record<string, boolean>>({});
   const flushHandle = useRef<number | null>(null);
+  const treeRefreshTimeoutRef = useRef<number | null>(null);
 
   useEffect(() => {
     let isEffectActive = true;
@@ -95,6 +96,23 @@ export function useTauriListeners({
     const scheduleFlush = () => {
       if (flushHandle.current !== null) return;
       flushHandle.current = requestAnimationFrame(flushThumbnailBatch);
+    };
+
+    const scheduleTreeRefresh = () => {
+      if (treeRefreshTimeoutRef.current !== null) return;
+      treeRefreshTimeoutRef.current = window.setTimeout(() => {
+        treeRefreshTimeoutRef.current = null;
+        if (!isEffectActive) return;
+        refs.current.refreshAllFolderTrees();
+      }, 500);
+    };
+
+    const flushTreeRefresh = () => {
+      if (treeRefreshTimeoutRef.current !== null) {
+        window.clearTimeout(treeRefreshTimeoutRef.current);
+        treeRefreshTimeoutRef.current = null;
+      }
+      refs.current.refreshAllFolderTrees();
     };
 
     const listeners = [
@@ -406,6 +424,10 @@ export function useTauriListeners({
         if (isFirstBatch && isFolderOnScreen(path, recursive)) {
           useLibraryStore.getState().setLibrary({ isViewLoading: false });
         }
+        // New files may live in subfolders that are not yet in the folder tree.
+        // Refresh lazily so the tree updates as the import progresses without
+        // rebuilding on every single batch.
+        scheduleTreeRefresh();
       }),
       listen<FolderImportPhaseStartPayload>('folder-import-exif-started', (event) => {
         if (isEffectActive) {
@@ -435,6 +457,9 @@ export function useTauriListeners({
         if (!isEffectActive) return;
         const { path, recursive, errors } = event.payload;
         const key = folderJobKey(path, recursive);
+        // Make sure the final tree state is reflected immediately, even if a
+        // throttled refresh from the last batch is still pending.
+        flushTreeRefresh();
         useFolderImportStore.getState().completeJob(key, errors);
         if (errors > 0) {
           toast.warn(t('folderImport.completeWithErrors', { folder: path, count: errors }));
@@ -528,6 +553,10 @@ export function useTauriListeners({
       if (flushHandle.current !== null) {
         cancelAnimationFrame(flushHandle.current);
         flushHandle.current = null;
+      }
+      if (treeRefreshTimeoutRef.current !== null) {
+        window.clearTimeout(treeRefreshTimeoutRef.current);
+        treeRefreshTimeoutRef.current = null;
       }
       thumbnailBuffer.current = {};
       ratingBuffer.current = {};

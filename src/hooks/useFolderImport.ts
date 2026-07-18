@@ -24,15 +24,54 @@ function rehomeJob(returnedKey: string, optimisticKey: string, recursive: boolea
   if (returnedKey === optimisticKey) {
     return;
   }
-  const store = useFolderImportStore.getState();
-  store.clearJob(optimisticKey);
-  const existing = store.jobs[returnedKey];
+  const folderImportStore = useFolderImportStore.getState();
+  folderImportStore.clearJob(optimisticKey);
+  const existing = folderImportStore.jobs[returnedKey];
   if (existing && isTerminalPhase(existing.phase)) {
-    store.clearJob(returnedKey);
+    folderImportStore.clearJob(returnedKey);
   }
   const separator = returnedKey.lastIndexOf('|');
   const canonicalPath = separator > -1 ? returnedKey.substring(0, separator) : returnedKey;
-  store.startJob(canonicalPath, recursive, kind);
+  folderImportStore.startJob(canonicalPath, recursive, kind);
+
+  // The backend canonicalizes the path (resolves symlinks and strips trailing
+  // separators). Keep the library tree/view in sync so the mirror effect can
+  // find the job for the current folder and the folder tree stays selectable.
+  const optSeparator = optimisticKey.lastIndexOf('|');
+  const optimisticPath = optSeparator > -1 ? optimisticKey.substring(0, optSeparator) : optimisticKey;
+  if (optimisticPath !== canonicalPath) {
+    const library = useLibraryStore.getState();
+    const { currentFolderPath, rootPaths, expandedFolders } = library;
+    let changed = false;
+
+    const newCurrentFolderPath = currentFolderPath === optimisticPath ? canonicalPath : currentFolderPath;
+    if (newCurrentFolderPath !== currentFolderPath) {
+      changed = true;
+    }
+
+    const newRootPaths = rootPaths.map((p) => (p === optimisticPath ? canonicalPath : p));
+    if (newRootPaths.some((p, i) => p !== rootPaths[i])) {
+      changed = true;
+    }
+
+    const newExpandedFolders = new Set(
+      Array.from(expandedFolders).map((p) => (p === optimisticPath ? canonicalPath : p)),
+    );
+    if (
+      newExpandedFolders.size !== expandedFolders.size ||
+      !Array.from(newExpandedFolders).every((p) => expandedFolders.has(p))
+    ) {
+      changed = true;
+    }
+
+    if (changed) {
+      library.setLibrary({
+        currentFolderPath: newCurrentFolderPath,
+        rootPaths: newRootPaths,
+        expandedFolders: newExpandedFolders,
+      });
+    }
+  }
 }
 
 // Jobs are keyed by the canonical path the invokes return (see rehomeJob), so

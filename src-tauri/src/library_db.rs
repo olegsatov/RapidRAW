@@ -1177,6 +1177,91 @@ pub fn get_folder_last_synced(
     .map_err(|e| e.to_string())
 }
 
+/// Returns all folder paths stored in the catalog. This is the authoritative
+/// list of folders that should appear in the folder tree.
+pub fn get_cataloged_folder_paths(app_handle: &AppHandle) -> Result<Vec<String>, String> {
+    let conn = open_connection(app_handle)?;
+    let mut stmt = conn
+        .prepare("SELECT DISTINCT path FROM folders ORDER BY path")
+        .map_err(|e| e.to_string())?;
+    let rows = stmt
+        .query_map([], |row| row.get::<_, String>(0))
+        .map_err(|e| e.to_string())?;
+    let mut paths = Vec::new();
+    for row in rows {
+        paths.push(row.map_err(|e| e.to_string())?);
+    }
+    Ok(paths)
+}
+
+/// Returns every cataloged folder path at or under `root_path`. Explicitly
+/// imported empty folders are included even when they contain no files. This
+/// gives the set of nodes the folder tree must render; file counts are computed
+/// separately from the actual file paths so a recursive import that stores all
+/// files under the root folder_id still shows the correct subfolder hierarchy.
+pub fn get_folder_subtree_paths(
+    app_handle: &AppHandle,
+    root_path: &str,
+) -> Result<Vec<(String, i64, i32)>, String> {
+    let conn = open_connection(app_handle)?;
+    let root_normalized = root_path.trim_end_matches(|c| c == '/' || c == '\\');
+    let pattern = format!("{}/%", root_normalized);
+    let mut stmt = conn
+        .prepare(
+            "SELECT f.path, f.id, f.recursive \
+             FROM folders f \
+             WHERE f.path = ?1 OR f.path LIKE ?2 \
+             ORDER BY f.path",
+        )
+        .map_err(|e| e.to_string())?;
+    let rows = stmt
+        .query_map(params![root_normalized, pattern], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, i64>(1)?,
+                row.get::<_, i32>(2)?,
+            ))
+        })
+        .map_err(|e| e.to_string())?;
+    let mut result = Vec::new();
+    for row in rows {
+        result.push(row.map_err(|e| e.to_string())?);
+    }
+    Ok(result)
+}
+
+/// Returns every real-file path (and its modified timestamp) stored under any
+/// cataloged folder at or under `root_path`. Virtual-copy rows (`?vc=`) are
+/// skipped. Used to derive subfolder nodes and direct file counts for the
+/// folder tree without relying on which `folder_id` a file was assigned to.
+pub fn get_files_under_folder_subtree(
+    app_handle: &AppHandle,
+    root_path: &str,
+) -> Result<Vec<(String, Option<i64>)>, String> {
+    let conn = open_connection(app_handle)?;
+    let root_normalized = root_path.trim_end_matches(|c| c == '/' || c == '\\');
+    let pattern = format!("{}/%", root_normalized);
+    let mut stmt = conn
+        .prepare(
+            "SELECT files.path, files.modified \
+             FROM files \
+             JOIN folders f ON f.id = files.folder_id \
+             WHERE (f.path = ?1 OR f.path LIKE ?2) AND files.path NOT LIKE '%?vc=%' \
+             ORDER BY files.path",
+        )
+        .map_err(|e| e.to_string())?;
+    let rows = stmt
+        .query_map(params![root_normalized, pattern], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, Option<i64>>(1)?))
+        })
+        .map_err(|e| e.to_string())?;
+    let mut result = Vec::new();
+    for row in rows {
+        result.push(row.map_err(|e| e.to_string())?);
+    }
+    Ok(result)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
