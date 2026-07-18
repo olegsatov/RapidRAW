@@ -363,7 +363,6 @@ export function useAppNavigation({ clearThumbnailQueue, refs }: AppNavigationPro
       } catch (err) {
         console.error('Failed to load folder contents:', err);
         toast.error('Failed to load images from the selected folder.');
-      } finally {
         useLibraryStore.getState().setLibrary({ isViewLoading: false });
       }
     },

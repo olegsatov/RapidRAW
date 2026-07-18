@@ -62,6 +62,7 @@ import {
   Album,
   AlbumGroup,
   ImageFile,
+  LibraryViewMode,
 } from '../components/ui/AppProperties';
 import { Color, COLOR_LABELS, INITIAL_ADJUSTMENTS, normalizeLoadedAdjustments } from '../utils/adjustments';
 import TaggingSubMenu from '../context/TaggingSubMenu';
@@ -1019,7 +1020,7 @@ export function useAppContextMenus(props: UseAppContextMenusProps) {
         {
           icon: RefreshCw,
           label: t('contextMenus.folders.syncFolder'),
-          onClick: () => syncFolder(targetPath, false),
+          onClick: () => syncFolder(targetPath, appSettings?.libraryViewMode === LibraryViewMode.Recursive),
         },
         ...(useFolderImportStore.getState().availability[targetPath] === 'offline'
           ? [
