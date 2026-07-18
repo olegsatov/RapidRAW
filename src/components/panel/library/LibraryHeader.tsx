@@ -13,7 +13,9 @@ import {
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useShallow } from 'zustand/react/shallow';
+import { invoke } from '@tauri-apps/api/core';
 import { useLibraryStore } from '../../../store/useLibraryStore';
+import { useFolderImportStore } from '../../../store/useFolderImportStore';
 import {
   FilterCriteria,
   RawStatus,
@@ -22,6 +24,7 @@ import {
   SortCriteria,
   SortDirection,
   ExifOverlay,
+  Invokes,
 } from '../../ui/AppProperties';
 import { COLOR_LABELS, Color } from '../../../utils/adjustments';
 import Text from '../../ui/Text';
@@ -29,6 +32,7 @@ import { TextColors, TextVariants, TextWeights, TEXT_COLOR_KEYS } from '../../..
 import Button from '../../ui/Button';
 import { useSettingsStore } from '../../../store/useSettingsStore';
 import { ADVANCED_QUERY_REGEX } from '../../../hooks/useSortedLibrary';
+import { formatRelativeTime } from '../../../utils/formatRelativeTime';
 
 function DropdownMenu({ buttonContent, buttonTitle, children, contentClassName = 'w-56' }: any) {
   const [isOpen, setIsOpen] = useState(false);
@@ -781,5 +785,75 @@ export function ViewOptionsDropdown({
         </div>
       </div>
     </DropdownMenu>
+  );
+}
+
+export function FolderSyncIndicator({
+  currentFolderPath,
+  libraryViewMode,
+}: {
+  currentFolderPath: string | null;
+  libraryViewMode: LibraryViewMode;
+}) {
+  const { t, i18n } = useTranslation();
+  const [lastSyncedAt, setLastSyncedAt] = useState<number | null | undefined>(undefined);
+  const recursive = libraryViewMode === LibraryViewMode.Recursive;
+  const availability = useFolderImportStore((state) =>
+    currentFolderPath ? state.availability[currentFolderPath] : undefined,
+  );
+
+  useEffect(() => {
+    if (!currentFolderPath) {
+      setLastSyncedAt(undefined);
+      return;
+    }
+    let cancelled = false;
+    useFolderImportStore.getState().checkAvailability([currentFolderPath]);
+    invoke<number | null>(Invokes.GetFolderLastSynced, { path: currentFolderPath, recursive })
+      .then((ts) => {
+        if (!cancelled) setLastSyncedAt(ts);
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          console.error('Failed to read folder last-synced time:', err);
+          setLastSyncedAt(null);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [currentFolderPath, recursive]);
+
+  const status = availability ?? 'unknown';
+  const statusLabel =
+    status === 'online'
+      ? t('contextMenus.folders.statusOnline')
+      : status === 'offline'
+        ? t('contextMenus.folders.statusOffline')
+        : t('contextMenus.folders.statusChecking');
+
+  const syncText =
+    lastSyncedAt === undefined
+      ? ''
+      : lastSyncedAt === null
+        ? t('contextMenus.folders.neverSynced')
+        : t('contextMenus.folders.lastSyncedAt', {
+            time: formatRelativeTime(lastSyncedAt, i18n.language),
+          });
+
+  return (
+    <div className="flex items-center gap-2 mt-1">
+      <div
+        className={clsx('w-2 h-2 rounded-full shrink-0', {
+          'bg-green-500': status === 'online',
+          'bg-red-500': status === 'offline',
+          'bg-text-secondary/50 animate-pulse': status === 'unknown',
+        })}
+      />
+      <Text variant={TextVariants.small} color={TextColors.secondary} className="whitespace-nowrap">
+        {statusLabel}
+        {syncText && ` · ${syncText}`}
+      </Text>
+    </div>
   );
 }

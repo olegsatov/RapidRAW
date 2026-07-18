@@ -35,7 +35,7 @@ import { TextColors, TextVariants, TextWeights } from '../../types/typography';
 import { useLibraryStore } from '../../store/useLibraryStore';
 
 import LibraryGrid from './library/LibraryGrid';
-import { SearchInput, ViewOptionsDropdown } from './library/LibraryHeader';
+import { FolderSyncIndicator, SearchInput, ViewOptionsDropdown } from './library/LibraryHeader';
 
 interface MainLibraryProps {
   activePath: string | null;
@@ -454,6 +454,9 @@ export default function MainLibrary(props: MainLibraryProps) {
                 </div>
               </div>
             </div>
+          )}
+          {props.currentFolderPath && (
+            <FolderSyncIndicator currentFolderPath={props.currentFolderPath} libraryViewMode={props.libraryViewMode} />
           )}
         </div>
         <div className="flex items-center gap-3 shrink-0">
