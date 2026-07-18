@@ -113,6 +113,39 @@ CREATE INDEX IF NOT EXISTS idx_tags_tag ON tags(tag COLLATE NOCASE);
 "#;
 
 pub fn init_catalog(app_handle: &AppHandle) -> Result<(), String> {
+    match try_init_catalog(app_handle) {
+        Ok(()) => Ok(()),
+        Err(e) => {
+            log::warn!(
+                "Library catalog open/migrate failed ({}); renaming broken database and creating a fresh one.",
+                e
+            );
+            let path = db_path(app_handle)?;
+            if path.exists() {
+                let corrupt_path = path.with_extension("db.corrupt");
+                // Overwrite any previous corrupt backup so the catalog recovery
+                // leaves exactly one `library.db.corrupt` behind.
+                if corrupt_path.exists() {
+                    let _ = std::fs::remove_file(&corrupt_path);
+                }
+                std::fs::rename(&path, &corrupt_path)
+                    .map_err(|err| format!("failed to rename corrupt catalog: {}", err))?;
+                log::info!("Renamed corrupt library catalog to {}", corrupt_path.display());
+                // Move aside WAL/shm files so the fresh database starts clean.
+                for ext in ["-wal", "-shm"] {
+                    let sidecar = path.with_extension(&format!("db{}", ext));
+                    if sidecar.exists() {
+                        let _ = std::fs::remove_file(&sidecar);
+                    }
+                }
+            }
+            try_init_catalog(app_handle)
+                .map_err(|e| format!("failed to create fresh catalog after recovery: {}", e))
+        }
+    }
+}
+
+fn try_init_catalog(app_handle: &AppHandle) -> Result<(), String> {
     let conn = open_connection(app_handle)?;
     migrate(&conn)
 }
@@ -785,6 +818,23 @@ fn update_folder_last_synced_in_conn(
     )
     .map_err(|e| e.to_string())?;
     Ok(())
+}
+
+/// Returns the `last_synced_at` timestamp for a (path, recursive) folder
+/// entry, or `None` when the folder is not cataloged.
+pub fn get_folder_last_synced(
+    app_handle: &AppHandle,
+    path: &str,
+    recursive: bool,
+) -> Result<Option<u64>, String> {
+    let conn = open_connection(app_handle)?;
+    conn.query_row(
+        "SELECT last_synced_at FROM folders WHERE path = ?1 AND recursive = ?2",
+        params![path, recursive as i32],
+        |row| row.get::<_, Option<i64>>(0),
+    )
+    .map(|v| v.map(|ts| ts as u64))
+    .map_err(|e| e.to_string())
 }
 
 #[cfg(test)]
