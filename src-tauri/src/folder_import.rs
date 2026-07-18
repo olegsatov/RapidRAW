@@ -1032,7 +1032,9 @@ fn compute_sync_delta(
         }
         if path.contains("?vc=") {
             let (source_path, sidecar_path) = file_management::parse_virtual_path(path);
-            if source_path.exists() && sidecar_path.exists() {
+            let is_vc = path.contains("?vc=");
+            let keep = source_path.exists() && (is_vc || sidecar_path.exists());
+            if keep {
                 continue;
             }
         // `exists()` is also false when the metadata is unreadable.
