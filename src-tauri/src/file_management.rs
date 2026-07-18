@@ -16,6 +16,7 @@ use image::codecs::jpeg::JpegEncoder;
 use image::{DynamicImage, GenericImageView, ImageBuffer, Luma};
 use rayon::prelude::*;
 use regex::Regex;
+use rusqlite::params;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use tauri::{AppHandle, Emitter, Manager};
@@ -38,6 +39,7 @@ use crate::image_processing::{
     apply_flip, apply_geometry_warp, apply_rotation, auto_results_to_json,
     get_all_adjustments_from_json, perform_auto_analysis,
 };
+use crate::library_db;
 use crate::mask_generation::MaskDefinition;
 use crate::metadata_store;
 use crate::preset_converter;
@@ -1896,7 +1898,7 @@ pub fn duplicate_file(
     target_album_id: Option<String>,
     app_handle: AppHandle,
 ) -> Result<String, String> {
-    let (source_path, source_sidecar_path) = parse_virtual_path(&path);
+    let (source_path, _source_sidecar_path) = parse_virtual_path(&path);
     if !source_path.is_file() {
         return Err("Source path is not a file.".to_string());
     }
@@ -1930,11 +1932,24 @@ pub fn duplicate_file(
 
     fs::copy(&source_path, &dest_path).map_err(|e| e.to_string())?;
 
-    if source_sidecar_path.exists()
-        && let Some(dest_str) = dest_path.to_str()
-    {
+    let source_metadata = metadata_store::load_image_metadata(&app_handle, None, &path)
+        .map_err(|e| format!("Failed to load source metadata: {}", e))?;
+    let dest_path_str = dest_path.to_string_lossy().into_owned();
+    metadata_store::save_image_metadata(&app_handle, None, &dest_path_str, &source_metadata)
+        .map_err(|e| format!("Failed to save destination metadata: {}", e))?;
+
+    // Remove any legacy sidecar that may have been copied by a previous version.
+    if let Some(dest_str) = dest_path.to_str() {
         let (_, dest_sidecar_path) = parse_virtual_path(dest_str);
-        fs::copy(&source_sidecar_path, &dest_sidecar_path).map_err(|e| e.to_string())?;
+        if dest_sidecar_path.exists() {
+            if let Err(e) = fs::remove_file(&dest_sidecar_path) {
+                log::warn!(
+                    "Failed to remove destination sidecar {}: {}",
+                    dest_sidecar_path.display(),
+                    e
+                );
+            }
+        }
     }
 
     let mut source_rrexif_name = source_path.file_name().unwrap().to_os_string();
@@ -1947,8 +1962,6 @@ pub fn duplicate_file(
         let dest_rrexif = dest_path.with_file_name(dest_rrexif_name);
         let _ = fs::copy(&source_rrexif, &dest_rrexif);
     }
-
-    let dest_path_str = dest_path.to_string_lossy().into_owned();
 
     if let Some(album_id) = target_album_id {
         let _ = add_to_album(album_id, vec![dest_path_str.clone()], app_handle);
@@ -3339,11 +3352,31 @@ pub async fn import_files(
                 }
 
                 fs::copy(&source_path, &dest_file_path).map_err(|e| e.to_string())?;
-                if source_sidecar.exists()
-                    && let Some(dest_str) = dest_file_path.to_str()
-                {
+
+                let source_metadata = metadata_store::load_image_metadata(
+                    &app_handle,
+                    None,
+                    source_path_str,
+                )
+                .map_err(|e| format!("Failed to load source metadata: {}", e))?;
+                if let Some(dest_str) = dest_file_path.to_str() {
+                    metadata_store::save_image_metadata(
+                        &app_handle,
+                        None,
+                        dest_str,
+                        &source_metadata,
+                    )
+                    .map_err(|e| format!("Failed to save destination metadata: {}", e))?;
                     let (_, dest_sidecar) = parse_virtual_path(dest_str);
-                    fs::copy(&source_sidecar, &dest_sidecar).map_err(|e| e.to_string())?;
+                    if dest_sidecar.exists() {
+                        if let Err(e) = fs::remove_file(&dest_sidecar) {
+                            log::warn!(
+                                "Failed to remove destination sidecar {}: {}",
+                                dest_sidecar.display(),
+                                e
+                            );
+                        }
+                    }
                 }
 
                 let mut source_rrexif_name = source_path.file_name().unwrap().to_os_string();
@@ -3457,6 +3490,7 @@ pub fn rename_files(
     }
 
     let mut operations: HashMap<PathBuf, PathBuf> = HashMap::new();
+    let mut rrexif_operations: HashMap<PathBuf, PathBuf> = HashMap::new();
     let mut final_new_paths = Vec::with_capacity(paths.len());
     let mut renames = HashMap::new();
 
@@ -3493,40 +3527,6 @@ pub fn rename_files(
             ));
         }
 
-        operations.insert(original_path, new_path);
-    }
-
-    let mut sidecar_operations: HashMap<PathBuf, PathBuf> = HashMap::new();
-    for (original_path, new_path) in &operations {
-        let parent = original_path
-            .parent()
-            .ok_or("Could not get parent directory")?;
-        let original_filename_str = original_path.file_name().unwrap().to_string_lossy();
-        let new_filename_str = new_path.file_name().unwrap().to_string_lossy();
-
-        if let Ok(entries) = fs::read_dir(parent) {
-            for entry in entries.filter_map(Result::ok) {
-                let entry_path = entry.path();
-                let entry_os_filename = entry.file_name();
-                let entry_filename = entry_os_filename.to_string_lossy();
-
-                if entry_filename.starts_with(&format!("{}.", original_filename_str))
-                    && entry_filename.ends_with(".rrdata")
-                {
-                    let new_sidecar_filename =
-                        entry_filename.replacen(&*original_filename_str, &new_filename_str, 1);
-                    let new_sidecar_path = parent.join(new_sidecar_filename);
-                    sidecar_operations.insert(entry_path, new_sidecar_path);
-                } else if entry_filename == format!("{}.rrdata", original_filename_str) {
-                    let mut new_sidecar_name = new_path.file_name().unwrap().to_os_string();
-                    new_sidecar_name.push(".rrdata");
-                    let new_sidecar_path = new_path.with_file_name(new_sidecar_name);
-
-                    sidecar_operations.insert(entry_path, new_sidecar_path);
-                }
-            }
-        }
-
         let mut old_rrexif_name = original_path.file_name().unwrap().to_os_string();
         old_rrexif_name.push(".rrexif");
         let old_rrexif = original_path.with_file_name(old_rrexif_name);
@@ -3535,12 +3535,16 @@ pub fn rename_files(
             let mut new_rrexif_name = new_path.file_name().unwrap().to_os_string();
             new_rrexif_name.push(".rrexif");
             let new_rrexif = new_path.with_file_name(new_rrexif_name);
-            sidecar_operations.insert(old_rrexif, new_rrexif);
+            rrexif_operations.insert(old_rrexif, new_rrexif);
         }
-    }
-    operations.extend(sidecar_operations);
 
-    for (old_path, new_path) in operations {
+        operations.insert(original_path, new_path);
+    }
+
+    // Rename the image files (and any associated .rrexif caches) on disk first.
+    // If this fails partway, the catalog is still pointing at the old paths.
+    let all_file_operations = operations.iter().chain(rrexif_operations.iter());
+    for (old_path, new_path) in all_file_operations {
         fs::rename(&old_path, &new_path).map_err(|e| {
             format!(
                 "Failed to rename {} to {}: {}",
@@ -3549,7 +3553,38 @@ pub fn rename_files(
                 e
             )
         })?;
+    }
 
+    // Now update the catalog. If a DB error occurs after FS renames, the files
+    // are already at the new paths and can be re-located; doing DB first would
+    // leave the catalog pointing at missing files instead.
+    {
+        let mut conn = library_db::open_connection(&app_handle)?;
+        let tx = conn.transaction().map_err(|e| e.to_string())?;
+        for (original_path, new_path) in &operations {
+            let old_str = original_path.to_string_lossy();
+            let new_str = new_path.to_string_lossy();
+            let new_name = new_path
+                .file_name()
+                .unwrap_or_default()
+                .to_string_lossy()
+                .into_owned();
+            tx.execute(
+                "UPDATE files SET path = ?2, name = ?3 WHERE path = ?1",
+                params![old_str, new_str, new_name],
+            )
+            .map_err(|e| e.to_string())?;
+            let skip = old_str.chars().count() as i64 + 1;
+            tx.execute(
+                "UPDATE files SET path = ?2 || substr(path, ?3), name = ?4 WHERE instr(path, ?1) = 1 AND substr(path, ?3, 4) = '?vc='",
+                params![old_str, new_str, skip, new_name],
+            )
+            .map_err(|e| e.to_string())?;
+        }
+        tx.commit().map_err(|e| e.to_string())?;
+    }
+
+    for (old_path, new_path) in operations {
         let old_str = old_path.to_string_lossy().into_owned();
         let new_str = new_path.to_string_lossy().into_owned();
 
@@ -3571,21 +3606,16 @@ pub fn create_virtual_copy(
     target_album_id: Option<String>,
     app_handle: AppHandle,
 ) -> Result<String, String> {
-    let (source_path, source_sidecar_path) = parse_virtual_path(&source_virtual_path);
+    let (source_path, _source_sidecar_path) = parse_virtual_path(&source_virtual_path);
 
     let new_copy_id = Uuid::new_v4().to_string()[..6].to_string();
     let new_virtual_path = format!("{}?vc={}", source_path.to_string_lossy(), new_copy_id);
-    let (_, new_sidecar_path) = parse_virtual_path(&new_virtual_path);
 
-    if source_sidecar_path.exists() {
-        fs::copy(&source_sidecar_path, &new_sidecar_path)
-            .map_err(|e| format!("Failed to copy sidecar file: {}", e))?;
-    } else {
-        let default_metadata = ImageMetadata::default();
-        let json_string =
-            serde_json::to_string_pretty(&default_metadata).map_err(|e| e.to_string())?;
-        fs::write(new_sidecar_path, json_string).map_err(|e| e.to_string())?;
-    }
+    let source_metadata =
+        metadata_store::load_image_metadata(&app_handle, None, &source_virtual_path)
+            .map_err(|e| format!("Failed to load source metadata: {}", e))?;
+    metadata_store::save_image_metadata(&app_handle, None, &new_virtual_path, &source_metadata)
+        .map_err(|e| format!("Failed to save virtual-copy metadata: {}", e))?;
 
     if let Some(album_id) = target_album_id {
         let _ = add_to_album(album_id, vec![new_virtual_path.clone()], app_handle);
