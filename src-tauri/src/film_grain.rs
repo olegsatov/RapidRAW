@@ -618,7 +618,7 @@ pub async fn render_film_grain(
             .save(&output_path)
             .map_err(|e| format!("Failed to save image: {e}"))?;
 
-        let _ = crate::exif_processing::write_rrexif_sidecar(&source_str, &output_path);
+        let _ = crate::exif_processing::write_rrexif_sidecar(&app_handle, &source_str, &output_path);
         reveal_in_file_manager(&output_path);
 
         let out_str = output_path.to_string_lossy().to_string();

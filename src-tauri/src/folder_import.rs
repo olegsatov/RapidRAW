@@ -571,9 +571,8 @@ async fn process_exif_file(
         }
         match file_management::read_file_bytes(&read_path) {
             Ok(bytes) => {
-                // `read_exif_data` also caches the map into the `.rrdata`
-                // sidecar, matching the interactive `read_exif_for_paths`
-                // flow.
+                // EXIF is persisted into the catalog (structured columns and
+                // `metadata_json`) by `mark_exif_scanned` below.
                 ExifReadOutcome::Read(exif_processing::read_exif_data(&read_str, &bytes))
             }
             Err(ReadFileError::NotFound | ReadFileError::Invalid | ReadFileError::Empty) => {

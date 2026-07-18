@@ -1603,6 +1603,7 @@ async fn merge_hdr(
 async fn save_hdr(
     first_path_str: String,
     state: tauri::State<'_, AppState>,
+    app_handle: tauri::AppHandle,
 ) -> Result<String, String> {
     let hdr_image = state.hdr_result.lock().unwrap().take().ok_or_else(|| {
         "No hdr image found in memory to save. It might have already been saved.".to_string()
@@ -1639,8 +1640,11 @@ async fn save_hdr(
         .map_err(|e| format!("Failed to save hdr image: {}", e))?;
 
     let (real_path, _) = crate::file_management::parse_virtual_path(&first_path_str);
-    let _ =
-        crate::exif_processing::write_rrexif_sidecar(&real_path.to_string_lossy(), &output_path);
+    let _ = crate::exif_processing::write_rrexif_sidecar(
+        &app_handle,
+        &real_path.to_string_lossy(),
+        &output_path,
+    );
 
     Ok(output_path.to_string_lossy().to_string())
 }

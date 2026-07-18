@@ -95,12 +95,6 @@ pub fn load_base_image_from_bytes(
     let sharpening_amount = settings.raw_preprocessing_sharpening.unwrap_or(0.35);
     let apply_to_non_raws = settings.apply_preprocessing_to_non_raws.unwrap_or(false);
 
-    crate::exif_processing::persist_exif_if_missing(
-        Path::new(path_for_ext_check),
-        path_for_ext_check,
-        bytes,
-    );
-
     if is_raw_file(path_for_ext_check) {
         match panic::catch_unwind(move || {
             crate::raw_processing::develop_raw_image(
@@ -780,6 +774,7 @@ pub async fn load_image(
             ));
         }
 
+        let app_handle_for_block = app_handle.clone();
         let (pristine_img, exif_data_loaded) = tokio::task::spawn_blocking(move || {
             if generation_tracker.load(Ordering::SeqCst) != my_generation {
                 return Err("Load cancelled".to_string());
@@ -792,6 +787,13 @@ pub async fn load_image(
                 if generation_tracker.load(Ordering::SeqCst) != my_generation {
                     return Err("Load cancelled".to_string());
                 }
+
+                crate::exif_processing::persist_exif_if_missing(
+                    &app_handle_for_block,
+                    Path::new(&path_clone),
+                    &path_clone,
+                    &bytes,
+                );
 
                 let img = load_base_image_from_bytes(
                     &bytes,

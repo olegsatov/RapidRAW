@@ -5,7 +5,10 @@ use std::path::{Path, PathBuf};
 
 use crate::formats::is_raw_file;
 use crate::image_processing::ImageMetadata;
+use crate::library_db;
+use crate::metadata_store;
 use chrono::{DateTime, NaiveDateTime, Utc};
+use tauri::AppHandle;
 use exif::{Exif, In, Value};
 use little_exif::exif_tag::ExifTag;
 use little_exif::filetype::FileExtension;
@@ -1078,28 +1081,19 @@ fn load_primary_metadata(image_path: &Path) -> ImageMetadata {
     load_sidecar(&primary)
 }
 
-fn save_primary_metadata(image_path: &Path, metadata: &ImageMetadata) -> std::io::Result<()> {
-    let primary = get_primary_sidecar_path(image_path);
-    let json = serde_json::to_string_pretty(metadata).map_err(std::io::Error::other)?;
-    fs::write(&primary, json)
-}
-
 pub fn read_rrexif_sidecar(image_path: &Path) -> Option<HashMap<String, String>> {
     let metadata = load_primary_metadata(image_path);
     if let Some(exif) = metadata.exif {
         return Some(exif);
     }
 
+    // Legacy `.rrexif` sidecars are read-only; any migration now goes into the
+    // catalog instead of `.rrdata`.
     let legacy = get_rrexif_path(image_path);
     if legacy.exists()
         && let Ok(content) = fs::read_to_string(&legacy)
         && let Ok(map) = serde_json::from_str::<HashMap<String, String>>(&content)
     {
-        let mut migrated = load_primary_metadata(image_path);
-        migrated.exif = Some(map.clone());
-        if save_primary_metadata(image_path, &migrated).is_ok() {
-            let _ = fs::remove_file(&legacy);
-        }
         return Some(map);
     }
 
@@ -1129,33 +1123,79 @@ pub fn read_exif_data(path: &str, file_bytes: &[u8]) -> HashMap<String, String> 
         return sidecar_exif;
     }
 
-    let exif_map = read_exif_data_from_bytes(path, file_bytes);
-    if !exif_map.is_empty() {
-        let mut metadata = load_primary_metadata(source_path);
-        metadata.exif = Some(exif_map.clone());
-        let _ = save_primary_metadata(source_path, &metadata);
-    }
-    exif_map
+    read_exif_data_from_bytes(path, file_bytes)
 }
 
-pub fn persist_exif_if_missing(source_path: &Path, source_path_str: &str, file_bytes: &[u8]) {
-    {
-        let metadata = load_primary_metadata(source_path);
-        if metadata.exif.is_some() {
-            return;
-        }
+/// Persist structured EXIF columns for a catalog row. The caller is expected to
+/// have already stored `exif_json` via `metadata_store::save_image_metadata`.
+fn persist_structured_exif(
+    app_handle: &AppHandle,
+    source_path_str: &str,
+    exif_map: &HashMap<String, String>,
+) {
+    let Some(file_id) = library_db::get_file_id_by_path(app_handle, source_path_str).ok().flatten() else {
+        return;
+    };
+
+    let structured = library_db::StructuredExif::from_exif_map(exif_map);
+    if let Err(e) = library_db::mark_exif_scanned(
+        app_handle,
+        file_id,
+        source_path_str,
+        Some(exif_map),
+        &structured,
+    ) {
+        log::warn!(
+            "failed to update structured EXIF columns for {}: {}",
+            source_path_str,
+            e
+        );
+    }
+}
+
+/// Cache extracted EXIF in the catalog instead of a `.rrdata` sidecar.
+/// Existing metadata (adjustments, rating, flag, tags) is preserved.
+pub fn persist_exif_if_missing(
+    app_handle: &AppHandle,
+    source_path: &Path,
+    source_path_str: &str,
+    file_bytes: &[u8],
+) {
+    let mut metadata =
+        match metadata_store::load_image_metadata(app_handle, None, source_path_str) {
+            Ok(m) => m,
+            Err(e) => {
+                log::warn!(
+                    "failed to load metadata while caching EXIF for {}: {}",
+                    source_path_str,
+                    e
+                );
+                ImageMetadata::default()
+            }
+        };
+
+    if metadata.exif.is_some() {
+        return;
     }
 
+    // Migrate legacy `.rrexif` sidecars into the catalog.
     let legacy = get_rrexif_path(source_path);
     if legacy.exists()
         && let Ok(content) = fs::read_to_string(&legacy)
         && let Ok(map) = serde_json::from_str::<HashMap<String, String>>(&content)
     {
-        let mut metadata = load_primary_metadata(source_path);
         metadata.exif = Some(map);
-        if save_primary_metadata(source_path, &metadata).is_ok() {
-            let _ = fs::remove_file(&legacy);
+        if let Err(e) = metadata_store::save_image_metadata(
+            app_handle,
+            None,
+            source_path_str,
+            &metadata,
+        ) {
+            log::warn!("failed to save migrated EXIF for {}: {}", source_path_str, e);
+            return;
         }
+        persist_structured_exif(app_handle, source_path_str, metadata.exif.as_ref().unwrap());
+        let _ = fs::remove_file(&legacy);
         return;
     }
 
@@ -1164,15 +1204,23 @@ pub fn persist_exif_if_missing(source_path: &Path, source_path_str: &str, file_b
         return;
     }
 
-    let mut metadata = load_primary_metadata(source_path);
-
-    if metadata.exif.is_none() {
-        metadata.exif = Some(exif_map);
-        let _ = save_primary_metadata(source_path, &metadata);
+    metadata.exif = Some(exif_map);
+    if let Err(e) =
+        metadata_store::save_image_metadata(app_handle, None, source_path_str, &metadata)
+    {
+        log::warn!("failed to save EXIF for {}: {}", source_path_str, e);
+        return;
     }
+    persist_structured_exif(app_handle, source_path_str, metadata.exif.as_ref().unwrap());
 }
 
-pub fn write_rrexif_sidecar(source_path_str: &str, target_image_path: &Path) -> Result<(), String> {
+/// Writes cached source EXIF into the target image's catalog row. The name is
+/// kept to minimize caller churn, but the function no longer creates sidecars.
+pub fn write_rrexif_sidecar(
+    app_handle: &AppHandle,
+    source_path_str: &str,
+    target_image_path: &Path,
+) -> Result<(), String> {
     let source_path = Path::new(source_path_str);
 
     let exif_data = if let Some(existing) = read_rrexif_sidecar(source_path) {
@@ -1187,8 +1235,14 @@ pub fn write_rrexif_sidecar(source_path_str: &str, target_image_path: &Path) -> 
         return Ok(());
     }
 
-    let mut metadata = load_primary_metadata(target_image_path);
+    let target_path_str = target_image_path.to_string_lossy().to_string();
+    let mut metadata =
+        metadata_store::load_image_metadata(app_handle, None, &target_path_str).unwrap_or_default();
     metadata.exif = Some(exif_data);
-    save_primary_metadata(target_image_path, &metadata)
-        .map_err(|e| format!("Failed to write sidecar: {}", e))
+
+    metadata_store::save_image_metadata(app_handle, None, &target_path_str, &metadata)
+        .map_err(|e| format!("Failed to write EXIF to catalog: {}", e))?;
+    persist_structured_exif(app_handle, &target_path_str, metadata.exif.as_ref().unwrap());
+
+    Ok(())
 }
