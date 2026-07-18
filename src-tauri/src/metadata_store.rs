@@ -2,7 +2,7 @@ use serde_json::Value;
 use std::collections::HashMap;
 use std::path::Path;
 use std::time::SystemTime;
-use tauri::AppHandle;
+use tauri::{AppHandle, Runtime};
 
 use crate::formats::is_raw_file;
 use crate::image_processing::ImageMetadata;
@@ -11,8 +11,8 @@ use crate::library_db;
 /// Read full `ImageMetadata` for a file. When the catalog already has metadata,
 /// the catalog copy wins. Otherwise the legacy `.rrdata` sidecar is read and
 /// imported into the catalog on demand.
-pub fn load_image_metadata(
-    app_handle: &AppHandle,
+pub fn load_image_metadata<R: Runtime>(
+    app_handle: &AppHandle<R>,
     file_id: Option<i64>,
     path: &str,
 ) -> Result<ImageMetadata, String> {
@@ -70,8 +70,8 @@ pub fn load_image_metadata(
     Ok(ImageMetadata::default())
 }
 
-fn parse_db_metadata(
-    app_handle: &AppHandle,
+fn parse_db_metadata<R: Runtime>(
+    app_handle: &AppHandle<R>,
     file_id: i64,
     file_metadata: &library_db::FileMetadata,
 ) -> Result<ImageMetadata, String> {
@@ -133,8 +133,8 @@ fn load_sidecar_legacy(path: &str) -> Result<ImageMetadata, String> {
 }
 
 /// Persist full `ImageMetadata` to the catalog, stamping `metadata_modified`.
-pub fn save_image_metadata(
-    app_handle: &AppHandle,
+pub fn save_image_metadata<R: Runtime>(
+    app_handle: &AppHandle<R>,
     file_id: Option<i64>,
     path: &str,
     metadata: &ImageMetadata,
@@ -166,8 +166,8 @@ pub fn save_image_metadata(
     tx.commit().map_err(|e| e.to_string())
 }
 
-fn resolve_file_id(
-    app_handle: &AppHandle,
+fn resolve_file_id<R: Runtime>(
+    app_handle: &AppHandle<R>,
     file_id: Option<i64>,
     path: &str,
 ) -> Result<i64, String> {
@@ -226,8 +226,8 @@ fn resolve_file_id(
 
 /// Read the current adjustments blob from the catalog or the legacy `.rrdata`
 /// sidecar. Returns `Value::Null` when neither has data.
-pub fn load_adjustments(
-    app_handle: &AppHandle,
+pub fn load_adjustments<R: Runtime>(
+    app_handle: &AppHandle<R>,
     file_id: Option<i64>,
     path: &str,
 ) -> Result<Value, String> {
@@ -235,8 +235,8 @@ pub fn load_adjustments(
 }
 
 /// Apply a deep patch to the current adjustments and persist the result.
-pub fn patch_adjustments(
-    app_handle: &AppHandle,
+pub fn patch_adjustments<R: Runtime>(
+    app_handle: &AppHandle<R>,
     file_id: Option<i64>,
     path: &str,
     patch: Value,
@@ -265,8 +265,8 @@ fn merge_values(current: &mut Value, patch: &Value) {
     }
 }
 
-pub fn set_rating(
-    app_handle: &AppHandle,
+pub fn set_rating<R: Runtime>(
+    app_handle: &AppHandle<R>,
     file_id: Option<i64>,
     path: &str,
     rating: u8,
@@ -283,8 +283,8 @@ pub fn set_rating(
     )
 }
 
-pub fn set_flag(
-    app_handle: &AppHandle,
+pub fn set_flag<R: Runtime>(
+    app_handle: &AppHandle<R>,
     file_id: Option<i64>,
     path: &str,
     flag: i8,
@@ -301,8 +301,8 @@ pub fn set_flag(
     )
 }
 
-pub fn set_color(
-    app_handle: &AppHandle,
+pub fn set_color<R: Runtime>(
+    app_handle: &AppHandle<R>,
     file_id: Option<i64>,
     path: &str,
     color: Option<&str>,
@@ -311,8 +311,8 @@ pub fn set_color(
     library_db::update_file_color(app_handle, file_id, color)
 }
 
-pub fn set_tags(
-    app_handle: &AppHandle,
+pub fn set_tags<R: Runtime>(
+    app_handle: &AppHandle<R>,
     file_id: Option<i64>,
     path: &str,
     tags: &[String],
@@ -346,4 +346,172 @@ pub fn record_delta(
 
 pub fn take_snapshot(_app_handle: &AppHandle, _file_id: i64, _description: &str, _source: &str) {
     // Stub for the next task: insert into file_adjustment_snapshots.
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rusqlite::{Connection, OptionalExtension};
+    use serde_json::json;
+    use std::path::PathBuf;
+    use tauri::{Manager, test::mock_app};
+
+    fn app_data_db_path<R: Runtime>(app_handle: &AppHandle<R>) -> PathBuf {
+        app_handle.path().app_data_dir().unwrap().join("library.db")
+    }
+
+    fn metadata_modified_for_path(path: &str, db_path: &std::path::Path) -> Option<i64> {
+        let conn = Connection::open(db_path).unwrap();
+        conn.query_row(
+            "SELECT metadata_modified FROM files WHERE path = ?1",
+            [path],
+            |r| r.get::<_, Option<i64>>(0),
+        )
+        .optional()
+        .unwrap()
+        .flatten()
+    }
+
+    #[test]
+    fn test_load_defaults_when_missing() {
+        let app = mock_app();
+        let handle = app.app_handle();
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("a.jpg");
+        let path_str = path.to_str().unwrap();
+
+        let meta = load_image_metadata(handle, None, path_str).unwrap();
+        assert_eq!(meta.version, 1);
+        assert_eq!(meta.rating, 0);
+        assert_eq!(meta.flag, 0);
+        assert_eq!(meta.adjustments, Value::Null);
+        assert_eq!(meta.tags, None);
+        assert_eq!(meta.exif, None);
+    }
+
+    #[test]
+    fn test_lazy_import_from_rrdata() {
+        let app = mock_app();
+        let handle = app.app_handle();
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("a.jpg");
+        let path_str = path.to_str().unwrap();
+        let sidecar = format!("{}.rrdata", path_str);
+
+        let legacy = ImageMetadata {
+            version: 1,
+            rating: 4,
+            flag: 1,
+            adjustments: json!({"exposure": 0.5}),
+            tags: Some(vec!["trip".to_string()]),
+            exif: None,
+        };
+        std::fs::write(&sidecar, serde_json::to_string(&legacy).unwrap()).unwrap();
+
+        let meta = load_image_metadata(handle, None, path_str).unwrap();
+        assert_eq!(meta.rating, 4);
+        assert_eq!(meta.flag, 1);
+        assert_eq!(meta.adjustments, json!({"exposure": 0.5}));
+        assert_eq!(meta.tags, Some(vec!["trip".to_string()]));
+
+        let db_path = app_data_db_path(handle);
+        let modified = metadata_modified_for_path(path_str, &db_path);
+        assert!(
+            modified.unwrap() > 0,
+            "metadata_modified should be set after import"
+        );
+    }
+
+    #[test]
+    fn test_save_updates_metadata_modified() {
+        let app = mock_app();
+        let handle = app.app_handle();
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("a.jpg");
+        let path_str = path.to_str().unwrap();
+
+        let meta = ImageMetadata {
+            version: 1,
+            rating: 2,
+            flag: 0,
+            adjustments: json!({"contrast": 1.1}),
+            tags: None,
+            exif: None,
+        };
+        save_image_metadata(handle, None, path_str, &meta).unwrap();
+
+        let db_path = app_data_db_path(handle);
+        let modified = metadata_modified_for_path(path_str, &db_path);
+        assert!(
+            modified.unwrap() > 0,
+            "metadata_modified should be set after save"
+        );
+    }
+
+    #[test]
+    fn test_no_rrdata_write_after_save() {
+        let app = mock_app();
+        let handle = app.app_handle();
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("a.jpg");
+        let path_str = path.to_str().unwrap();
+        let sidecar = format!("{}.rrdata", path_str);
+
+        let meta = ImageMetadata {
+            version: 1,
+            rating: 0,
+            flag: 0,
+            adjustments: json!({}),
+            tags: None,
+            exif: None,
+        };
+        save_image_metadata(handle, None, path_str, &meta).unwrap();
+
+        assert!(
+            !std::path::Path::new(&sidecar).exists(),
+            "save should not write .rrdata"
+        );
+    }
+
+    #[test]
+    fn test_virtual_copy_metadata() {
+        let app = mock_app();
+        let handle = app.app_handle();
+        let temp = tempfile::tempdir().unwrap();
+        let base_path = temp.path().join("a.jpg");
+        let base_str = base_path.to_str().unwrap();
+        let vc_path = format!("{}?vc=copy1", base_str);
+
+        let base_meta = ImageMetadata {
+            version: 1,
+            rating: 3,
+            flag: 0,
+            adjustments: json!({"base": true}),
+            tags: Some(vec!["base-tag".to_string()]),
+            exif: None,
+        };
+        save_image_metadata(handle, None, base_str, &base_meta).unwrap();
+
+        let vc_meta = ImageMetadata {
+            version: 1,
+            rating: 5,
+            flag: -1,
+            adjustments: json!({"vc": true}),
+            tags: Some(vec!["vc-tag".to_string()]),
+            exif: None,
+        };
+        save_image_metadata(handle, None, &vc_path, &vc_meta).unwrap();
+
+        let loaded_base = load_image_metadata(handle, None, base_str).unwrap();
+        let loaded_vc = load_image_metadata(handle, None, &vc_path).unwrap();
+
+        assert_eq!(loaded_base.rating, 3);
+        assert_eq!(loaded_base.adjustments, json!({"base": true}));
+        assert_eq!(loaded_base.tags, Some(vec!["base-tag".to_string()]));
+
+        assert_eq!(loaded_vc.rating, 5);
+        assert_eq!(loaded_vc.flag, -1);
+        assert_eq!(loaded_vc.adjustments, json!({"vc": true}));
+        assert_eq!(loaded_vc.tags, Some(vec!["vc-tag".to_string()]));
+    }
 }

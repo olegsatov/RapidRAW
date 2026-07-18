@@ -1,13 +1,13 @@
 use rusqlite::{Connection, OptionalExtension, params};
 use std::collections::HashMap;
 use std::path::PathBuf;
-use tauri::{AppHandle, Manager};
+use tauri::{AppHandle, Manager, Runtime};
 
 use crate::file_management::ImageFile;
 
 const CURRENT_SCHEMA_VERSION: i32 = 2;
 
-fn db_path(app_handle: &AppHandle) -> Result<PathBuf, String> {
+fn db_path<R: Runtime>(app_handle: &AppHandle<R>) -> Result<PathBuf, String> {
     let data_dir = app_handle
         .path()
         .app_data_dir()
@@ -16,7 +16,7 @@ fn db_path(app_handle: &AppHandle) -> Result<PathBuf, String> {
     Ok(data_dir.join("library.db"))
 }
 
-pub(crate) fn open_connection(app_handle: &AppHandle) -> Result<Connection, String> {
+pub(crate) fn open_connection<R: Runtime>(app_handle: &AppHandle<R>) -> Result<Connection, String> {
     let path = db_path(app_handle)?;
     let conn = Connection::open(&path).map_err(|e| e.to_string())?;
     conn.execute_batch(
@@ -25,6 +25,7 @@ pub(crate) fn open_connection(app_handle: &AppHandle) -> Result<Connection, Stri
          PRAGMA busy_timeout = 5000;",
     )
     .map_err(|e| e.to_string())?;
+    migrate(&conn)?;
     Ok(conn)
 }
 
@@ -287,7 +288,7 @@ fn try_init_catalog(app_handle: &AppHandle) -> Result<(), String> {
     migrate(&conn)
 }
 
-pub fn upsert_folder(app_handle: &AppHandle, path: &str, recursive: bool) -> Result<i64, String> {
+pub fn upsert_folder<R: Runtime>(app_handle: &AppHandle<R>, path: &str, recursive: bool) -> Result<i64, String> {
     let conn = open_connection(app_handle)?;
     upsert_folder_in_conn(&conn, path, recursive)
 }
@@ -338,8 +339,8 @@ pub struct FileRowInput {
     pub tags: Vec<(String, String)>, // (tag, source)
 }
 
-pub fn upsert_files(
-    app_handle: &AppHandle,
+pub fn upsert_files<R: Runtime>(
+    app_handle: &AppHandle<R>,
     folder_id: i64,
     files: &[FileRowInput],
 ) -> Result<(), String> {
@@ -571,7 +572,7 @@ fn get_files_needing_exif_in_conn(
 /// Resolves the catalog id for one (possibly virtual) path. `None` means the
 /// file is not cataloged; callers fall back to path-keyed behavior in that
 /// case — a missing row is never an error.
-pub fn get_file_id_by_path(app_handle: &AppHandle, file_path: &str) -> Result<Option<i64>, String> {
+pub fn get_file_id_by_path<R: Runtime>(app_handle: &AppHandle<R>, file_path: &str) -> Result<Option<i64>, String> {
     let conn = open_connection(app_handle)?;
     get_file_id_by_path_in_conn(&conn, file_path)
 }
@@ -605,8 +606,8 @@ pub struct FileMetadata {
 /// Returns the adjustment/metadata columns for one catalog row, or `None` if
 /// the file is not cataloged. Used by the metadata store to decide whether a
 /// catalog-backed settings read is available.
-pub fn get_file_metadata(
-    app_handle: &AppHandle,
+pub fn get_file_metadata<R: Runtime>(
+    app_handle: &AppHandle<R>,
     file_id: i64,
 ) -> Result<Option<FileMetadata>, String> {
     let conn = open_connection(app_handle)?;
@@ -653,17 +654,22 @@ pub(crate) fn update_file_metadata_in_conn(
 /// `color:` tags are stored with source `color` in the `tags` table, but the
 /// canonical color label used for filtering remains `files.color`, which
 /// callers set separately via `update_file_metadata_in_conn` or `upsert_files`.
-pub fn update_file_rating_flag_tags(
-    app_handle: &AppHandle,
+pub fn update_file_rating_flag_tags<R: Runtime>(
+    app_handle: &AppHandle<R>,
     file_id: i64,
     rating: u8,
     flag: i8,
     tags: Option<Vec<String>>,
 ) -> Result<(), String> {
-    let conn = open_connection(app_handle)?;
-    update_file_rating_flag_tags_in_conn(&conn, file_id, rating, flag, tags.as_deref())
+    let mut conn = open_connection(app_handle)?;
+    let tx = conn.transaction().map_err(|e| e.to_string())?;
+    update_file_rating_flag_tags_in_conn(&tx, file_id, rating, flag, tags.as_deref())?;
+    tx.commit().map_err(|e| e.to_string())
 }
 
+/// Executes the rating/flag/tags update against an existing connection or
+/// transaction. Callers that need atomicity must wrap this in a transaction
+/// themselves; the public `update_file_rating_flag_tags` does so.
 pub(crate) fn update_file_rating_flag_tags_in_conn(
     conn: &Connection,
     file_id: i64,
@@ -671,14 +677,13 @@ pub(crate) fn update_file_rating_flag_tags_in_conn(
     flag: i8,
     tags: Option<&[String]>,
 ) -> Result<(), String> {
-    let tx = conn.unchecked_transaction().map_err(|e| e.to_string())?;
-    tx.execute(
+    conn.execute(
         "UPDATE files SET rating = ?1, flag = ?2, metadata_modified = ?3 WHERE id = ?4",
         params![rating as i32, flag as i32, now_secs(), file_id],
     )
     .map_err(|e| e.to_string())?;
 
-    tx.execute("DELETE FROM tags WHERE file_id = ?1", params![file_id])
+    conn.execute("DELETE FROM tags WHERE file_id = ?1", params![file_id])
         .map_err(|e| e.to_string())?;
     if let Some(tags) = tags {
         for tag in tags {
@@ -689,21 +694,21 @@ pub(crate) fn update_file_rating_flag_tags_in_conn(
             } else {
                 ("ai", tag.as_str())
             };
-            tx.execute(
+            conn.execute(
                 "INSERT OR IGNORE INTO tags(file_id, tag, source) VALUES (?1, ?2, ?3)",
                 params![file_id, tag_name, source],
             )
             .map_err(|e| e.to_string())?;
         }
     }
-    tx.commit().map_err(|e| e.to_string())
+    Ok(())
 }
 
 /// Reads the rating, flag, and user/ai/color tags stored for one catalog row.
 /// Returns `None` when the file id is not known. Used by the metadata store to
 /// reconstruct `ImageMetadata` from catalog columns.
-pub fn get_file_rating_flag_tags(
-    app_handle: &AppHandle,
+pub fn get_file_rating_flag_tags<R: Runtime>(
+    app_handle: &AppHandle<R>,
     file_id: i64,
 ) -> Result<Option<(u8, i8, Vec<String>)>, String> {
     let conn = open_connection(app_handle)?;
@@ -743,8 +748,8 @@ pub fn get_file_rating_flag_tags(
 
 /// Updates only the color label for one catalog row, stamping
 /// `metadata_modified`. Used by the metadata store for `set_color`.
-pub fn update_file_color(
-    app_handle: &AppHandle,
+pub fn update_file_color<R: Runtime>(
+    app_handle: &AppHandle<R>,
     file_id: i64,
     color: Option<&str>,
 ) -> Result<(), String> {
