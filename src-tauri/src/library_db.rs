@@ -5,7 +5,7 @@ use tauri::{AppHandle, Manager};
 
 use crate::file_management::ImageFile;
 
-const CURRENT_SCHEMA_VERSION: i32 = 1;
+const CURRENT_SCHEMA_VERSION: i32 = 2;
 
 fn db_path(app_handle: &AppHandle) -> Result<PathBuf, String> {
     let data_dir = app_handle
@@ -33,14 +33,19 @@ fn migrate(conn: &Connection) -> Result<(), String> {
         .query_row("PRAGMA user_version", [], |row| row.get(0))
         .map_err(|e| e.to_string())?;
     if user_version < CURRENT_SCHEMA_VERSION {
-        conn.execute_batch(SCHEMA_V1).map_err(|e| e.to_string())?;
+        if user_version < 1 {
+            conn.execute_batch(SCHEMA_V1).map_err(|e| e.to_string())?;
+        } else {
+            conn.execute_batch(SCHEMA_V2).map_err(|e| e.to_string())?;
+        }
         conn.pragma_update(None, "user_version", CURRENT_SCHEMA_VERSION)
             .map_err(|e| e.to_string())?;
     }
     Ok(())
 }
 
-const SCHEMA_V1: &str = r#"
+#[cfg(test)]
+const SCHEMA_V1_PRE_MIGRATION: &str = r#"
 CREATE TABLE IF NOT EXISTS meta (
     key TEXT PRIMARY KEY,
     value TEXT
@@ -110,6 +115,135 @@ CREATE INDEX IF NOT EXISTS idx_files_folder_make ON files(folder_id, make);
 CREATE INDEX IF NOT EXISTS idx_files_folder_model ON files(folder_id, model);
 CREATE INDEX IF NOT EXISTS idx_files_folder_lens_model ON files(folder_id, lens_model);
 CREATE INDEX IF NOT EXISTS idx_tags_tag ON tags(tag COLLATE NOCASE);
+"#;
+
+const SCHEMA_V1: &str = r#"
+CREATE TABLE IF NOT EXISTS meta (
+    key TEXT PRIMARY KEY,
+    value TEXT
+);
+
+CREATE TABLE IF NOT EXISTS folders (
+    id INTEGER PRIMARY KEY,
+    path TEXT NOT NULL,
+    recursive INTEGER NOT NULL,
+    last_synced_at INTEGER,
+    UNIQUE(path, recursive)
+);
+
+CREATE TABLE IF NOT EXISTS files (
+    id INTEGER PRIMARY KEY,
+    folder_id INTEGER NOT NULL REFERENCES folders(id) ON DELETE CASCADE,
+    path TEXT NOT NULL UNIQUE,
+    name TEXT NOT NULL COLLATE NOCASE,
+    modified INTEGER,
+    size INTEGER,
+    sidecar_modified INTEGER,
+    extension TEXT,
+    is_raw INTEGER,
+    is_edited INTEGER,
+    is_virtual_copy INTEGER,
+    is_cloud_placeholder INTEGER,
+    rating INTEGER,
+    flag INTEGER,
+    color TEXT,
+    exif_scanned INTEGER NOT NULL DEFAULT 0,
+    metadata_json TEXT NOT NULL,
+    adjustments_json TEXT NOT NULL DEFAULT '{}',
+    metadata_modified INTEGER,
+    exif_json TEXT,
+
+    date_taken TEXT,
+    iso INTEGER,
+    aperture REAL,
+    shutter REAL,
+    focal_length REAL,
+    focal_length_35 REAL,
+    make TEXT,
+    model TEXT,
+    lens_make TEXT,
+    lens_model TEXT,
+    orientation INTEGER
+);
+
+CREATE TABLE IF NOT EXISTS tags (
+    file_id INTEGER NOT NULL REFERENCES files(id) ON DELETE CASCADE,
+    tag TEXT NOT NULL,
+    source TEXT NOT NULL,
+    PRIMARY KEY (file_id, tag)
+);
+
+CREATE INDEX IF NOT EXISTS idx_files_folder ON files(folder_id);
+CREATE INDEX IF NOT EXISTS idx_files_name ON files(name);
+CREATE INDEX IF NOT EXISTS idx_files_modified ON files(modified);
+CREATE INDEX IF NOT EXISTS idx_files_rating ON files(rating);
+CREATE INDEX IF NOT EXISTS idx_files_flag ON files(flag);
+CREATE INDEX IF NOT EXISTS idx_files_color ON files(color);
+CREATE INDEX IF NOT EXISTS idx_files_is_raw ON files(is_raw);
+CREATE INDEX IF NOT EXISTS idx_files_folder_exif_scanned ON files(folder_id, exif_scanned);
+CREATE INDEX IF NOT EXISTS idx_files_folder_date_taken ON files(folder_id, date_taken);
+CREATE INDEX IF NOT EXISTS idx_files_folder_iso ON files(folder_id, iso);
+CREATE INDEX IF NOT EXISTS idx_files_folder_aperture ON files(folder_id, aperture);
+CREATE INDEX IF NOT EXISTS idx_files_folder_shutter ON files(folder_id, shutter);
+CREATE INDEX IF NOT EXISTS idx_files_folder_focal_length ON files(folder_id, focal_length);
+CREATE INDEX IF NOT EXISTS idx_files_folder_make ON files(folder_id, make);
+CREATE INDEX IF NOT EXISTS idx_files_folder_model ON files(folder_id, model);
+CREATE INDEX IF NOT EXISTS idx_files_folder_lens_model ON files(folder_id, lens_model);
+CREATE INDEX IF NOT EXISTS idx_tags_tag ON tags(tag COLLATE NOCASE);
+
+CREATE TABLE IF NOT EXISTS file_adjustment_deltas (
+    id INTEGER PRIMARY KEY,
+    file_id INTEGER NOT NULL REFERENCES files(id) ON DELETE CASCADE,
+    created_at INTEGER NOT NULL,
+    adjustment_key TEXT NOT NULL,
+    old_value TEXT,
+    new_value TEXT NOT NULL,
+    source TEXT NOT NULL,
+    description TEXT,
+    is_undone INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE TABLE IF NOT EXISTS file_adjustment_snapshots (
+    id INTEGER PRIMARY KEY,
+    file_id INTEGER NOT NULL REFERENCES files(id) ON DELETE CASCADE,
+    created_at INTEGER NOT NULL,
+    adjustments_json TEXT NOT NULL,
+    source TEXT NOT NULL,
+    description TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_deltas_file_created ON file_adjustment_deltas(file_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_snapshots_file_created ON file_adjustment_snapshots(file_id, created_at);
+"#;
+
+const SCHEMA_V2: &str = r#"
+ALTER TABLE files ADD COLUMN adjustments_json TEXT NOT NULL DEFAULT '{}';
+ALTER TABLE files ADD COLUMN metadata_modified INTEGER;
+ALTER TABLE files ADD COLUMN exif_json TEXT;
+
+CREATE TABLE IF NOT EXISTS file_adjustment_deltas (
+    id INTEGER PRIMARY KEY,
+    file_id INTEGER NOT NULL REFERENCES files(id) ON DELETE CASCADE,
+    created_at INTEGER NOT NULL,
+    adjustment_key TEXT NOT NULL,
+    old_value TEXT,
+    new_value TEXT NOT NULL,
+    source TEXT NOT NULL,
+    description TEXT,
+    is_undone INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE TABLE IF NOT EXISTS file_adjustment_snapshots (
+    id INTEGER PRIMARY KEY,
+    file_id INTEGER NOT NULL REFERENCES files(id) ON DELETE CASCADE,
+    created_at INTEGER NOT NULL,
+    adjustments_json TEXT NOT NULL,
+    source TEXT NOT NULL,
+    description TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_deltas_file_created ON file_adjustment_deltas(file_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_snapshots_file_created ON file_adjustment_snapshots(file_id, created_at);
 "#;
 
 pub fn init_catalog(app_handle: &AppHandle) -> Result<(), String> {
@@ -451,6 +585,75 @@ fn get_file_id_by_path_in_conn(conn: &Connection, file_path: &str) -> Result<Opt
     )
     .optional()
     .map_err(|e| e.to_string())
+}
+
+/// Adjustment/metadata state stored for one catalog row.
+#[derive(Debug, Clone, PartialEq)]
+pub struct FileMetadata {
+    pub adjustments_json: String,
+    pub metadata_modified: Option<i64>,
+    pub exif_json: Option<String>,
+}
+
+/// Returns the adjustment/metadata columns for one catalog row, or `None` if
+/// the file is not cataloged. Used by the metadata store to decide whether a
+/// catalog-backed settings read is available.
+pub fn get_file_metadata(
+    app_handle: &AppHandle,
+    file_id: i64,
+) -> Result<Option<FileMetadata>, String> {
+    let conn = open_connection(app_handle)?;
+    get_file_metadata_in_conn(&conn, file_id)
+}
+
+fn get_file_metadata_in_conn(
+    conn: &Connection,
+    file_id: i64,
+) -> Result<Option<FileMetadata>, String> {
+    conn.query_row(
+        "SELECT adjustments_json, metadata_modified, exif_json FROM files WHERE id = ?1",
+        params![file_id],
+        |row| {
+            Ok(FileMetadata {
+                adjustments_json: row.get::<_, String>(0)?,
+                metadata_modified: row.get::<_, Option<i64>>(1)?,
+                exif_json: row.get::<_, Option<String>>(2)?,
+            })
+        },
+    )
+    .optional()
+    .map_err(|e| e.to_string())
+}
+
+/// Writes the catalog-side adjustment state and EXIF cache for one file,
+/// stamping `metadata_modified` with the current Unix timestamp. Missing rows
+/// are silently ignored; callers already know the file id from the catalog.
+pub fn update_file_metadata(
+    app_handle: &AppHandle,
+    file_id: i64,
+    adjustments_json: &str,
+    exif_json: Option<&str>,
+) -> Result<(), String> {
+    let conn = open_connection(app_handle)?;
+    update_file_metadata_in_conn(&conn, file_id, adjustments_json, exif_json)
+}
+
+fn update_file_metadata_in_conn(
+    conn: &Connection,
+    file_id: i64,
+    adjustments_json: &str,
+    exif_json: Option<&str>,
+) -> Result<(), String> {
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    conn.execute(
+        "UPDATE files SET adjustments_json = ?2, metadata_modified = ?3, exif_json = ?4 WHERE id = ?1",
+        params![file_id, adjustments_json, now as i64, exif_json],
+    )
+    .map_err(|e| e.to_string())?;
+    Ok(())
 }
 
 /// Returns `(id, path)` for every catalog row in `folder_id`, real files and
@@ -1495,6 +1698,105 @@ mod tests {
             )
             .unwrap();
         assert_eq!(stamped, Some(1_700_000_000));
+    }
+
+    #[test]
+    fn test_update_and_get_file_metadata_round_trip() {
+        let (mut conn, folder_id) = setup_conn();
+        upsert_files_in_conn(&mut conn, folder_id, std::slice::from_ref(&sample_file()))
+            .unwrap();
+        let file_id: i64 = conn
+            .query_row(
+                "SELECT id FROM files WHERE path = '/tmp/x/a.jpg'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+
+        let before = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs() as i64)
+            .unwrap_or(0);
+
+        update_file_metadata_in_conn(&conn, file_id, r#"{"exposure":0.5}"#, None).unwrap();
+
+        let meta = get_file_metadata_in_conn(&conn, file_id).unwrap().unwrap();
+        assert_eq!(meta.adjustments_json, r#"{"exposure":0.5}"#);
+        assert_eq!(meta.exif_json, None);
+        assert!(
+            meta.metadata_modified.unwrap() >= before,
+            "metadata_modified should be stamped with the current time"
+        );
+
+        update_file_metadata_in_conn(
+            &conn,
+            file_id,
+            r#"{"exposure":1.0}"#,
+            Some(r#"{"iso":400}"#),
+        )
+        .unwrap();
+
+        let meta = get_file_metadata_in_conn(&conn, file_id).unwrap().unwrap();
+        assert_eq!(meta.adjustments_json, r#"{"exposure":1.0}"#);
+        assert_eq!(meta.exif_json.as_deref(), Some(r#"{"iso":400}"#));
+    }
+
+    #[test]
+    fn test_get_file_metadata_unknown_file_returns_none() {
+        let conn = Connection::open_in_memory().unwrap();
+        migrate(&conn).unwrap();
+        assert_eq!(get_file_metadata_in_conn(&conn, 999).unwrap(), None);
+    }
+
+    #[test]
+    fn test_migrate_from_v1_adds_columns_and_history_tables() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(SCHEMA_V1_PRE_MIGRATION).unwrap();
+        conn.pragma_update(None, "user_version", 1i32).unwrap();
+
+        migrate(&conn).unwrap();
+
+        let columns: Vec<String> = {
+            let mut stmt = conn
+                .prepare("SELECT name FROM pragma_table_info('files')")
+                .unwrap();
+            stmt.query_map([], |r| r.get(0))
+                .unwrap()
+                .map(|r| r.unwrap())
+                .collect()
+        };
+        assert!(columns.contains(&"adjustments_json".to_string()));
+        assert!(columns.contains(&"metadata_modified".to_string()));
+        assert!(columns.contains(&"exif_json".to_string()));
+
+        let tables: Vec<String> = {
+            let mut stmt = conn
+                .prepare("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name")
+                .unwrap();
+            stmt.query_map([], |r| r.get(0))
+                .unwrap()
+                .map(|r| r.unwrap())
+                .collect()
+        };
+        assert!(tables.contains(&"file_adjustment_deltas".to_string()));
+        assert!(tables.contains(&"file_adjustment_snapshots".to_string()));
+
+        let indexes: Vec<String> = {
+            let mut stmt = conn
+                .prepare("SELECT name FROM sqlite_master WHERE type='index' ORDER BY name")
+                .unwrap();
+            stmt.query_map([], |r| r.get(0))
+                .unwrap()
+                .map(|r| r.unwrap())
+                .collect()
+        };
+        assert!(indexes.contains(&"idx_deltas_file_created".to_string()));
+        assert!(indexes.contains(&"idx_snapshots_file_created".to_string()));
+
+        let version: i32 = conn
+            .query_row("PRAGMA user_version", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(version, CURRENT_SCHEMA_VERSION);
     }
 
     fn image_row(name: &str, exif: Option<HashMap<String, String>>) -> FileRowInput {
