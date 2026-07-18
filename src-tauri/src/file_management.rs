@@ -2550,36 +2550,29 @@ pub fn set_color_label_for_paths(
     let settings = load_settings(app_handle.clone()).unwrap_or_default();
     let enable_xmp_sync = settings.enable_xmp_sync.unwrap_or(false);
     let create_xmp_if_missing = settings.create_xmp_if_missing.unwrap_or(false);
+    let color_label = color.as_deref().filter(|c| !c.is_empty());
 
-    paths.par_iter().for_each(|path| {
-        let (_, sidecar_path) = parse_virtual_path(path);
-
-        let mut metadata = crate::exif_processing::load_sidecar(&sidecar_path);
-
-        let mut tags = metadata.tags.unwrap_or_default();
-        tags.retain(|tag| !tag.starts_with(COLOR_TAG_PREFIX));
-
-        if let Some(c) = &color
-            && !c.is_empty()
-        {
-            tags.push(format!("{}{}", COLOR_TAG_PREFIX, c));
-        }
-
-        if tags.is_empty() {
-            metadata.tags = None;
-        } else {
-            metadata.tags = Some(tags);
-        }
-
-        if let Ok(json_string) = serde_json::to_string_pretty(&metadata) {
-            let _ = std::fs::write(&sidecar_path, json_string);
-        }
+    paths.par_iter().try_for_each(|path| -> Result<(), String> {
+        metadata_store::set_color(&app_handle, None, path, color_label)?;
 
         if enable_xmp_sync {
             let source_path = parse_virtual_path(path).0;
+            let mut metadata = metadata_store::load_image_metadata(&app_handle, None, path)?;
+
+            let mut tags = metadata.tags.unwrap_or_default();
+            tags.retain(|tag| !tag.starts_with(COLOR_TAG_PREFIX));
+            if let Some(c) = color_label {
+                tags.push(format!("{}{}", COLOR_TAG_PREFIX, c));
+            }
+            tags.sort_unstable();
+            tags.dedup();
+            metadata.tags = if tags.is_empty() { None } else { Some(tags) };
+
             sync_metadata_to_xmp(&source_path, &metadata, create_xmp_if_missing);
         }
-    });
+
+        Ok(())
+    })?;
 
     Ok(())
 }
@@ -2594,43 +2587,34 @@ pub fn set_rating_for_paths(
     let enable_xmp_sync = settings.enable_xmp_sync.unwrap_or(false);
     let create_xmp_if_missing = settings.create_xmp_if_missing.unwrap_or(false);
 
-    paths.par_iter().for_each(|path| {
-        let (_, sidecar_path) = parse_virtual_path(path);
-
-        let mut metadata = crate::exif_processing::load_sidecar(&sidecar_path);
-
-        metadata.rating = rating;
-
-        if let Ok(json_string) = serde_json::to_string_pretty(&metadata) {
-            let _ = std::fs::write(&sidecar_path, json_string);
-        }
+    paths.par_iter().try_for_each(|path| -> Result<(), String> {
+        metadata_store::set_rating(&app_handle, None, path, rating)?;
 
         if enable_xmp_sync {
             let source_path = parse_virtual_path(path).0;
+            let metadata = metadata_store::load_image_metadata(&app_handle, None, path)?;
             sync_metadata_to_xmp(&source_path, &metadata, create_xmp_if_missing);
         }
-    });
+
+        Ok(())
+    })?;
 
     Ok(())
 }
 
 #[tauri::command]
-pub fn set_flag_for_paths(paths: Vec<String>, flag: i8) -> Result<(), String> {
+pub fn set_flag_for_paths(
+    paths: Vec<String>,
+    flag: i8,
+    app_handle: AppHandle,
+) -> Result<(), String> {
     if !(-1..=1).contains(&flag) {
         return Err(format!("Invalid flag value: {flag}"));
     }
 
-    paths.par_iter().for_each(|path| {
-        let (_, sidecar_path) = parse_virtual_path(path);
-
-        let mut metadata = crate::exif_processing::load_sidecar(&sidecar_path);
-
-        metadata.flag = flag;
-
-        if let Ok(json_string) = serde_json::to_string_pretty(&metadata) {
-            let _ = std::fs::write(&sidecar_path, json_string);
-        }
-    });
+    paths.par_iter().try_for_each(|path| {
+        metadata_store::set_flag(&app_handle, None, path, flag)
+    })?;
 
     Ok(())
 }

@@ -18,6 +18,7 @@ use crate::file_management::{self, parse_virtual_path};
 use crate::formats::is_supported_image_file;
 use crate::hierarchy::TAG_HIERARCHY;
 use crate::image_processing::ImageMetadata;
+use crate::metadata_store;
 use crate::{AppState, candidates::TAG_CANDIDATES};
 
 pub const COLOR_TAG_PREFIX: &str = "color:";
@@ -414,12 +415,11 @@ pub async fn start_background_indexing(
 }
 
 fn modify_tags_for_path(
+    app_handle: &AppHandle,
     path_str: &str,
     modify_fn: impl Fn(&mut Vec<String>),
 ) -> Result<(), String> {
-    let (_, sidecar_path) = parse_virtual_path(path_str);
-
-    let mut metadata = crate::exif_processing::load_sidecar(&sidecar_path);
+    let mut metadata = metadata_store::load_image_metadata(app_handle, None, path_str)?;
 
     let mut tags = metadata.tags.unwrap_or_default();
     modify_fn(&mut tags);
@@ -433,15 +433,18 @@ fn modify_tags_for_path(
         metadata.tags = Some(tags);
     }
 
-    let json_string = serde_json::to_string_pretty(&metadata).map_err(|e| e.to_string())?;
-    fs::write(sidecar_path, json_string).map_err(|e| e.to_string())
+    metadata_store::save_image_metadata(app_handle, None, path_str, &metadata)
 }
 
 #[tauri::command]
-pub fn add_tag_for_paths(paths: Vec<String>, tag: String) -> Result<(), String> {
+pub fn add_tag_for_paths(
+    paths: Vec<String>,
+    tag: String,
+    app_handle: AppHandle,
+) -> Result<(), String> {
     paths.par_iter().for_each(|path| {
         let tag_clone = tag.clone();
-        if let Err(e) = modify_tags_for_path(path, |tags| {
+        if let Err(e) = modify_tags_for_path(&app_handle, path, |tags| {
             if !tags.contains(&tag_clone) {
                 tags.push(tag_clone.clone());
             }
@@ -453,10 +456,14 @@ pub fn add_tag_for_paths(paths: Vec<String>, tag: String) -> Result<(), String> 
 }
 
 #[tauri::command]
-pub fn remove_tag_for_paths(paths: Vec<String>, tag: String) -> Result<(), String> {
+pub fn remove_tag_for_paths(
+    paths: Vec<String>,
+    tag: String,
+    app_handle: AppHandle,
+) -> Result<(), String> {
     paths.par_iter().for_each(|path| {
         let tag_clone = tag.clone();
-        if let Err(e) = modify_tags_for_path(path, |tags| {
+        if let Err(e) = modify_tags_for_path(&app_handle, path, |tags| {
             tags.retain(|t| t != &tag_clone);
         }) {
             eprintln!("Failed to remove tag from {}: {}", path, e);
