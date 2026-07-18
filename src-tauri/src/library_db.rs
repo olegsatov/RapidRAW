@@ -714,6 +714,64 @@ fn update_file_rating_flag_tags_in_conn(
     tx.commit().map_err(|e| e.to_string())
 }
 
+/// Reads the rating, flag, and user/ai/color tags stored for one catalog row.
+/// Returns `None` when the file id is not known. Used by the metadata store to
+/// reconstruct `ImageMetadata` from catalog columns.
+pub fn get_file_rating_flag_tags(
+    app_handle: &AppHandle,
+    file_id: i64,
+) -> Result<Option<(u8, i8, Vec<String>)>, String> {
+    let conn = open_connection(app_handle)?;
+    let row: Option<(i64, i64)> = conn
+        .query_row(
+            "SELECT rating, flag FROM files WHERE id = ?1",
+            params![file_id],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .optional()
+        .map_err(|e| e.to_string())?;
+    let (rating, flag) = match row {
+        Some((r, f)) => (r as u8, f as i8),
+        None => return Ok(None),
+    };
+
+    let mut stmt = conn
+        .prepare("SELECT tag, source FROM tags WHERE file_id = ?1 ORDER BY tag")
+        .map_err(|e| e.to_string())?;
+    let tags: Vec<String> = stmt
+        .query_map(params![file_id], |row| {
+            let tag: String = row.get(0)?;
+            let source: String = row.get(1)?;
+            let formatted = match source.as_str() {
+                "user" => format!("user:{}", tag),
+                "color" => format!("color:{}", tag),
+                _ => tag,
+            };
+            Ok(formatted)
+        })
+        .map_err(|e| e.to_string())?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())?;
+
+    Ok(Some((rating, flag, tags)))
+}
+
+/// Updates only the color label for one catalog row, stamping
+/// `metadata_modified`. Used by the metadata store for `set_color`.
+pub fn update_file_color(
+    app_handle: &AppHandle,
+    file_id: i64,
+    color: Option<&str>,
+) -> Result<(), String> {
+    let conn = open_connection(app_handle)?;
+    conn.execute(
+        "UPDATE files SET color = ?1, metadata_modified = ?2 WHERE id = ?3",
+        params![color, now_secs(), file_id],
+    )
+    .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
 /// Returns `(id, path)` for every catalog row in `folder_id`, real files and
 /// virtual copies alike. Thumbnails are per row, not per source file: each
 /// virtual copy has its own sidecar (adjustments) and gets its own

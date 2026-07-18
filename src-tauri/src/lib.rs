@@ -32,6 +32,7 @@ mod lens_correction;
 mod library_db;
 mod lut_processing;
 mod mask_generation;
+pub mod metadata_store;
 mod negative_conversion;
 mod panorama_stitching;
 mod panorama_utils;
