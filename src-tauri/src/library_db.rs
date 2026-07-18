@@ -647,6 +647,23 @@ pub(crate) fn update_file_metadata_in_conn(
     Ok(())
 }
 
+/// Returns whether a catalog row has already completed its EXIF scan. Used by
+/// lazy EXIF caching to avoid racing the folder import's EXIF phase.
+pub fn is_file_exif_scanned<R: Runtime>(app_handle: &AppHandle<R>, file_id: i64) -> Result<bool, String> {
+    let conn = open_connection(app_handle)?;
+    is_file_exif_scanned_in_conn(&conn, file_id)
+}
+
+fn is_file_exif_scanned_in_conn(conn: &Connection, file_id: i64) -> Result<bool, String> {
+    conn.query_row(
+        "SELECT exif_scanned FROM files WHERE id = ?1",
+        params![file_id],
+        |row| row.get::<_, i32>(0),
+    )
+    .map(|v| v == 1)
+    .map_err(|e| e.to_string())
+}
+
 /// Updates the rating, flag, and tags for a single catalog row in one
 /// transaction, stamping `metadata_modified`. Tags are parsed from prefixed
 /// strings: `user:`, `color:`, or default `ai`.

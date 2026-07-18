@@ -1182,6 +1182,18 @@ pub fn persist_exif_if_missing(
         return;
     }
 
+    // If the file is cataloged but its EXIF has not been scanned yet, defer to
+    // the folder import's EXIF phase instead of racing it for the SQLite write
+    // lock. Explicit EXIF writes (update_exif_data, export) bypass this path.
+    if let Some(file_id) = library_db::get_file_id_by_path(app_handle, source_path_str)
+        .ok()
+        .flatten()
+    {
+        if let Ok(false) = library_db::is_file_exif_scanned(app_handle, file_id) {
+            return;
+        }
+    }
+
     // Migrate legacy `.rrexif` sidecars into the catalog.
     let legacy = get_rrexif_path(source_path);
     if legacy.exists()
