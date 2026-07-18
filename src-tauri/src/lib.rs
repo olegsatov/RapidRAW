@@ -2583,6 +2583,7 @@ pub fn run() {
             folder_import::locate_folder,
             folder_import::load_folder_files,
             folder_import::check_path_exists,
+            folder_import::get_folder_last_synced,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

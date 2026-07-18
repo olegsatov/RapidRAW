@@ -32,7 +32,17 @@ import Text from '../ui/Text';
 import { TEXT_COLOR_KEYS, TextColors, TextVariants, TextWeights } from '../../types/typography';
 import { useLibraryStore } from '../../store/useLibraryStore';
 import { useSettingsStore } from '../../store/useSettingsStore';
-import { AlbumItem, AlbumGroup, Album, Invokes, FolderTreeSort, SortDirection } from '../ui/AppProperties';
+import { useFolderImportStore, type FolderAvailability } from '../../store/useFolderImportStore';
+import {
+  AlbumItem,
+  AlbumGroup,
+  Album,
+  Invokes,
+  LibraryViewMode,
+  FolderTreeSort,
+  SortDirection,
+} from '../ui/AppProperties';
+import { formatRelativeTime } from '../../utils/formatRelativeTime';
 
 export interface FolderTree {
   children: FolderTree[];
@@ -71,6 +81,8 @@ interface TreeNodeProps {
   showImageCounts: boolean;
   isInstantTransition: boolean;
   folderIcons: Record<string, string>;
+  availability?: FolderAvailability;
+  lastSyncedAt?: number | null;
 }
 
 interface VisibleProps {
@@ -471,10 +483,33 @@ function TreeNode({
   showImageCounts,
   isInstantTransition,
   folderIcons,
+  availability,
+  lastSyncedAt,
 }: TreeNodeProps) {
+  const { t, i18n } = useTranslation();
   const hasChildren = node.hasSubdirs || (node.children && node.children.length > 0);
   const isSelected = node.path === selectedPath;
   const isPinned = pinnedFolders.includes(node.path);
+
+  const statusLabel =
+    availability === 'online'
+      ? t('contextMenus.folders.statusOnline')
+      : availability === 'offline'
+        ? t('contextMenus.folders.statusOffline')
+        : availability === 'unknown'
+          ? t('contextMenus.folders.statusChecking')
+          : undefined;
+
+  const syncTooltip =
+    lastSyncedAt !== undefined && lastSyncedAt !== null
+      ? t('contextMenus.folders.lastSyncedAt', {
+          time: formatRelativeTime(lastSyncedAt, i18n.language),
+        })
+      : lastSyncedAt === null
+        ? t('contextMenus.folders.neverSynced')
+        : undefined;
+
+  const tooltip = [statusLabel, syncTooltip].filter(Boolean).join('\n');
 
   const handleFolderIconClick = (e: any) => {
     e.stopPropagation();
@@ -532,6 +567,7 @@ function TreeNode({
         })}
         onClick={handleNameClick}
         onContextMenu={(e: any) => onContextMenu(e, node.path, isPinned)}
+        data-tooltip={tooltip || undefined}
       >
         <div
           className={clsx(
@@ -573,6 +609,19 @@ function TreeNode({
             </Text>
           )}
         </span>
+
+        {availability && availability !== 'unknown' && (
+          <div
+            className={clsx(
+              'w-2 h-2 rounded-full shrink-0',
+              availability === 'online' && 'bg-green-500',
+              availability === 'offline' && 'bg-red-500',
+            )}
+          />
+        )}
+        {availability === 'unknown' && (
+          <div className="w-2 h-2 rounded-full shrink-0 bg-text-secondary/50 animate-pulse" />
+        )}
 
         {hasChildren && (
           <Text
@@ -661,16 +710,52 @@ export default function FolderTree({
   const [searchQuery, setSearchQuery] = useState('');
   const [isHovering, setIsHovering] = useState(false);
   const [isSortMenuOpen, setIsSortMenuOpen] = useState(false);
+  const [syncTimes, setSyncTimes] = useState<Record<string, number | null>>({});
   const pinnedFolders = appSettings?.pinnedFolders || [];
   const openSections = appSettings?.openTreeSections ?? ['current'];
   const showImageCounts = appSettings?.enableFolderImageCounts ?? false;
   const folderIcons = appSettings?.folderIcons || {};
   const folderTreeSort: FolderTreeSort = appSettings?.folderTreeSort || { key: 'name', order: SortDirection.Ascending };
   const showHeaderButtons = isHovering || isSortMenuOpen;
+  const availability = useFolderImportStore((state) => state.availability);
 
   useEffect(() => {
     invoke(Invokes.GetAlbums).then((res: any) => useLibraryStore.getState().setLibrary({ albumTree: res }));
   }, []);
+
+  // Fetch last-synced timestamps for root-level folder trees. Children inherit
+  // their parent's sync state through the catalog, so only top-level nodes get
+  // the badge/tooltip.
+  useEffect(() => {
+    const recursive = appSettings?.libraryViewMode === LibraryViewMode.Recursive;
+    const rootPaths = Array.from(new Set([...folderTrees, ...pinnedFolderTrees].map((tree: FolderTree) => tree.path)));
+    if (rootPaths.length === 0) {
+      setSyncTimes({});
+      return;
+    }
+    let cancelled = false;
+    Promise.all(
+      rootPaths.map(async (path) => {
+        try {
+          const ts = await invoke<number | null>(Invokes.GetFolderLastSynced, { path, recursive });
+          return { path, ts };
+        } catch (err) {
+          console.error('Failed to read folder last-synced time:', err);
+          return { path, ts: null };
+        }
+      }),
+    ).then((results) => {
+      if (cancelled) return;
+      const next: Record<string, number | null> = {};
+      for (const { path, ts } of results) {
+        next[path] = ts;
+      }
+      setSyncTimes(next);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [folderTrees, pinnedFolderTrees, appSettings?.libraryViewMode]);
 
   const toggleSection = (section: string) => {
     if (appSettings) {
@@ -937,6 +1022,8 @@ export default function FolderTree({
                                 showImageCounts={showImageCounts && isHovering}
                                 isInstantTransition={isInstantTransition}
                                 folderIcons={folderIcons}
+                                availability={availability[pinnedTree.path]}
+                                lastSyncedAt={syncTimes[pinnedTree.path]}
                               />
                             </motion.div>
                           ))}
@@ -1080,6 +1167,8 @@ export default function FolderTree({
                                 showImageCounts={showImageCounts && isHovering}
                                 isInstantTransition={isInstantTransition}
                                 folderIcons={folderIcons}
+                                availability={availability[tree.path]}
+                                lastSyncedAt={syncTimes[tree.path]}
                               />
                             </motion.div>
                           ))}
