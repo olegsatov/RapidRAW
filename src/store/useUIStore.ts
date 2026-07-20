@@ -106,7 +106,6 @@ interface UIState {
   leftPanelWidth: number;
   rightPanelWidth: number;
   bottomPanelHeight: number;
-  leftBottomPanelHeight: number;
   leftBottomPanelHeightGallery: number;
   leftBottomPanelHeightEditor: number;
   compactEditorPanelHeightOverride: number | null;
@@ -177,7 +176,6 @@ export const useUIStore = create<UIState>((set, get) => ({
   leftPanelWidth: 256,
   rightPanelWidth: 320,
   bottomPanelHeight: 144,
-  leftBottomPanelHeight: 0,
   leftBottomPanelHeightGallery: 0,
   leftBottomPanelHeightEditor: 0,
   compactEditorPanelHeightOverride: null,
