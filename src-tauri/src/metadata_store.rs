@@ -1,72 +1,33 @@
 use serde_json::Value;
 use std::collections::HashMap;
 use std::path::Path;
-use std::time::SystemTime;
 use tauri::{AppHandle, Runtime};
 
 use crate::formats::is_raw_file;
 use crate::image_processing::ImageMetadata;
 use crate::library_db;
 
-/// Read full `ImageMetadata` for a file. When the catalog already has metadata,
-/// the catalog copy wins. Otherwise the legacy `.rrdata` sidecar is read and
-/// imported into the catalog on demand.
+/// Read full `ImageMetadata` for a file from the catalog. Legacy `.rrdata`
+/// sidecars are no longer read at runtime; migration into the catalog is the
+/// responsibility of the import/sync flow.
 pub fn load_image_metadata<R: Runtime>(
     app_handle: &AppHandle<R>,
     file_id: Option<i64>,
     path: &str,
 ) -> Result<ImageMetadata, String> {
+    log::debug!("[metadata] load_image_metadata file_id={:?} path={}", file_id, path);
     let file_id = match file_id {
         Some(id) => id,
         None => match library_db::get_file_id_by_path(app_handle, path)? {
             Some(id) => id,
-            None => {
-                // Not cataloged — import legacy sidecar if it exists and parses.
-                if let Some(legacy) = parse_sidecar_legacy(path) {
-                    save_image_metadata(app_handle, None, path, &legacy)?;
-                    return Ok(legacy);
-                }
-                return Ok(ImageMetadata::default());
-            }
+            None => return Ok(ImageMetadata::default()),
         },
     };
 
-    if let Some(file_metadata) = library_db::get_file_metadata(app_handle, file_id)?
-        && let Some(metadata_modified) = file_metadata.metadata_modified
-    {
-        // If the sidecar is newer than the catalog, re-import it.
-        if let Some(sidecar_mtime) = sidecar_mtime(path)
-            && sidecar_mtime > metadata_modified
-        {
-            match load_sidecar_legacy(path) {
-                Ok(legacy) => {
-                    save_image_metadata(app_handle, Some(file_id), path, &legacy)?;
-                    return Ok(legacy);
-                }
-                Err(e) => {
-                    log::warn!(
-                        "sidecar is newer than catalog but cannot be re-imported for {}: {}",
-                        path,
-                        e
-                    );
-                }
-            }
-        }
+    if let Some(file_metadata) = library_db::get_file_metadata(app_handle, file_id)? {
         return parse_db_metadata(app_handle, file_id, &file_metadata);
     }
 
-    // Catalog has no metadata yet — try legacy .rrdata.
-    if sidecar_mtime(path).is_some() {
-        match load_sidecar_legacy(path) {
-            Ok(legacy) => {
-                save_image_metadata(app_handle, Some(file_id), path, &legacy)?;
-                return Ok(legacy);
-            }
-            Err(e) => {
-                log::warn!("failed to import legacy sidecar for {}: {}", path, e);
-            }
-        }
-    }
     Ok(ImageMetadata::default())
 }
 
@@ -96,40 +57,6 @@ fn parse_db_metadata<R: Runtime>(
         tags: if tags.is_empty() { None } else { Some(tags) },
         exif,
     })
-}
-
-fn sidecar_path(path: &str) -> String {
-    let (base_path, vc_id) = match path.split_once("?vc=") {
-        Some((base, id)) => (base, Some(id)),
-        None => (path, None),
-    };
-    match vc_id {
-        Some(id) => format!("{}.{}.rrdata", base_path, id),
-        None => format!("{}.rrdata", base_path),
-    }
-}
-
-fn sidecar_mtime(path: &str) -> Option<i64> {
-    let mtime = std::fs::metadata(sidecar_path(path)).ok()?.modified().ok()?;
-    let secs = mtime
-        .duration_since(SystemTime::UNIX_EPOCH)
-        .ok()?
-        .as_secs() as i64;
-    Some(secs)
-}
-
-fn parse_sidecar_legacy(path: &str) -> Option<ImageMetadata> {
-    let sidecar = sidecar_path(path);
-    let content = std::fs::read_to_string(&sidecar).ok()?;
-    serde_json::from_str::<ImageMetadata>(&content).ok()
-}
-
-fn load_sidecar_legacy(path: &str) -> Result<ImageMetadata, String> {
-    let sidecar = sidecar_path(path);
-    let content = std::fs::read_to_string(&sidecar)
-        .map_err(|e| format!("failed to read sidecar {}: {}", sidecar, e))?;
-    serde_json::from_str::<ImageMetadata>(&content)
-        .map_err(|e| format!("failed to parse sidecar {}: {}", sidecar, e))
 }
 
 /// Persist full `ImageMetadata` to the catalog, stamping `metadata_modified`.
@@ -392,7 +319,7 @@ mod tests {
     }
 
     #[test]
-    fn test_lazy_import_from_rrdata() {
+    fn test_no_rrdata_import_at_runtime() {
         let app = mock_app();
         let handle = app.app_handle();
         let temp = tempfile::tempdir().unwrap();
@@ -411,17 +338,8 @@ mod tests {
         std::fs::write(&sidecar, serde_json::to_string(&legacy).unwrap()).unwrap();
 
         let meta = load_image_metadata(handle, None, path_str).unwrap();
-        assert_eq!(meta.rating, 4);
-        assert_eq!(meta.flag, 1);
-        assert_eq!(meta.adjustments, json!({"exposure": 0.5}));
-        assert_eq!(meta.tags, Some(vec!["trip".to_string()]));
-
-        let db_path = app_data_db_path(handle);
-        let modified = metadata_modified_for_path(path_str, &db_path);
-        assert!(
-            modified.unwrap() > 0,
-            "metadata_modified should be set after import"
-        );
+        assert_eq!(meta.rating, 0, "runtime load should not import legacy rrdata");
+        assert_eq!(meta.adjustments, Value::Null);
     }
 
     #[test]

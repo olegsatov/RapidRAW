@@ -945,6 +945,7 @@ fn get_folder_tree_sync(
     _expanded_folders: Vec<String>,
     _show_image_counts: bool,
 ) -> Result<FolderNode, String> {
+    log::info!("[catalog] get_folder_tree_sync: {}", path);
     // The folder tree is always driven by the catalog. The user explicitly
     // imports/syncs folders; we never reflect filesystem changes that have not
     // been written to the catalog.
@@ -1047,6 +1048,7 @@ pub fn is_cloud_placeholder(_path: &Path) -> bool {
 }
 
 pub fn read_file_bytes(path: &Path) -> Result<Vec<u8>, ReadFileError> {
+    log::debug!("[disk-read] read_file_bytes: {}", path.display());
     if !path.is_file() {
         return Err(ReadFileError::Invalid);
     }
@@ -1356,6 +1358,43 @@ fn lookup_catalog_file_id(app_handle: &AppHandle, path_str: &str) -> Option<i64>
     crate::library_db::get_file_id_by_path(app_handle, path_str).unwrap_or(None)
 }
 
+/// Catalog-only thumbnail lookup for the gallery viewer. Unlike
+/// `generate_single_thumbnail_and_cache`, this never reads the source image
+/// from disk; it only returns a cached thumbnail if one already exists.
+pub(crate) fn lookup_cached_thumbnail(
+    path_str: &str,
+    thumb_cache_dir: &Path,
+    app_handle: &AppHandle,
+    settings: &AppSettings,
+    file_id: Option<i64>,
+    modified: u64,
+) -> Option<(String, u8, bool)> {
+    let metadata =
+        metadata_store::load_image_metadata(app_handle, file_id, path_str).unwrap_or_default();
+    let adjustments = &metadata.adjustments;
+
+    let is_raw = crate::formats::is_raw_file(path_str);
+    let tm = crate::image_processing::resolve_tonemapper_override(settings, is_raw);
+
+    let rating = metadata.rating;
+    let is_edited = crate::image_processing::is_image_edited(adjustments, is_raw, tm);
+    let adjustments_bytes = serde_json::to_vec(adjustments).unwrap_or_default();
+
+    let cache_hash = compute_thumbnail_cache_hash(path_str, file_id, modified, &adjustments_bytes)?;
+
+    let cache_filename = format!("{}.jpg", cache_hash);
+    let cache_path = thumb_cache_dir.join(cache_filename);
+
+    if cache_path.exists() {
+        if let Some(id) = file_id {
+            let _ = library_db::update_file_thumbnail_hash(app_handle, id, &cache_hash);
+        }
+        Some((cache_path.to_string_lossy().into_owned(), rating, is_edited))
+    } else {
+        None
+    }
+}
+
 pub(crate) fn generate_single_thumbnail_and_cache(
     path_str: &str,
     thumb_cache_dir: &Path,
@@ -1394,12 +1433,24 @@ pub(crate) fn generate_single_thumbnail_and_cache(
     let cache_filename = format!("{}.jpg", cache_hash);
     let cache_path = thumb_cache_dir.join(cache_filename);
 
-    if !force_regenerate && cache_path.exists() {
+    let cache_exists = cache_path.exists();
+    log::debug!(
+        "[thumb-cache] {} exists={}",
+        cache_path.display(),
+        cache_exists
+    );
+
+    if !force_regenerate && cache_exists {
         if let Some(id) = file_id {
             let _ = library_db::update_file_thumbnail_hash(app_handle, id, &cache_hash);
         }
         return Some((cache_path.to_string_lossy().into_owned(), rating, is_edited));
     }
+
+    log::debug!(
+        "[disk-read] generate_single_thumbnail_and_cache cache miss: {}",
+        path_str
+    );
 
     if is_cloud_placeholder(&source_path) {
         return None;
@@ -1467,12 +1518,24 @@ pub(crate) fn generate_thumbnail_from_embedded_preview(
     let cache_filename = format!("{}.jpg", cache_hash);
     let cache_path = thumb_cache_dir.join(cache_filename);
 
-    if cache_path.exists() {
+    let cache_exists = cache_path.exists();
+    log::debug!(
+        "[thumb-cache] {} exists={}",
+        cache_path.display(),
+        cache_exists
+    );
+
+    if cache_exists {
         if let Some(id) = file_id {
             let _ = library_db::update_file_thumbnail_hash(app_handle, id, &cache_hash);
         }
         return Some((cache_path.to_string_lossy().into_owned(), rating, is_edited));
     }
+
+    log::debug!(
+        "[disk-read] generate_thumbnail_from_embedded_preview cache miss: {}",
+        path_str
+    );
 
     let bytes = read_file_bytes(&source_path).ok()?;
     let source_path_str = source_path.to_string_lossy().to_string();
@@ -1520,24 +1583,20 @@ pub fn start_thumbnail_workers(app_handle: tauri::AppHandle) {
                 };
 
                 let state = app_clone.state::<crate::AppState>();
-                let gpu_context =
-                    crate::gpu_processing::get_or_init_gpu_context(&state, &app_clone).ok();
 
                 if let Ok(cache_dir) = get_thumb_cache_dir(&app_clone) {
                     let file_id = lookup_catalog_file_id(&app_clone, &path_to_process);
-                    let (source_path, _) = parse_virtual_path(&path_to_process);
-                    let modified = fs::metadata(&source_path)
-                        .ok()
-                        .and_then(|m| m.modified().ok())
-                        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
-                        .map(|d| d.as_secs())
+                    log::debug!("[thumb-worker] processing {} file_id={:?}", path_to_process, file_id);
+                    let modified = file_id
+                        .and_then(|id| library_db::get_file_modified_by_id(&app_clone, id).ok())
+                        .flatten()
                         .unwrap_or(0);
-                    let result = generate_single_thumbnail_and_cache(
+                    // The gallery viewer only reads already-cached thumbnails.
+                    // Source files are never touched here; generation happens
+                    // during import/sync or explicit editing commands.
+                    let result = lookup_cached_thumbnail(
                         &path_to_process,
                         &cache_dir,
-                        gpu_context.as_ref(),
-                        None,
-                        false,
                         &app_clone,
                         &worker_settings,
                         file_id,
@@ -3226,12 +3285,9 @@ pub fn get_cache_key_hash(
 ) -> Option<(String, Value)> {
     let adjustments = metadata_store::load_adjustments(app_handle, file_id, path_str).ok()?;
     let adjustments_bytes = serde_json::to_vec(&adjustments).ok()?;
-    let (source_path, _) = parse_virtual_path(path_str);
-    let modified = fs::metadata(&source_path)
-        .ok()
-        .and_then(|m| m.modified().ok())
-        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
-        .map(|d| d.as_secs())
+    let modified = file_id
+        .and_then(|id| library_db::get_file_modified_by_id(app_handle, id).ok())
+        .flatten()
         .unwrap_or(0);
     let hash = compute_thumbnail_cache_hash(path_str, file_id, modified, &adjustments_bytes)?;
     Some((hash, adjustments))

@@ -809,7 +809,6 @@ export function FolderSyncIndicator({
       return;
     }
     let cancelled = false;
-    useFolderImportStore.getState().checkAvailability([currentFolderPath]);
     invoke<number | null>(Invokes.GetFolderLastSynced, { path: currentFolderPath, recursive })
       .then((ts) => {
         if (!cancelled) setLastSyncedAt(ts);

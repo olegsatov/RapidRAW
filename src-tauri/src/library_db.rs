@@ -1,10 +1,9 @@
 use rusqlite::{Connection, OptionalExtension, params};
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
-use std::time::UNIX_EPOCH;
 use tauri::{AppHandle, Manager, Runtime};
 
-use crate::file_management::{ImageFile, compute_thumbnail_cache_hash, parse_virtual_path};
+use crate::file_management::{ImageFile, compute_thumbnail_cache_hash};
 
 const CURRENT_SCHEMA_VERSION: i32 = 4;
 
@@ -1151,6 +1150,21 @@ pub fn update_file_thumbnail_hash(
     Ok(())
 }
 
+/// Returns the source-file `modified` timestamp stored in the catalog for one
+/// file row. Used by the thumbnail worker to avoid re-statting source files.
+pub fn get_file_modified_by_id(app_handle: &AppHandle, file_id: i64) -> Result<Option<u64>, String> {
+    let conn = open_connection(app_handle)?;
+    let modified: Option<i64> = conn
+        .query_row(
+            "SELECT modified FROM files WHERE id = ?1",
+            params![file_id],
+            |row| row.get(0),
+        )
+        .optional()
+        .map_err(|e| e.to_string())?;
+    Ok(modified.map(|m| m as u64))
+}
+
 /// Returns every non-null thumbnail hash stored in the catalog.
 pub fn get_all_thumbnail_hashes(app_handle: &AppHandle) -> Result<HashSet<String>, String> {
     let conn = open_connection(app_handle)?;
@@ -1186,18 +1200,10 @@ fn backfill_thumbnail_hashes(conn: &Connection) -> Result<(), String> {
         .map_err(|e| e.to_string())?;
 
     for (file_id, path, modified, adjustments_json) in rows {
-        let modified = match modified {
-            Some(m) => m as u64,
-            None => {
-                let source_path = parse_virtual_path(&path).0;
-                std::fs::metadata(&source_path)
-                    .ok()
-                    .and_then(|m| m.modified().ok())
-                    .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
-                    .map(|d| d.as_secs())
-                    .unwrap_or(0)
-            }
-        };
+        // Use the catalog's stored modified timestamp. If it is missing, the
+        // hash is computed with 0; falling back to a disk stat here would hit
+        // network volumes on every startup.
+        let modified = modified.map(|m| m as u64).unwrap_or(0);
 
         if let Some(hash) = compute_thumbnail_cache_hash(
             &path,
@@ -1228,7 +1234,9 @@ pub fn load_folder_files_for_path(
     limit: usize,
 ) -> Result<Vec<ImageFile>, String> {
     let conn = open_connection(app_handle)?;
-    load_folder_files_for_path_in_conn(&conn, path, recursive, offset, limit)
+    let files = load_folder_files_for_path_in_conn(&conn, path, recursive, offset, limit)?;
+    log::info!("[catalog] load_folder_files_for_path returned {} files", files.len());
+    Ok(files)
 }
 
 fn load_folder_files_for_path_in_conn(

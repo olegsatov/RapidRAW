@@ -27,6 +27,7 @@ use crate::tagging::{COLOR_TAG_PREFIX, USER_TAG_PREFIX};
 /// stale network mounts or disconnected external volumes.
 #[tauri::command]
 pub async fn check_path_exists(path: String) -> Result<bool, String> {
+    log::debug!("[disk-read] check_path_exists: {}", path);
     tokio::task::spawn_blocking(move || std::path::Path::new(&path).exists())
         .await
         .map_err(|e| e.to_string())
@@ -298,6 +299,13 @@ pub fn load_folder_files(
 ) -> Result<Vec<ImageFile>, String> {
     // Catalog-only: this command must never touch the source disk. The path is
     // used as a prefix against the file paths stored in the catalog.
+    log::info!(
+        "[catalog] load_folder_files: path={} recursive={} offset={} limit={}",
+        path,
+        recursive,
+        offset,
+        limit
+    );
     library_db::load_folder_files_for_path(&app_handle, &path, recursive, offset, limit)
 }
 
