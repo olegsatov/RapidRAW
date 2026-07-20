@@ -358,13 +358,23 @@ struct ScanEntry {
     sidecars: Vec<Option<String>>,
 }
 
+fn is_hidden_name(name: &str) -> bool {
+    name.starts_with('.')
+}
+
 fn classify_entry(
     entry_path: &Path,
     images: &mut Vec<PathBuf>,
     sidecars_by_path: &mut HashMap<PathBuf, Vec<Option<String>>>,
 ) {
     let file_name = entry_path.file_name().unwrap_or_default().to_string_lossy();
+    if is_hidden_name(&file_name) {
+        return;
+    }
     if let Some((source_filename, copy_id)) = file_management::parse_sidecar_filename(&file_name) {
+        if is_hidden_name(&source_filename) {
+            return;
+        }
         if let Some(parent) = entry_path.parent() {
             sidecars_by_path
                 .entry(parent.join(source_filename))
@@ -378,7 +388,8 @@ fn classify_entry(
 
 /// Collects supported image files (grouped with their `.rrdata` sidecars),
 /// mirroring the grouping logic of the `list_images_*` commands. Stops early
-/// when `cancel` is set, returning what was found so far.
+/// when `cancel` is set, returning what was found so far. Hidden files and
+/// hidden directories are always skipped.
 fn collect_image_paths(
     root: &str,
     recursive: bool,
@@ -388,7 +399,21 @@ fn collect_image_paths(
     let mut sidecars_by_path: HashMap<PathBuf, Vec<Option<String>>> = HashMap::new();
 
     if recursive {
-        for entry in WalkDir::new(root).into_iter().filter_map(Result::ok) {
+        let walker = WalkDir::new(root).into_iter();
+        for entry in walker
+            .filter_entry(|e| {
+                // Always keep the root directory so a hidden temp-dir name
+                // does not prune the entire scan.
+                if e.depth() == 0 {
+                    return true;
+                }
+                e.file_name()
+                    .to_str()
+                    .map(|n| !is_hidden_name(n))
+                    .unwrap_or(true)
+            })
+            .filter_map(Result::ok)
+        {
             if cancel.load(Ordering::Relaxed) {
                 break;
             }
@@ -731,7 +756,7 @@ async fn run_thumbs_phase(
     folder_id: i64,
     cancel: &Arc<AtomicBool>,
 ) -> Option<usize> {
-    let rows = match library_db::get_all_file_paths(app_handle, folder_id) {
+    let rows = match library_db::get_all_file_paths_with_modified(app_handle, folder_id) {
         Ok(rows) => rows,
         Err(e) => {
             emit_error(app_handle, path, recursive, &e);
@@ -768,7 +793,7 @@ async fn run_thumbs_phase(
     let failed = Arc::new(AtomicUsize::new(0));
     let mut handles = Vec::new();
 
-    for (file_id, file_path) in rows {
+    for (file_id, file_path, modified) in rows {
         if cancel.load(Ordering::SeqCst) {
             break;
         }
@@ -802,6 +827,7 @@ async fn run_thumbs_phase(
                     &app_inner,
                     &settings_task,
                     Some(file_id),
+                    modified,
                 )
                 .is_some()
                 {
@@ -816,6 +842,7 @@ async fn run_thumbs_phase(
                         &app_inner,
                         &settings_task,
                         Some(file_id),
+                        modified,
                     ) {
                         Some(_) => ThumbOutcome::Done,
                         None => ThumbOutcome::Failed,

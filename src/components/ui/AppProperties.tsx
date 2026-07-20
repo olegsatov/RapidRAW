@@ -38,6 +38,7 @@ export enum Invokes {
   CalculateAutoAdjustments = 'calculate_auto_adjustments',
   CancelExport = 'cancel_export',
   CheckAIConnectorStatus = 'check_ai_connector_status',
+  CleanupOrphanedThumbnails = 'cleanup_orphaned_thumbnails',
   ClearAllSidecars = 'clear_all_sidecars',
   ClearAiTags = 'clear_ai_tags',
   ClearAllTags = 'clear_all_tags',

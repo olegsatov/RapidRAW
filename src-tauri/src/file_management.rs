@@ -64,28 +64,19 @@ fn emit_thumbnail_cache_setup_error(app_handle: &AppHandle, path: &str, reason: 
     );
 }
 
-fn compute_thumbnail_cache_hash(
+pub(crate) fn compute_thumbnail_cache_hash(
     path_str: &str,
     file_id: Option<i64>,
+    modified: u64,
     adjustments_bytes: &[u8],
 ) -> Option<String> {
-    let (source_path, _) = parse_virtual_path(path_str);
-
-    let img_mod_time = fs::metadata(&source_path)
-        .ok()?
-        .modified()
-        .ok()?
-        .duration_since(std::time::UNIX_EPOCH)
-        .ok()?
-        .as_secs();
-
     let mut hasher = blake3::Hasher::new();
     if let Some(id) = file_id {
         hasher.update(&id.to_le_bytes());
     } else {
         hasher.update(path_str.as_bytes());
     }
-    hasher.update(&img_mod_time.to_le_bytes());
+    hasher.update(&modified.to_le_bytes());
     hasher.update(adjustments_bytes);
     Some(hasher.finalize().to_hex().to_string())
 }
@@ -1374,6 +1365,7 @@ pub(crate) fn generate_single_thumbnail_and_cache(
     app_handle: &AppHandle,
     settings: &AppSettings,
     file_id: Option<i64>,
+    modified: u64,
 ) -> Option<(String, u8, bool)> {
     let (source_path, sidecar_path) = parse_virtual_path(path_str);
 
@@ -1397,12 +1389,15 @@ pub(crate) fn generate_single_thumbnail_and_cache(
     let is_edited = crate::image_processing::is_image_edited(adjustments, is_raw, tm);
     let adjustments_bytes = serde_json::to_vec(adjustments).unwrap_or_default();
 
-    let cache_hash = compute_thumbnail_cache_hash(path_str, file_id, &adjustments_bytes)?;
+    let cache_hash = compute_thumbnail_cache_hash(path_str, file_id, modified, &adjustments_bytes)?;
 
     let cache_filename = format!("{}.jpg", cache_hash);
     let cache_path = thumb_cache_dir.join(cache_filename);
 
     if !force_regenerate && cache_path.exists() {
+        if let Some(id) = file_id {
+            let _ = library_db::update_file_thumbnail_hash(app_handle, id, &cache_hash);
+        }
         return Some((cache_path.to_string_lossy().into_owned(), rating, is_edited));
     }
 
@@ -1423,6 +1418,9 @@ pub(crate) fn generate_single_thumbnail_and_cache(
         if fs::write(&cache_path, &thumb_data).is_err() {
             return None;
         }
+        if let Some(id) = file_id {
+            let _ = library_db::update_file_thumbnail_hash(app_handle, id, &cache_hash);
+        }
         return Some((cache_path.to_string_lossy().into_owned(), rating, is_edited));
     }
     None
@@ -1441,6 +1439,7 @@ pub(crate) fn generate_thumbnail_from_embedded_preview(
     app_handle: &AppHandle,
     settings: &AppSettings,
     file_id: Option<i64>,
+    modified: u64,
 ) -> Option<(String, u8, bool)> {
     let (source_path, _sidecar_path) = parse_virtual_path(path_str);
 
@@ -1463,12 +1462,15 @@ pub(crate) fn generate_thumbnail_from_embedded_preview(
         return None;
     }
 
-    let cache_hash = compute_thumbnail_cache_hash(path_str, file_id, &adjustments_bytes)?;
+    let cache_hash = compute_thumbnail_cache_hash(path_str, file_id, modified, &adjustments_bytes)?;
 
     let cache_filename = format!("{}.jpg", cache_hash);
     let cache_path = thumb_cache_dir.join(cache_filename);
 
     if cache_path.exists() {
+        if let Some(id) = file_id {
+            let _ = library_db::update_file_thumbnail_hash(app_handle, id, &cache_hash);
+        }
         return Some((cache_path.to_string_lossy().into_owned(), rating, is_edited));
     }
 
@@ -1480,6 +1482,9 @@ pub(crate) fn generate_thumbnail_from_embedded_preview(
     let thumb_data = encode_thumbnail(&preview, target_width).ok()?;
     if fs::write(&cache_path, &thumb_data).is_err() {
         return None;
+    }
+    if let Some(id) = file_id {
+        let _ = library_db::update_file_thumbnail_hash(app_handle, id, &cache_hash);
     }
     Some((cache_path.to_string_lossy().into_owned(), rating, is_edited))
 }
@@ -1520,6 +1525,13 @@ pub fn start_thumbnail_workers(app_handle: tauri::AppHandle) {
 
                 if let Ok(cache_dir) = get_thumb_cache_dir(&app_clone) {
                     let file_id = lookup_catalog_file_id(&app_clone, &path_to_process);
+                    let (source_path, _) = parse_virtual_path(&path_to_process);
+                    let modified = fs::metadata(&source_path)
+                        .ok()
+                        .and_then(|m| m.modified().ok())
+                        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                        .map(|d| d.as_secs())
+                        .unwrap_or(0);
                     let result = generate_single_thumbnail_and_cache(
                         &path_to_process,
                         &cache_dir,
@@ -1529,6 +1541,7 @@ pub fn start_thumbnail_workers(app_handle: tauri::AppHandle) {
                         &app_clone,
                         &worker_settings,
                         file_id,
+                        modified,
                     );
 
                     if let Some((thumbnail_path, rating, is_edited)) = result {
@@ -2194,6 +2207,13 @@ pub fn save_metadata_and_update_thumbnail(
         };
 
         let file_id = lookup_catalog_file_id(&app_handle_clone, &path_clone);
+        let (source_path, _) = parse_virtual_path(&path_clone);
+        let modified = fs::metadata(&source_path)
+            .ok()
+            .and_then(|m| m.modified().ok())
+            .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+            .map(|d| d.as_secs())
+            .unwrap_or(0);
         let result = generate_single_thumbnail_and_cache(
             &path_clone,
             &thumb_cache_dir,
@@ -2203,6 +2223,7 @@ pub fn save_metadata_and_update_thumbnail(
             &app_handle_clone,
             &settings,
             file_id,
+            modified,
         );
 
         if let Some((thumbnail_path, rating, is_edited)) = result {
@@ -2295,6 +2316,13 @@ pub async fn apply_adjustments_to_paths(
 
         paths.par_iter().for_each(|path_str| {
             let file_id = lookup_catalog_file_id(&app_handle, path_str);
+            let (source_path, _) = parse_virtual_path(path_str);
+            let modified = fs::metadata(&source_path)
+                .ok()
+                .and_then(|m| m.modified().ok())
+                .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                .map(|d| d.as_secs())
+                .unwrap_or(0);
             let result = generate_single_thumbnail_and_cache(
                 path_str,
                 &thumb_cache_dir,
@@ -2304,6 +2332,7 @@ pub async fn apply_adjustments_to_paths(
                 &app_handle,
                 &settings,
                 file_id,
+                modified,
             );
 
             if let Some((thumbnail_path, rating, is_edited)) = result {
@@ -2364,6 +2393,13 @@ pub async fn reset_adjustments_for_paths(
 
         paths.par_iter().for_each(|path_str| {
             let file_id = lookup_catalog_file_id(&app_handle, path_str);
+            let (source_path, _) = parse_virtual_path(path_str);
+            let modified = fs::metadata(&source_path)
+                .ok()
+                .and_then(|m| m.modified().ok())
+                .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                .map(|d| d.as_secs())
+                .unwrap_or(0);
             let result = generate_single_thumbnail_and_cache(
                 path_str,
                 &thumb_cache_dir,
@@ -2373,6 +2409,7 @@ pub async fn reset_adjustments_for_paths(
                 &app_handle,
                 &settings,
                 file_id,
+                modified,
             );
 
             if let Some((thumbnail_path, rating, is_edited)) = result {
@@ -2481,6 +2518,13 @@ pub async fn apply_auto_adjustments_to_paths(
             .ok();
 
             let file_id = lookup_catalog_file_id(&app_handle, path);
+            let source_path_for_mtime = parse_virtual_path(path).0;
+            let modified = fs::metadata(&source_path_for_mtime)
+                .ok()
+                .and_then(|m| m.modified().ok())
+                .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                .map(|d| d.as_secs())
+                .unwrap_or(0);
             let result = generate_single_thumbnail_and_cache(
                 path,
                 &thumb_cache_dir,
@@ -2490,6 +2534,7 @@ pub async fn apply_auto_adjustments_to_paths(
                 &app_handle,
                 &settings,
                 file_id,
+                modified,
             );
 
             if let Some((thumbnail_path, rating, is_edited)) = result {
@@ -2914,6 +2959,48 @@ pub fn clear_thumbnail_cache(app_handle: AppHandle) -> Result<(), String> {
     Ok(())
 }
 
+/// Deletes thumbnail cache files that are not referenced by any catalog row.
+/// Returns `(scanned_count, removed_count)`.
+#[tauri::command]
+pub fn cleanup_orphaned_thumbnails(app_handle: AppHandle) -> Result<(usize, usize), String> {
+    let thumb_cache_dir = get_thumb_cache_dir(&app_handle)?;
+    let valid_hashes = library_db::get_all_thumbnail_hashes(&app_handle)?;
+
+    let mut scanned = 0usize;
+    let mut removed = 0usize;
+
+    let entries = fs::read_dir(&thumb_cache_dir).map_err(|e| e.to_string())?;
+    for entry in entries.filter_map(Result::ok) {
+        let path = entry.path();
+        if path.extension().and_then(|e| e.to_str()) != Some("jpg") {
+            continue;
+        }
+        scanned += 1;
+        let hash = path
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or("")
+            .to_string();
+        if !valid_hashes.contains(&hash) {
+            if let Err(e) = fs::remove_file(&path) {
+                log::warn!("Failed to remove orphaned thumbnail {}: {}", path.display(), e);
+            } else {
+                removed += 1;
+            }
+        }
+    }
+
+    if removed > 0 {
+        log::info!(
+            "thumbnail cache cleanup: removed {} orphaned file(s) out of {} scanned",
+            removed,
+            scanned
+        );
+    }
+
+    Ok((scanned, removed))
+}
+
 #[tauri::command]
 pub fn show_in_finder(path: String) -> Result<(), String> {
     let (source_path, _) = parse_virtual_path(&path);
@@ -3139,7 +3226,14 @@ pub fn get_cache_key_hash(
 ) -> Option<(String, Value)> {
     let adjustments = metadata_store::load_adjustments(app_handle, file_id, path_str).ok()?;
     let adjustments_bytes = serde_json::to_vec(&adjustments).ok()?;
-    let hash = compute_thumbnail_cache_hash(path_str, file_id, &adjustments_bytes)?;
+    let (source_path, _) = parse_virtual_path(path_str);
+    let modified = fs::metadata(&source_path)
+        .ok()
+        .and_then(|m| m.modified().ok())
+        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let hash = compute_thumbnail_cache_hash(path_str, file_id, modified, &adjustments_bytes)?;
     Some((hash, adjustments))
 }
 

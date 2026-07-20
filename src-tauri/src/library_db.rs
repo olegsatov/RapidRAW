@@ -1,11 +1,12 @@
 use rusqlite::{Connection, OptionalExtension, params};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
+use std::time::UNIX_EPOCH;
 use tauri::{AppHandle, Manager, Runtime};
 
-use crate::file_management::ImageFile;
+use crate::file_management::{ImageFile, compute_thumbnail_cache_hash, parse_virtual_path};
 
-const CURRENT_SCHEMA_VERSION: i32 = 3;
+const CURRENT_SCHEMA_VERSION: i32 = 4;
 
 fn db_path<R: Runtime>(app_handle: &AppHandle<R>) -> Result<PathBuf, String> {
     let data_dir = app_handle
@@ -87,6 +88,20 @@ fn migrate(conn: &Connection) -> Result<(), String> {
         }
         conn.execute_batch(SCHEMA_V3).map_err(|e| e.to_string())?;
         conn.pragma_update(None, "user_version", 3)
+            .map_err(|e| e.to_string())?;
+    }
+    if user_version < 4 {
+        // A crash between adding the column and bumping user_version can leave
+        // the catalog partially migrated. Guard the ALTER so the migration is
+        // idempotent, but always run the hidden-row purge and hash backfill.
+        if !column_exists(conn, "files", "thumbnail_hash")? {
+            conn.execute_batch(SCHEMA_V4).map_err(|e| e.to_string())?;
+        } else {
+            conn.execute("DELETE FROM files WHERE path LIKE '%/.%'", [])
+                .map_err(|e| e.to_string())?;
+        }
+        backfill_thumbnail_hashes(conn)?;
+        conn.pragma_update(None, "user_version", 4)
             .map_err(|e| e.to_string())?;
     }
     let final_version: i32 = conn
@@ -280,6 +295,11 @@ const SCHEMA_V3: &str = r#"
 CREATE INDEX IF NOT EXISTS idx_deltas_file_step ON file_adjustment_deltas(file_id, step_index);
 CREATE INDEX IF NOT EXISTS idx_deltas_file_idx ON file_adjustment_deltas(file_id, idx);
 CREATE INDEX IF NOT EXISTS idx_snapshots_file_idx ON file_adjustment_snapshots(file_id, idx);
+"#;
+
+const SCHEMA_V4: &str = r#"
+ALTER TABLE files ADD COLUMN thumbnail_hash TEXT;
+DELETE FROM files WHERE path LIKE '%/.%';
 "#;
 
 pub fn init_catalog(app_handle: &AppHandle) -> Result<(), String> {
@@ -1077,14 +1097,7 @@ pub fn update_file_color<R: Runtime>(
 /// virtual copy has its own sidecar (adjustments) and gets its own
 /// file_id-keyed cache entry — matching the frontend, which requests
 /// thumbnails per (virtual) path.
-pub fn get_all_file_paths(
-    app_handle: &AppHandle,
-    folder_id: i64,
-) -> Result<Vec<(i64, String)>, String> {
-    let conn = open_connection(app_handle)?;
-    get_all_file_paths_in_conn(&conn, folder_id)
-}
-
+#[allow(dead_code)]
 fn get_all_file_paths_in_conn(
     conn: &Connection,
     folder_id: i64,
@@ -1097,6 +1110,110 @@ fn get_all_file_paths_in_conn(
         .map_err(|e| e.to_string())?;
     rows.collect::<Result<Vec<_>, _>>()
         .map_err(|e| e.to_string())
+}
+
+/// Returns `(id, path, modified)` for every catalog row in `folder_id`.
+/// Used by the thumbnail phase when it needs the catalog's modified timestamp
+/// to compute the cache hash without re-statting each source file.
+pub fn get_all_file_paths_with_modified(
+    app_handle: &AppHandle,
+    folder_id: i64,
+) -> Result<Vec<(i64, String, u64)>, String> {
+    let conn = open_connection(app_handle)?;
+    let mut stmt = conn
+        .prepare("SELECT id, path, modified FROM files WHERE folder_id = ?1 ORDER BY id")
+        .map_err(|e| e.to_string())?;
+    let rows = stmt
+        .query_map(params![folder_id], |row| {
+            Ok((
+                row.get::<_, i64>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, Option<i64>>(2)?.unwrap_or(0) as u64,
+            ))
+        })
+        .map_err(|e| e.to_string())?;
+    rows.collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())
+}
+
+/// Stores the thumbnail cache hash for one catalog row.
+pub fn update_file_thumbnail_hash(
+    app_handle: &AppHandle,
+    file_id: i64,
+    hash: &str,
+) -> Result<(), String> {
+    let conn = open_connection(app_handle)?;
+    conn.execute(
+        "UPDATE files SET thumbnail_hash = ?1 WHERE id = ?2",
+        params![hash, file_id],
+    )
+    .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+/// Returns every non-null thumbnail hash stored in the catalog.
+pub fn get_all_thumbnail_hashes(app_handle: &AppHandle) -> Result<HashSet<String>, String> {
+    let conn = open_connection(app_handle)?;
+    let mut stmt = conn
+        .prepare("SELECT thumbnail_hash FROM files WHERE thumbnail_hash IS NOT NULL")
+        .map_err(|e| e.to_string())?;
+    let rows = stmt
+        .query_map([], |row| row.get::<_, String>(0))
+        .map_err(|e| e.to_string())?;
+    rows.collect::<Result<HashSet<_>, _>>()
+        .map_err(|e| e.to_string())
+}
+
+/// Computes the expected thumbnail cache hash for every existing catalog row
+/// and stores it. This preserves existing valid cache files across the first
+/// cleanup instead of treating them as orphans because their rows start with a
+/// NULL `thumbnail_hash`.
+fn backfill_thumbnail_hashes(conn: &Connection) -> Result<(), String> {
+    let mut stmt = conn
+        .prepare("SELECT id, path, modified, adjustments_json FROM files")
+        .map_err(|e| e.to_string())?;
+    let rows: Vec<(i64, String, Option<i64>, String)> = stmt
+        .query_map([], |row| {
+            Ok((
+                row.get::<_, i64>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, Option<i64>>(2)?,
+                row.get::<_, String>(3)?,
+            ))
+        })
+        .map_err(|e| e.to_string())?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())?;
+
+    for (file_id, path, modified, adjustments_json) in rows {
+        let modified = match modified {
+            Some(m) => m as u64,
+            None => {
+                let source_path = parse_virtual_path(&path).0;
+                std::fs::metadata(&source_path)
+                    .ok()
+                    .and_then(|m| m.modified().ok())
+                    .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
+                    .map(|d| d.as_secs())
+                    .unwrap_or(0)
+            }
+        };
+
+        if let Some(hash) = compute_thumbnail_cache_hash(
+            &path,
+            Some(file_id),
+            modified,
+            adjustments_json.as_bytes(),
+        ) {
+            conn.execute(
+                "UPDATE files SET thumbnail_hash = ?1 WHERE id = ?2",
+                params![hash, file_id],
+            )
+            .map_err(|e| e.to_string())?;
+        }
+    }
+
+    Ok(())
 }
 
 /// Loads one page of files under any path that belongs to the catalog. Works

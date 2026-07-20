@@ -278,6 +278,16 @@ export const useAppInitialization = ({
             onFrontendReadyRef.current?.(launch);
           })
           .catch((e) => console.error('Failed to notify backend of readiness:', e));
+
+        // Background cleanup of orphaned thumbnail cache files. Runs
+        // asynchronously and is intentionally non-fatal.
+        invoke<[number, number]>(Invokes.CleanupOrphanedThumbnails)
+          .then(([scanned, removed]) => {
+            console.log(`Cleaned up ${removed} orphaned thumbnail(s) of ${scanned} scanned`);
+          })
+          .catch((err) => {
+            console.warn('Failed to clean up orphaned thumbnails:', err);
+          });
       })
       .catch((err) => {
         console.error('Failed to load settings:', err);
