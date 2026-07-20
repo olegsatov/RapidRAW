@@ -206,6 +206,8 @@ export interface AppSettings {
   lastFolderState?: LastFolderState | null;
   activeRightPanel?: Panel | null;
   leftBottomPanelHeight?: number;
+  leftBottomPanelHeightGallery?: number;
+  leftBottomPanelHeightEditor?: number;
   pinnedFolders?: string[];
   rootFolders?: string[];
   lastRootPath: string | null;
