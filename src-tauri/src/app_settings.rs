@@ -432,6 +432,10 @@ pub struct AppSettings {
     #[serde(default)]
     pub left_bottom_panel_height: Option<u32>,
     #[serde(default)]
+    pub left_bottom_panel_height_gallery: Option<u32>,
+    #[serde(default)]
+    pub left_bottom_panel_height_editor: Option<u32>,
+    #[serde(default)]
     pub use_wgpu_renderer: Option<bool>,
     #[serde(default)]
     pub canvas_input_mode: Option<String>,
@@ -542,6 +546,8 @@ impl Default for AppSettings {
             waveform_height: Some(220),
             active_waveform_channel: Some("luma".to_string()),
             left_bottom_panel_height: None,
+            left_bottom_panel_height_gallery: None,
+            left_bottom_panel_height_editor: None,
             #[cfg(any(target_os = "linux", target_os = "android"))]
             use_wgpu_renderer: Some(false),
             #[cfg(not(any(target_os = "linux", target_os = "android")))]
