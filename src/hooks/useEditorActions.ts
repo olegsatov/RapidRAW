@@ -6,6 +6,7 @@ import { useEditorStore } from '../store/useEditorStore';
 import { useLibraryStore } from '../store/useLibraryStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useProcessStore } from '../store/useProcessStore';
+import { useUIStore } from '../store/useUIStore';
 import {
   Adjustments,
   INITIAL_ADJUSTMENTS,
@@ -16,14 +17,14 @@ import {
   SectionVisibility,
 } from '../utils/adjustments';
 import { calculateCenteredCrop } from '../utils/cropUtils';
-import { Invokes } from '../components/ui/AppProperties';
+import { Invokes, Panel } from '../components/ui/AppProperties';
 import { globalImageCache } from '../utils/ImageLRUCache';
 import { globalHistoryCache } from '../utils/historyCache';
 import { PRESET_SECTION_VISIBILITY_KEYS } from '../utils/presetUtils';
 import { lutParamsToAdjustments, resolveLutParams } from '../utils/lutSettings';
 
-export const debouncedSetHistory = debounce((newAdj: Adjustments) => {
-  useEditorStore.getState().pushHistory(newAdj);
+export const debouncedSetHistory = debounce((newAdj: Adjustments, source: Panel | null = null) => {
+  useEditorStore.getState().pushHistory(newAdj, source);
 }, 500);
 
 export const debouncedSave = debounce((path: string, adjustmentsToSave: Adjustments) => {
@@ -35,17 +36,18 @@ export const debouncedSave = debounce((path: string, adjustmentsToSave: Adjustme
 
 export function useEditorActions() {
   const setEditor = useEditorStore((s) => s.setEditor);
+  const activeRightPanel = useUIStore((s) => s.activeRightPanel);
 
   const setAdjustments = useCallback(
     (value: Partial<Adjustments> | ((prev: Adjustments) => Adjustments)) => {
       setEditor((state) => {
         const prev = state.adjustments;
         const newAdjustments = typeof value === 'function' ? value(prev) : { ...prev, ...value };
-        debouncedSetHistory(newAdjustments);
+        debouncedSetHistory(newAdjustments, activeRightPanel);
         return { adjustments: newAdjustments };
       });
     },
-    [setEditor],
+    [setEditor, activeRightPanel],
   );
 
   const handleRotate = useCallback(

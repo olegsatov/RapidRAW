@@ -118,6 +118,15 @@ with extra care, and keep this list current as features are added:
   `src/components/ui/ImportJobsIndicator.tsx`, `src/i18n/locales/*.json`.
 - Locale strings for the above: `src/i18n/locales/*.json`.
 
+## Process management
+
+- **Never run broad process killers** such as `pkill -f "vite"`,
+  `pkill -f "node"`, `killall node`, etc. They kill unrelated neighbouring
+  servers and services on the same machine.
+- If you need to stop a dev server or background process, target the specific
+  PID or port from the current task/session (e.g. `lsof -i :<port>` or the PID
+  captured when the process was started).
+
 ## Verification
 
 - `npm run build` — frontend bundle (the real gate; `tsc` has a pre-existing

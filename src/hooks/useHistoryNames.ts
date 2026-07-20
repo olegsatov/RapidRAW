@@ -106,7 +106,7 @@ export function useHistoryNames(adjustmentsHistory: Adjustments[], labels: (stri
       const changed: string[] = [];
 
       for (const key of Object.keys(curr)) {
-        if (prev[key] === curr[key]) continue;
+        if (JSON.stringify(prev[key]) === JSON.stringify(curr[key])) continue;
 
         if (key === 'masks') {
           const prevMasks = prev.masks || [];
@@ -165,5 +165,5 @@ export function useHistoryNames(adjustmentsHistory: Adjustments[], labels: (stri
 
     prevNamesRef.current = newNames;
     return newNames;
-  }, [adjustmentsHistory]);
+  }, [adjustmentsHistory, labels]);
 }

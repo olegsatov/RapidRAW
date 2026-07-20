@@ -1,9 +1,11 @@
 import type { Adjustments } from './adjustments';
+import type { Panel } from '../components/ui/AppProperties';
 
 export interface HistoryCacheEntry {
   history: Adjustments[];
   historyIndex: number;
   historyLabels?: (string | null)[];
+  historySources?: (Panel | null)[];
 }
 
 const MAX_ENTRIES = 20;

@@ -57,11 +57,18 @@ export function useImageLoader(cachedEditStateRef: React.RefObject<any>) {
               persistedHistory.historyIndex,
               persistedHistory.historyDeltas,
               persistedHistory.historyLabels,
+              persistedHistory.historySources,
             );
           } else {
             const cachedHistory = globalHistoryCache.get(selectedImage.path);
             if (cachedHistory) {
-              restoreHistory(cachedHistory.history, cachedHistory.historyIndex, undefined, cachedHistory.historyLabels);
+              restoreHistory(
+                cachedHistory.history,
+                cachedHistory.historyIndex,
+                undefined,
+                cachedHistory.historyLabels,
+                cachedHistory.historySources,
+              );
             } else {
               setEditor({ adjustments: initialAdjusts });
               resetHistory(initialAdjusts);

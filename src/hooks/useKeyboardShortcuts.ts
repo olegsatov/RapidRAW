@@ -531,7 +531,7 @@ export const useKeyboardShortcuts = ({
             if (snapshot && snapshot.imagePath === (s.editor.selectedImage?.path ?? null)) {
               const newAdjustments = { ...s.editor.adjustments, ...snapshot.adjustments };
               s.editor.setEditor({ adjustments: newAdjustments });
-              debouncedSetHistory(newAdjustments);
+              debouncedSetHistory(newAdjustments, Panel.Crop);
             }
             s.ui.setRightPanel(s.ui.panelBeforeCrop === undefined ? Panel.Adjustments : s.ui.panelBeforeCrop);
           } else if (s.ui.isFullScreen) handleToggleFullScreen();
@@ -657,7 +657,7 @@ export const useKeyboardShortcuts = ({
           },
         };
         state.editor.setEditor({ adjustments: newAdjustments });
-        debouncedSetHistory(newAdjustments);
+        debouncedSetHistory(newAdjustments, state.ui.activeRightPanel);
         return;
       }
     };

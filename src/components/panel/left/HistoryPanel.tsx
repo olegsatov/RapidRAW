@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { Bookmark, Plus } from 'lucide-react';
 import { useEditorStore } from '../../../store/useEditorStore';
 import { useHistoryNames } from '../../../hooks/useHistoryNames';
+import { getPanelIcon } from '../../../utils/panelIcons';
 import Text from '../../ui/Text';
 import { TextColors, TextVariants, TextWeights } from '../../../types/typography';
 
@@ -21,6 +22,7 @@ export default function HistoryPanel() {
   const history = useEditorStore((state) => state.history);
   const historyIndex = useEditorStore((state) => state.historyIndex);
   const historyLabels = useEditorStore((state) => state.historyLabels);
+  const historySources = useEditorStore((state) => state.historySources);
   const pushNamedSnapshot = useEditorStore((state) => state.pushNamedSnapshot);
   const goToHistoryIndex = useEditorStore((state) => state.goToHistoryIndex);
   const historyNames = useHistoryNames(history, historyLabels);
@@ -104,6 +106,8 @@ export default function HistoryPanel() {
             .map((i) => {
               const isActive = i === historyIndex;
               const isSnapshot = !!historyLabels[i];
+              const source = historySources[i];
+              const SourceIcon = getPanelIcon(source);
               return (
                 <button
                   key={i}
@@ -122,7 +126,11 @@ export default function HistoryPanel() {
                       fill="currentColor"
                     />
                   )}
+                  {!isSnapshot && SourceIcon && (
+                    <SourceIcon size={14} className={isActive ? 'text-text-primary' : 'text-text-secondary'} />
+                  )}
                   <Text
+                    variant={TextVariants.body}
                     color={isActive ? TextColors.primary : TextColors.secondary}
                     weight={isSnapshot ? TextWeights.semibold : isActive ? TextWeights.medium : TextWeights.normal}
                   >

@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { Adjustments, INITIAL_ADJUSTMENTS, MaskContainer, AiPatch } from '../utils/adjustments';
 import { arraysEqual, computeHistoryDeltas, getChangedTopLevelKeys, HistoryDelta } from '../utils/historyUtils';
-import { SelectedImage, WaveformData, BrushSettings } from '../components/ui/AppProperties';
+import { Panel, SelectedImage, WaveformData, BrushSettings } from '../components/ui/AppProperties';
 import { ChannelConfig } from '../components/adjustments/Curves';
 import { ImageDimensions } from '../hooks/useImageRenderSize';
 import { ToolType } from '../components/panel/right/Masks';
@@ -28,6 +28,7 @@ interface EditorState {
   historyIndex: number;
   historyDeltas: HistoryDelta[][];
   historyLabels: (string | null)[];
+  historySources: (Panel | null)[];
 
   // Previews & Overlays
   finalPreviewUrl: string | null;
@@ -85,7 +86,7 @@ interface EditorState {
   // Actions
   setEditor: (updater: Partial<EditorState> | ((state: EditorState) => Partial<EditorState>)) => void;
   setHistoryDeltas: (deltas: HistoryDelta[][]) => void;
-  pushHistory: (newAdjustments: Adjustments) => void;
+  pushHistory: (newAdjustments: Adjustments, source?: Panel | null) => void;
   pushNamedSnapshot: (name: string) => void;
   undo: () => void;
   redo: () => void;
@@ -95,6 +96,7 @@ interface EditorState {
     historyIndex: number,
     historyDeltas?: HistoryDelta[][],
     historyLabels?: (string | null)[],
+    historySources?: (Panel | null)[],
   ) => void;
   goToHistoryIndex: (index: number) => void;
 }
@@ -107,6 +109,7 @@ export const useEditorStore = create<EditorState>((set) => ({
   historyIndex: 0,
   historyDeltas: [[]],
   historyLabels: [null],
+  historySources: [null],
 
   finalPreviewUrl: null,
   uncroppedAdjustedPreviewUrl: null,
@@ -155,7 +158,7 @@ export const useEditorStore = create<EditorState>((set) => ({
   setEditor: (updater) => set((state) => (typeof updater === 'function' ? updater(state) : updater)),
   setHistoryDeltas: (deltas) => set(() => ({ historyDeltas: deltas })),
 
-  pushHistory: (newAdj) =>
+  pushHistory: (newAdj, source = null) =>
     set((state) => {
       const current = state.history[state.historyIndex];
       if (JSON.stringify(current) === JSON.stringify(newAdj)) return state;
@@ -174,12 +177,15 @@ export const useEditorStore = create<EditorState>((set) => ({
           const newLabels = state.historyLabels.slice(0, state.historyIndex);
           // Preserve any user-given label on the step being replaced.
           newLabels.push(state.historyLabels[state.historyIndex] ?? null);
+          const newSources = state.historySources.slice(0, state.historyIndex);
+          newSources.push(source);
           return {
             history: newHistory,
             historyIndex: state.historyIndex,
             adjustments: newAdj,
             historyDeltas: newDeltas,
             historyLabels: newLabels,
+            historySources: newSources,
           };
         }
       }
@@ -190,10 +196,13 @@ export const useEditorStore = create<EditorState>((set) => ({
       newDeltas.push(delta);
       const newLabels = state.historyLabels.slice(0, state.historyIndex + 1);
       newLabels.push(null);
+      const newSources = state.historySources.slice(0, state.historyIndex + 1);
+      newSources.push(source);
       if (newHistory.length > HISTORY_LIMIT) {
         newHistory.shift();
         newDeltas.shift();
         newLabels.shift();
+        newSources.shift();
       }
       return {
         history: newHistory,
@@ -201,40 +210,15 @@ export const useEditorStore = create<EditorState>((set) => ({
         adjustments: newAdj,
         historyDeltas: newDeltas,
         historyLabels: newLabels,
+        historySources: newSources,
       };
     }),
 
   pushNamedSnapshot: (name) =>
     set((state) => {
-      const current = state.history[state.historyIndex];
-      if (state.historyIndex > 0) {
-        const prev = state.history[state.historyIndex - 1];
-        if (JSON.stringify(prev) === JSON.stringify(current)) {
-          // No actual change from the previous step; just label it.
-          const newLabels = [...state.historyLabels];
-          newLabels[state.historyIndex] = name;
-          return { historyLabels: newLabels };
-        }
-      }
-
-      const newHistory = state.history.slice(0, state.historyIndex + 1);
-      newHistory.push(current);
-      const newDeltas = state.historyDeltas.slice(0, state.historyIndex + 1);
-      newDeltas.push([]);
-      const newLabels = state.historyLabels.slice(0, state.historyIndex + 1);
-      newLabels.push(name);
-      if (newHistory.length > HISTORY_LIMIT) {
-        newHistory.shift();
-        newDeltas.shift();
-        newLabels.shift();
-      }
-      return {
-        history: newHistory,
-        historyIndex: newHistory.length - 1,
-        adjustments: current,
-        historyDeltas: newDeltas,
-        historyLabels: newLabels,
-      };
+      const newLabels = [...state.historyLabels];
+      newLabels[state.historyIndex] = name;
+      return { historyLabels: newLabels };
     }),
 
   undo: () =>
@@ -262,9 +246,10 @@ export const useEditorStore = create<EditorState>((set) => ({
       adjustments: initialState,
       historyDeltas: [[]],
       historyLabels: [null],
+      historySources: [null],
     })),
 
-  restoreHistory: (history, historyIndex, historyDeltas, historyLabels) =>
+  restoreHistory: (history, historyIndex, historyDeltas, historyLabels, historySources) =>
     set(() => {
       if (history.length === 0) return {} as Partial<EditorState>;
       const clamped = Math.min(Math.max(historyIndex, 0), history.length - 1);
@@ -274,6 +259,7 @@ export const useEditorStore = create<EditorState>((set) => ({
         adjustments: history[clamped],
         historyDeltas: historyDeltas ?? Array.from({ length: history.length }, () => []),
         historyLabels: historyLabels ?? Array.from({ length: history.length }, () => null),
+        historySources: historySources ?? Array.from({ length: history.length }, () => null),
       };
     }),
 

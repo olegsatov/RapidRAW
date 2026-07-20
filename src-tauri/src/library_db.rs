@@ -402,6 +402,7 @@ pub struct AdjustmentDelta {
     pub new_value: String,
     pub description: Option<String>,
     pub created_at: i64,
+    pub source: String,
 }
 
 #[derive(Debug, Clone)]
@@ -410,6 +411,7 @@ pub struct AdjustmentSnapshot {
     pub adjustments_json: String,
     pub description: Option<String>,
     pub created_at: i64,
+    pub source: String,
 }
 
 #[derive(Debug, Clone)]
@@ -740,8 +742,11 @@ pub fn save_edit_history<R: Runtime>(
     history_index: i64,
     current_adjustments_json: &str,
 ) -> Result<(), String> {
+    log::info!("[history-persistence] library_db::save_edit_history opening connection for file_id={}", file_id);
     let mut conn = open_connection(app_handle)?;
+    log::info!("[history-persistence] connection opened, starting transaction");
     let tx = conn.transaction().map_err(|e| e.to_string())?;
+    log::info!("[history-persistence] transaction started");
     save_edit_history_in_conn(
         &tx,
         file_id,
@@ -750,7 +755,10 @@ pub fn save_edit_history<R: Runtime>(
         history_index,
         current_adjustments_json,
     )?;
-    tx.commit().map_err(|e| e.to_string())
+    log::info!("[history-persistence] committing transaction for file_id={}", file_id);
+    tx.commit().map_err(|e| e.to_string())?;
+    log::info!("[history-persistence] transaction committed for file_id={}", file_id);
+    Ok(())
 }
 
 fn save_edit_history_in_conn(
@@ -785,7 +793,7 @@ fn save_edit_history_in_conn(
             file_id,
             snapshot.created_at,
             &snapshot.adjustments_json,
-            "history",
+            &snapshot.source,
             snapshot.description.as_ref(),
             snapshot.idx,
         ],
@@ -803,7 +811,7 @@ fn save_edit_history_in_conn(
                 &delta.adjustment_key,
                 delta.old_value.as_ref(),
                 &delta.new_value,
-                "history",
+                &delta.source,
                 delta.description.as_ref(),
                 0i32,
                 delta.step_index,
@@ -854,7 +862,7 @@ fn load_edit_history_in_conn(
 ) -> Result<Option<EditHistory>, String> {
     let snapshot = conn
         .query_row(
-            "SELECT idx, adjustments_json, description, created_at
+            "SELECT idx, adjustments_json, description, created_at, source
              FROM file_adjustment_snapshots
              WHERE file_id = ?1
              ORDER BY idx ASC
@@ -866,6 +874,7 @@ fn load_edit_history_in_conn(
                     adjustments_json: row.get(1)?,
                     description: row.get(2)?,
                     created_at: row.get(3)?,
+                    source: row.get(4)?,
                 })
             },
         )
@@ -879,7 +888,7 @@ fn load_edit_history_in_conn(
 
     let mut stmt = conn
         .prepare(
-            "SELECT step_index, idx, adjustment_key, old_value, new_value, description, created_at
+            "SELECT step_index, idx, adjustment_key, old_value, new_value, description, created_at, source
              FROM file_adjustment_deltas
              WHERE file_id = ?1
              ORDER BY step_index ASC, idx ASC",
@@ -895,6 +904,7 @@ fn load_edit_history_in_conn(
                 new_value: row.get(4)?,
                 description: row.get(5)?,
                 created_at: row.get(6)?,
+                source: row.get(7)?,
             })
         })
         .map_err(|e| e.to_string())?
@@ -2649,6 +2659,7 @@ mod tests {
             adjustments_json: r#"{"exposure":0.0,"contrast":1.0}"#.to_string(),
             description: Some("base".to_string()),
             created_at: 1000,
+            source: "history".to_string(),
         };
         let deltas = vec![
             AdjustmentDelta {
@@ -2659,6 +2670,7 @@ mod tests {
                 new_value: "0.5".to_string(),
                 description: None,
                 created_at: 1001,
+                source: "history".to_string(),
             },
             AdjustmentDelta {
                 step_index: 1,
@@ -2668,6 +2680,7 @@ mod tests {
                 new_value: "1.0".to_string(),
                 description: None,
                 created_at: 1002,
+                source: "history".to_string(),
             },
             AdjustmentDelta {
                 step_index: 2,
@@ -2677,6 +2690,7 @@ mod tests {
                 new_value: "1.2".to_string(),
                 description: None,
                 created_at: 1003,
+                source: "history".to_string(),
             },
         ];
 
@@ -2722,6 +2736,56 @@ mod tests {
     }
 
     #[test]
+    fn test_edit_history_step_label_is_preserved() {
+        let (mut conn, folder_id) = setup_conn();
+        upsert_files_in_conn(&mut conn, folder_id, &[file_row("/tmp/a.jpg")]).unwrap();
+        let file_id: i64 = conn
+            .query_row("SELECT id FROM files WHERE path = '/tmp/a.jpg'", [], |r| {
+                r.get(0)
+            })
+            .unwrap();
+
+        let snapshot = AdjustmentSnapshot {
+            idx: 0,
+            adjustments_json: r#"{"exposure":0.0}"#.to_string(),
+            description: Some("base".to_string()),
+            created_at: 1000,
+            source: "history".to_string(),
+        };
+        let deltas = vec![AdjustmentDelta {
+            step_index: 0,
+            idx: 0,
+            adjustment_key: "exposure".to_string(),
+            old_value: Some("0.0".to_string()),
+            new_value: "0.5".to_string(),
+            description: Some("after edit".to_string()),
+            created_at: 1001,
+            source: "history".to_string(),
+        }];
+
+        save_edit_history_in_conn(
+            &conn,
+            file_id,
+            &snapshot,
+            &deltas,
+            1,
+            r#"{"exposure":0.5}"#,
+        )
+        .unwrap();
+
+        let history = load_edit_history_in_conn(&conn, file_id).unwrap().unwrap();
+        let (states, active_index) =
+            reconstruct_history(&history.snapshot, &history.deltas, history.history_index)
+                .unwrap();
+        assert_eq!(states.len(), 2);
+        assert_eq!(active_index, 1);
+
+        // Base snapshot label and per-step label must round-trip.
+        assert_eq!(history.snapshot.description, Some("base".to_string()));
+        assert_eq!(history.deltas[0].description, Some("after edit".to_string()));
+    }
+
+    #[test]
     fn test_edit_history_pruning() {
         let (mut conn, folder_id) = setup_conn();
         upsert_files_in_conn(&mut conn, folder_id, &[file_row("/tmp/a.jpg")]).unwrap();
@@ -2736,6 +2800,7 @@ mod tests {
             adjustments_json: r#"{"exposure":0.0}"#.to_string(),
             description: None,
             created_at: 0,
+            source: "history".to_string(),
         };
         let deltas: Vec<AdjustmentDelta> = (0..105)
             .map(|step| AdjustmentDelta {
@@ -2746,6 +2811,7 @@ mod tests {
                 new_value: format!("{}", step as f64),
                 description: None,
                 created_at: step,
+                source: "history".to_string(),
             })
             .collect();
 
@@ -2794,6 +2860,7 @@ mod tests {
             adjustments_json: r#"{"exposure":0.5}"#.to_string(),
             description: None,
             created_at: 0,
+            source: "history".to_string(),
         };
         let base_deltas = vec![AdjustmentDelta {
             step_index: 0,
@@ -2803,6 +2870,7 @@ mod tests {
             new_value: "0.6".to_string(),
             description: None,
             created_at: 1,
+            source: "history".to_string(),
         }];
         save_edit_history_in_conn(
             &conn,
@@ -2819,6 +2887,7 @@ mod tests {
             adjustments_json: r#"{"exposure":2.0}"#.to_string(),
             description: None,
             created_at: 0,
+            source: "history".to_string(),
         };
         let vc_deltas = vec![AdjustmentDelta {
             step_index: 0,
@@ -2828,6 +2897,7 @@ mod tests {
             new_value: "2.5".to_string(),
             description: None,
             created_at: 1,
+            source: "history".to_string(),
         }];
         save_edit_history_in_conn(
             &conn,
@@ -2859,6 +2929,7 @@ mod tests {
             adjustments_json: r#"{"exposure":0.0}"#.to_string(),
             description: None,
             created_at: 0,
+            source: "history".to_string(),
         };
         let deltas: Vec<AdjustmentDelta> = (0..5)
             .map(|step| AdjustmentDelta {
@@ -2869,6 +2940,7 @@ mod tests {
                 new_value: format!("{:.1}", step as f64 + 1.0),
                 description: None,
                 created_at: step,
+                source: "history".to_string(),
             })
             .collect();
 
@@ -2887,6 +2959,7 @@ mod tests {
             adjustments_json: r#"{"exposure":0.0}"#.to_string(),
             description: None,
             created_at: 0,
+            source: "history".to_string(),
         };
 
         let (states, active_index) = reconstruct_history(&snapshot, &[], 0).unwrap();
@@ -2903,6 +2976,7 @@ mod tests {
             adjustments_json: r#"{"exposure":0.0}"#.to_string(),
             description: None,
             created_at: 0,
+            source: "history".to_string(),
         };
         let deltas: Vec<AdjustmentDelta> = (0..3)
             .map(|step| AdjustmentDelta {
@@ -2913,6 +2987,7 @@ mod tests {
                 new_value: format!("{:.1}", step as f64 + 1.0),
                 description: None,
                 created_at: step,
+                source: "history".to_string(),
             })
             .collect();
 

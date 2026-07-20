@@ -90,12 +90,14 @@ export function useAppNavigation({ clearThumbnailQueue, refs }: AppNavigationPro
       history: prevHistory,
       historyIndex: prevIndex,
       historyLabels: prevLabels,
+      historySources: prevSources,
     } = useEditorStore.getState();
     if (prevImage?.path && prevHistory.length > 0) {
       globalHistoryCache.set(prevImage.path, {
         history: prevHistory,
         historyIndex: prevIndex,
         historyLabels: prevLabels,
+        historySources: prevSources,
       });
     }
 
@@ -154,12 +156,14 @@ export function useAppNavigation({ clearThumbnailQueue, refs }: AppNavigationPro
         history: outgoingHistory,
         historyIndex: outgoingIndex,
         historyLabels: outgoingLabels,
+        historySources: outgoingSources,
       } = useEditorStore.getState();
       if (selectedImage?.path && outgoingHistory.length > 0) {
         globalHistoryCache.set(selectedImage.path, {
           history: outgoingHistory,
           historyIndex: outgoingIndex,
           historyLabels: outgoingLabels,
+          historySources: outgoingSources,
         });
       }
 
@@ -212,7 +216,13 @@ export function useAppNavigation({ clearThumbnailQueue, refs }: AppNavigationPro
 
         const cachedHistory = globalHistoryCache.get(path);
         if (cachedHistory) {
-          restoreHistory(cachedHistory.history, cachedHistory.historyIndex, undefined, cachedHistory.historyLabels);
+          restoreHistory(
+            cachedHistory.history,
+            cachedHistory.historyIndex,
+            undefined,
+            cachedHistory.historyLabels,
+            cachedHistory.historySources,
+          );
         } else {
           setEditor({ adjustments: cached.adjustments });
           resetHistory(cached.adjustments);
@@ -384,12 +394,14 @@ export function useAppNavigation({ clearThumbnailQueue, refs }: AppNavigationPro
             history: prevHistory,
             historyIndex: prevIndex,
             historyLabels: prevLabels,
+            historySources: prevSources,
           } = useEditorStore.getState();
           if (prevImage?.path && prevHistory.length > 0) {
             globalHistoryCache.set(prevImage.path, {
               history: prevHistory,
               historyIndex: prevIndex,
               historyLabels: prevLabels,
+              historySources: prevSources,
             });
           }
           setEditor({ selectedImage: null, finalPreviewUrl: null, uncroppedAdjustedPreviewUrl: null, histogram: null });

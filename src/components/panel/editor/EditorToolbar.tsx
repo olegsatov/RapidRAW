@@ -3,11 +3,13 @@ import { Eye, EyeOff, ArrowLeft, Maximize, Loader2, Undo, Redo, Waves } from 'lu
 import { motion, AnimatePresence } from 'framer-motion';
 import clsx from 'clsx';
 import { useTranslation } from 'react-i18next';
-import { SelectedImage } from '../../ui/AppProperties';
+import { Panel, SelectedImage } from '../../ui/AppProperties';
 import { IconAperture, IconCalendar, IconClock, IconFocalLength, IconIso, IconShutter } from './ExifIcons';
 import Text from '../../ui/Text';
 import { TextColors, TextVariants, TextWeights } from '../../../types/typography';
 import { useHistoryNames } from '../../../hooks/useHistoryNames';
+import { getPanelIcon } from '../../../utils/panelIcons';
+import { Adjustments } from '../../../utils/adjustments';
 
 interface EditorToolbarProps {
   canRedo: boolean;
@@ -23,9 +25,10 @@ interface EditorToolbarProps {
   showOriginal: boolean;
   showDateView: boolean;
   onToggleDateView(): void;
-  adjustmentsHistory: any[];
+  adjustmentsHistory: Adjustments[];
   adjustmentsHistoryIndex: number;
   adjustmentsHistoryLabels: (string | null)[];
+  adjustmentsHistorySources: (Panel | null)[];
   goToAdjustmentsHistoryIndex(index: number): void;
 }
 
@@ -47,6 +50,7 @@ const EditorToolbar = memo(
     adjustmentsHistory,
     adjustmentsHistoryIndex,
     adjustmentsHistoryLabels,
+    adjustmentsHistorySources,
     goToAdjustmentsHistoryIndex,
   }: EditorToolbarProps) => {
     const { t } = useTranslation();
@@ -414,6 +418,8 @@ const EditorToolbar = memo(
                   {historyNames.map((name, i) => {
                     const isCurrent = i === adjustmentsHistoryIndex;
                     const isFuture = i > adjustmentsHistoryIndex;
+                    const source = adjustmentsHistorySources[i];
+                    const SourceIcon = getPanelIcon(source);
 
                     const textColor = isCurrent
                       ? TextColors.button
@@ -438,9 +444,17 @@ const EditorToolbar = memo(
                         )}
                       >
                         <div className="flex justify-between items-center gap-2">
-                          <Text as="span" color={textColor} weight={textWeight} className="truncate">
-                            {name}
-                          </Text>
+                          <div className="flex items-center gap-2 min-w-0">
+                            {SourceIcon && (
+                              <SourceIcon
+                                size={14}
+                                className={clsx('shrink-0', isCurrent ? 'text-button-text' : 'text-text-secondary')}
+                              />
+                            )}
+                            <Text as="span" color={textColor} weight={textWeight} className="truncate">
+                              {name}
+                            </Text>
+                          </div>
                           <Text
                             as="span"
                             variant={TextVariants.small}

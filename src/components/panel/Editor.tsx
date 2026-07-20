@@ -89,6 +89,7 @@ export default function Editor({ onBackToLibrary, onContextMenu, transformWrappe
   const adjustmentsHistory = useEditorStore((s) => s.history);
   const adjustmentsHistoryIndex = useEditorStore((s) => s.historyIndex);
   const adjustmentsHistoryLabels = useEditorStore((s) => s.historyLabels);
+  const adjustmentsHistorySources = useEditorStore((s) => s.historySources);
   const finalPreviewUrl = useEditorStore((s) => s.finalPreviewUrl);
   const uncroppedAdjustedPreviewUrl = useEditorStore((s) => s.uncroppedAdjustedPreviewUrl);
   const transformedOriginalUrl = useEditorStore((s) => s.transformedOriginalUrl);
@@ -125,11 +126,11 @@ export default function Editor({ onBackToLibrary, onContextMenu, transformWrappe
       setEditor((state) => {
         const prevAdjustments = state.adjustments;
         const newAdjustments = typeof value === 'function' ? value(prevAdjustments) : { ...prevAdjustments, ...value };
-        debouncedSetHistory(newAdjustments);
+        debouncedSetHistory(newAdjustments, activeRightPanel);
         return { adjustments: newAdjustments };
       });
     },
-    [debouncedSetHistory, setEditor],
+    [debouncedSetHistory, setEditor, activeRightPanel],
   );
 
   const { handleGenerateAiMask, handleQuickErase, handleManualCleanup } = useAiMasking();
@@ -2060,6 +2061,7 @@ export default function Editor({ onBackToLibrary, onContextMenu, transformWrappe
           adjustmentsHistory={adjustmentsHistory}
           adjustmentsHistoryIndex={adjustmentsHistoryIndex}
           adjustmentsHistoryLabels={adjustmentsHistoryLabels}
+          adjustmentsHistorySources={adjustmentsHistorySources}
           goToAdjustmentsHistoryIndex={goToHistoryIndex}
         />
       </div>

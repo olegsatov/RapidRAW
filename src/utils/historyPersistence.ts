@@ -1,13 +1,15 @@
 import { invoke } from '@tauri-apps/api/core';
 import { useEditorStore } from '../store/useEditorStore';
+import { Panel } from '../components/ui/AppProperties';
 import type { Adjustments } from './adjustments';
 import type { HistoryDelta } from './historyUtils';
 
-const SAVE_DELAY_MS = 2000;
+const SAVE_DELAY_MS = 500;
 
 interface HistoryEntry {
   adjustments_json: string;
   label: string | null;
+  source: string | null;
 }
 
 interface LoadEditHistoryResponse {
@@ -20,6 +22,7 @@ interface SnapshotPayload {
   adjustments_json: string;
   description: string | null;
   created_at: number;
+  source: string;
 }
 
 interface DeltaPayload {
@@ -30,6 +33,7 @@ interface DeltaPayload {
   new_value: string;
   description: string | null;
   created_at: number;
+  source: string;
 }
 
 interface SaveEditHistoryPayload {
@@ -40,104 +44,80 @@ interface SaveEditHistoryPayload {
   current_adjustments_json: string;
 }
 
-let pendingPath: string | null = null;
-let pendingHistory: Adjustments[] | null = null;
-let pendingHistoryIndex: number | null = null;
-let pendingHistoryDeltas: HistoryDelta[][] | null = null;
-let pendingHistoryLabels: (string | null)[] | null = null;
-let debounceTimer: ReturnType<typeof setTimeout> | null = null;
-let flushPromise: Promise<void> | null = null;
+interface PendingState {
+  path: string;
+  history: Adjustments[];
+  historyIndex: number;
+  historyDeltas: HistoryDelta[][];
+  historyLabels: (string | null)[];
+  historySources: (Panel | null)[];
+}
 
-function debouncedSave() {
-  if (debounceTimer) {
-    clearTimeout(debounceTimer);
+let pendingState: PendingState | null = null;
+let saveTimer: ReturnType<typeof setTimeout> | null = null;
+
+async function runSave(state: PendingState): Promise<void> {
+  if (state.history.length <= 1) {
+    return;
   }
-  debounceTimer = setTimeout(() => {
-    flushHistoryPersistence().catch((err) => {
-      console.error('Failed to persist edit history:', err);
-    });
-  }, SAVE_DELAY_MS);
+
+  const snapshot: SnapshotPayload = {
+    idx: 0,
+    adjustments_json: JSON.stringify(state.history[0]),
+    description: state.historyLabels[0] ?? null,
+    created_at: Date.now(),
+    source: state.historySources[0] ?? '',
+  };
+
+  const deltas: DeltaPayload[] = [];
+  for (let step = 1; step < state.history.length; step++) {
+    const stepDeltas = state.historyDeltas[step] ?? [];
+    const stepLabel = state.historyLabels[step] ?? null;
+    const stepSource = state.historySources[step] ?? '';
+    for (let i = 0; i < stepDeltas.length; i++) {
+      const d = stepDeltas[i];
+      deltas.push({
+        step_index: step - 1,
+        idx: i,
+        adjustment_key: d.adjustment_key,
+        old_value: d.old_value,
+        new_value: d.new_value,
+        description: i === 0 ? stepLabel : null,
+        created_at: Date.now(),
+        source: stepSource,
+      });
+    }
+  }
+
+  const currentAdjustments = state.history[state.historyIndex];
+
+  const payload: SaveEditHistoryPayload = {
+    path: state.path,
+    snapshot,
+    deltas,
+    history_index: state.historyIndex,
+    current_adjustments_json: JSON.stringify(currentAdjustments),
+  };
+
+  await invoke('save_edit_history', { payload });
+}
+
+function takePendingState(): PendingState | null {
+  const state = pendingState;
+  pendingState = null;
+  if (saveTimer) {
+    clearTimeout(saveTimer);
+    saveTimer = null;
+  }
+  return state;
 }
 
 export async function flushHistoryPersistence(): Promise<void> {
-  if (flushPromise) {
-    return flushPromise;
+  const state = takePendingState();
+  if (!state) {
+    return;
   }
-
-  flushPromise = (async () => {
-    try {
-      if (
-        !pendingPath ||
-        !pendingHistory ||
-        pendingHistoryIndex === null ||
-        !pendingHistoryDeltas ||
-        !pendingHistoryLabels
-      ) {
-        return;
-      }
-
-      const path = pendingPath;
-      const history = pendingHistory;
-      const historyIndex = pendingHistoryIndex;
-      const historyDeltas = pendingHistoryDeltas;
-      const historyLabels = pendingHistoryLabels;
-
-      pendingPath = null;
-      pendingHistory = null;
-      pendingHistoryIndex = null;
-      pendingHistoryDeltas = null;
-      pendingHistoryLabels = null;
-      if (debounceTimer) {
-        clearTimeout(debounceTimer);
-        debounceTimer = null;
-      }
-
-      if (history.length <= 1) {
-        return;
-      }
-
-      const snapshot: SnapshotPayload = {
-        idx: 0,
-        adjustments_json: JSON.stringify(history[0]),
-        description: historyLabels[0] ?? null,
-        created_at: Date.now(),
-      };
-
-      const deltas: DeltaPayload[] = [];
-      for (let step = 1; step < history.length; step++) {
-        const stepDeltas = historyDeltas[step] ?? [];
-        const stepLabel = historyLabels[step] ?? null;
-        for (let i = 0; i < stepDeltas.length; i++) {
-          const d = stepDeltas[i];
-          deltas.push({
-            step_index: step - 1,
-            idx: i,
-            adjustment_key: d.adjustment_key,
-            old_value: d.old_value,
-            new_value: d.new_value,
-            description: i === 0 ? stepLabel : null,
-            created_at: Date.now(),
-          });
-        }
-      }
-
-      const currentAdjustments = history[historyIndex];
-
-      const payload: SaveEditHistoryPayload = {
-        path,
-        snapshot,
-        deltas,
-        history_index: historyIndex,
-        current_adjustments_json: JSON.stringify(currentAdjustments),
-      };
-
-      await invoke('save_edit_history', { payload });
-    } finally {
-      flushPromise = null;
-    }
-  })();
-
-  return flushPromise;
+  await runSave(state);
 }
 
 export function scheduleHistoryPersistence(
@@ -146,13 +126,30 @@ export function scheduleHistoryPersistence(
   historyIndex: number,
   historyDeltas: HistoryDelta[][],
   historyLabels: (string | null)[],
+  historySources: (Panel | null)[],
 ): void {
-  pendingPath = path;
-  pendingHistory = history;
-  pendingHistoryIndex = historyIndex;
-  pendingHistoryDeltas = historyDeltas;
-  pendingHistoryLabels = historyLabels;
-  debouncedSave();
+  pendingState = {
+    path,
+    history,
+    historyIndex,
+    historyDeltas,
+    historyLabels,
+    historySources,
+  };
+
+  if (saveTimer) {
+    clearTimeout(saveTimer);
+  }
+  saveTimer = setTimeout(() => {
+    saveTimer = null;
+    const state = takePendingState();
+    if (!state) {
+      return;
+    }
+    runSave(state).catch((err) => {
+      console.error('Failed to persist edit history:', err);
+    });
+  }, SAVE_DELAY_MS);
 }
 
 export async function loadPersistedHistory(path: string): Promise<{
@@ -160,39 +157,60 @@ export async function loadPersistedHistory(path: string): Promise<{
   historyIndex: number;
   historyDeltas: HistoryDelta[][];
   historyLabels: (string | null)[];
+  historySources?: (Panel | null)[];
 } | null> {
   try {
+    console.log('[history-persistence] loading history for', path);
     const response = await invoke<LoadEditHistoryResponse>('load_edit_history', { path });
+    console.log(
+      '[history-persistence] load_edit_history returned',
+      response.history.length,
+      'entries, index',
+      response.history_index,
+    );
     if (!response.history || response.history.length <= 1) {
+      console.log('[history-persistence] ignoring persisted history: length <= 1');
       return null;
     }
 
     const history: Adjustments[] = [];
     const historyDeltas: HistoryDelta[][] = [];
     const historyLabels: (string | null)[] = [];
+    const historySources: (Panel | null)[] = [];
     for (let i = 0; i < response.history.length; i++) {
       history.push(JSON.parse(response.history[i].adjustments_json) as Adjustments);
       historyDeltas.push([]);
       historyLabels.push(response.history[i].label ?? null);
+      historySources.push((response.history[i].source ?? null) as Panel | null);
     }
+
+    console.log('[history-persistence] restored', history.length, 'states, index', response.history_index);
 
     return {
       history,
       historyIndex: response.history_index,
       historyDeltas,
       historyLabels,
+      historySources,
     };
   } catch (err) {
-    console.error('Failed to load persisted edit history:', err);
+    console.error('[history-persistence] load_edit_history failed for', path, err);
     return null;
   }
 }
 
 export function subscribeHistoryPersistence(): () => void {
   const unsubscribe = useEditorStore.subscribe((state) => {
-    const { selectedImage, history, historyIndex, historyDeltas, historyLabels } = state;
+    const { selectedImage, history, historyIndex, historyDeltas, historyLabels, historySources } = state;
     if (selectedImage?.path && history.length > 1) {
-      scheduleHistoryPersistence(selectedImage.path, history, historyIndex, historyDeltas, historyLabels);
+      scheduleHistoryPersistence(
+        selectedImage.path,
+        history,
+        historyIndex,
+        historyDeltas,
+        historyLabels,
+        historySources,
+      );
     }
   });
 
@@ -207,9 +225,9 @@ export function subscribeHistoryPersistence(): () => void {
   return () => {
     unsubscribe();
     window.removeEventListener('beforeunload', handleBeforeUnload);
-    if (debounceTimer) {
-      clearTimeout(debounceTimer);
-      debounceTimer = null;
+    if (saveTimer) {
+      clearTimeout(saveTimer);
+      saveTimer = null;
     }
   };
 }
