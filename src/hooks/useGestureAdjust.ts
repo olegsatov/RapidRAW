@@ -29,16 +29,20 @@ interface GestureSession {
   gestureKey: string;
 }
 
+const GESTURE_HOLD_DELAY_MS = 150;
+
 export function useGestureAdjust() {
   const { setAdjustments } = useEditorActions();
   const setEditor = useEditorStore((s) => s.setEditor);
   const sessionRef = useRef<GestureSession | null>(null);
+  const pendingRef = useRef<{ event: KeyboardEvent; timer: ReturnType<typeof setTimeout> } | null>(null);
 
   useEffect(() => {
     const getGestureKey = (): string | null => {
       const keybinds = useSettingsStore.getState().appSettings?.keybinds;
       const def = KEYBIND_DEFINITIONS.find((d) => d.action === 'gesture_color_balance');
-      const effective = def ? getEffectiveKeybind(keybinds?.[def.action], def.defaultCombo) : ['KeyA'];
+      if (!def) return null;
+      const effective = getEffectiveKeybind(keybinds?.[def.action], def.defaultCombo);
       if (!effective || effective.length !== 1) return null;
       return effective[0];
     };
@@ -59,7 +63,7 @@ export function useGestureAdjust() {
       };
 
       setEditor({ isSliderDragging: true });
-      document.body?.requestPointerLock();
+      document.body?.requestPointerLock().catch(() => {});
     };
 
     const endSession = () => {
@@ -113,6 +117,10 @@ export function useGestureAdjust() {
     };
 
     const handleKeyDown = (event: KeyboardEvent) => {
+      if ((event as KeyboardEvent & { _gestureResent?: boolean })._gestureResent) {
+        return;
+      }
+
       if (sessionRef.current) {
         if (event.key === 'Escape') {
           endSession();
@@ -132,11 +140,48 @@ export function useGestureAdjust() {
       if (normalizeCombo(event, osPlatform).join('+') === gestureKey) {
         event.preventDefault();
         event.stopImmediatePropagation();
-        startSession(gestureKey);
+
+        const timer = setTimeout(() => {
+          pendingRef.current = null;
+          startSession(gestureKey);
+        }, GESTURE_HOLD_DELAY_MS);
+
+        pendingRef.current = { event, timer };
       }
     };
 
     const handleKeyUp = (event: KeyboardEvent) => {
+      const gestureKey = getGestureKey();
+
+      if (pendingRef.current && gestureKey && event.code === gestureKey) {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        clearTimeout(pendingRef.current.timer);
+        const originalEvent = pendingRef.current.event;
+        pendingRef.current = null;
+
+        const syntheticInit = {
+          key: originalEvent.key,
+          code: originalEvent.code,
+          location: originalEvent.location,
+          ctrlKey: originalEvent.ctrlKey,
+          altKey: originalEvent.altKey,
+          shiftKey: originalEvent.shiftKey,
+          metaKey: originalEvent.metaKey,
+          bubbles: true,
+          cancelable: true,
+        };
+
+        const syntheticDown = new KeyboardEvent('keydown', syntheticInit);
+        (syntheticDown as KeyboardEvent & { _gestureResent?: boolean })._gestureResent = true;
+        window.dispatchEvent(syntheticDown);
+
+        const syntheticUp = new KeyboardEvent('keyup', syntheticInit);
+        (syntheticUp as KeyboardEvent & { _gestureResent?: boolean })._gestureResent = true;
+        window.dispatchEvent(syntheticUp);
+        return;
+      }
+
       if (!sessionRef.current) return;
       if (event.code === sessionRef.current.gestureKey) {
         event.preventDefault();
@@ -212,6 +257,10 @@ export function useGestureAdjust() {
       window.removeEventListener('pointermove', handlePointerMove, true);
       window.removeEventListener('wheel', handleWheel, { capture: true });
       document.removeEventListener('pointerlockchange', handlePointerLockChange);
+      if (pendingRef.current) {
+        clearTimeout(pendingRef.current.timer);
+        pendingRef.current = null;
+      }
       endSession();
     };
   }, [setAdjustments, setEditor]);

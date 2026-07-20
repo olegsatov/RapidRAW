@@ -1656,6 +1656,7 @@
         "toggle_adjustments": "Панель коррекции",
         "toggle_ai": "Панель ИИ",
         "toggle_analytics": "Показать/скрыть панель гистограммы",
+        "gesture_color_balance": "Gesture: color balance (hold + mouse/scroll)",
         "toggle_crop": "Режим обрезки / выравнивания",
         "toggle_crop_panel": "Панель обрезки",
         "toggle_export": "Панель экспорта",

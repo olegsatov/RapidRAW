@@ -20,6 +20,7 @@ import { useUIStore } from '../../store/useUIStore';
 import { useLibraryStore } from '../../store/useLibraryStore';
 import { useProcessStore } from '../../store/useProcessStore';
 import { useSettingsStore } from '../../store/useSettingsStore';
+import { useGestureAdjust } from '../../hooks/useGestureAdjust';
 
 import { ImageFile, Orientation, Panel, ThumbnailAspectRatio } from '../ui/AppProperties';
 
@@ -139,6 +140,8 @@ export default function EditorView({
       handleSettingsChange: state.handleSettingsChange,
     })),
   );
+
+  useGestureAdjust();
 
   const editorNode = (
     <Editor

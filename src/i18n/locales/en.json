@@ -1658,6 +1658,7 @@
         "toggle_adjustments": "Toggle Adjustments panel",
         "toggle_ai": "Toggle AI panel",
         "toggle_analytics": "Toggle Analytics display",
+        "gesture_color_balance": "Gesture: color balance (hold + mouse/scroll)",
         "toggle_crop": "Toggle Crop / Straighten",
         "toggle_crop_panel": "Toggle Crop panel",
         "toggle_export": "Toggle Export panel",

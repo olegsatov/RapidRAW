@@ -1496,6 +1496,7 @@
         "toggle_adjustments": "Basculer le panneau des ajustements",
         "toggle_ai": "Basculer le panneau IA",
         "toggle_analytics": "Basculer l'affichage des analyses",
+        "gesture_color_balance": "Gesture: color balance (hold + mouse/scroll)",
         "toggle_crop": "Basculer Recadrer / Redresser",
         "toggle_crop_panel": "Basculer le panneau de recadrage",
         "toggle_export": "Basculer le panneau d'exportation",
