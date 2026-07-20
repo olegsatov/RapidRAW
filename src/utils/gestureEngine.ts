@@ -1,0 +1,120 @@
+export type AxisLockConfig = {
+  windowSize: number;
+  axisThreshold: number;
+  diagRatio: number;
+  bothFactor: number;
+};
+
+export class AxisLock {
+  public locked: 'none' | 'horizontal' | 'vertical' | 'both' = 'none';
+  private samples: Array<{ x: number; y: number }> = [];
+  private config: AxisLockConfig;
+  private idleReset: boolean;
+
+  constructor(config: AxisLockConfig, idleReset: boolean = false) {
+    this.config = config;
+    this.idleReset = idleReset;
+  }
+
+  push(dx: number, dy: number): 'none' | 'horizontal' | 'vertical' | 'both' {
+    if (this.idleReset && dx === 0 && dy === 0) {
+      this.samples = [];
+      this.locked = 'none';
+      return 'none';
+    }
+
+    this.samples.push({ x: dx, y: dy });
+    if (this.samples.length > this.config.windowSize) {
+      this.samples.shift();
+    }
+
+    let sumX = 0;
+    let sumY = 0;
+    for (const s of this.samples) {
+      sumX += Math.abs(s.x);
+      sumY += Math.abs(s.y);
+    }
+
+    const major = Math.max(sumX, sumY);
+    const minor = Math.min(sumX, sumY);
+
+    if (major <= this.config.axisThreshold) {
+      this.locked = 'none';
+      return 'none';
+    }
+
+    if (minor === 0 || minor / major < this.config.diagRatio) {
+      this.locked = sumX > sumY ? 'horizontal' : 'vertical';
+      return this.locked;
+    }
+
+    const bothThreshold = this.config.axisThreshold * this.config.bothFactor;
+    if (major > bothThreshold && minor > bothThreshold) {
+      this.locked = 'both';
+      return this.locked;
+    }
+
+    this.locked = 'none';
+    return 'none';
+  }
+}
+
+export class StepAccumulator {
+  public step: number;
+  private total: number = 0;
+
+  constructor(step: number) {
+    this.step = step;
+  }
+
+  push(delta: number): number {
+    this.total += delta;
+    const magnitude = Math.abs(this.total);
+    const wholeSteps = Math.floor(magnitude / this.step);
+    if (wholeSteps === 0) {
+      return 0;
+    }
+    const direction = this.total >= 0 ? 1 : -1;
+    this.total -= direction * wholeSteps * this.step;
+    return direction * wholeSteps;
+  }
+
+  reset(): void {
+    this.total = 0;
+  }
+}
+
+export function quantizeMouseWheel(delta: number): number {
+  if (delta > 0) return 1;
+  if (delta < 0) return -1;
+  return 0;
+}
+
+export function detectWheelDevice(e: WheelEvent): 'mouse' | 'trackpad' {
+  if (e.deltaMode === 1 || e.deltaMode === 2) {
+    return 'mouse';
+  }
+  return Math.abs(e.deltaY) > 40 ? 'mouse' : 'trackpad';
+}
+
+export const MOVE_AXIS_LOCK: AxisLockConfig = {
+  windowSize: 5,
+  axisThreshold: 1.5,
+  diagRatio: 0.5,
+  bothFactor: 1.5,
+};
+
+export const SCROLL_AXIS_LOCK: AxisLockConfig = {
+  windowSize: 5,
+  axisThreshold: 8,
+  diagRatio: 0.5,
+  bothFactor: 1,
+};
+
+export const MOUSE_MOVE_STEP = { stepX: 6, stepY: 6 };
+export const MOUSE_SCROLL_STEP = 6;
+export const TRACKPAD_SCROLL_STEP = 2.5;
+
+export function clamp(v: number, min: number, max: number): number {
+  return Math.min(Math.max(v, min), max);
+}
