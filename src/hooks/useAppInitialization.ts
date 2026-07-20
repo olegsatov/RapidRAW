@@ -98,14 +98,16 @@ export const useAppInitialization = ({
     })),
   );
 
-  const { uiVisibility, activeRightPanel, leftBottomPanelHeight, setUI } = useUIStore(
-    useShallow((state) => ({
-      uiVisibility: state.uiVisibility,
-      activeRightPanel: state.activeRightPanel,
-      leftBottomPanelHeight: state.leftBottomPanelHeight,
-      setUI: state.setUI,
-    })),
-  );
+  const { uiVisibility, activeRightPanel, leftBottomPanelHeightGallery, leftBottomPanelHeightEditor, setUI } =
+    useUIStore(
+      useShallow((state) => ({
+        uiVisibility: state.uiVisibility,
+        activeRightPanel: state.activeRightPanel,
+        leftBottomPanelHeightGallery: state.leftBottomPanelHeightGallery,
+        leftBottomPanelHeightEditor: state.leftBottomPanelHeightEditor,
+        setUI: state.setUI,
+      })),
+    );
 
   const {
     sortCriteria,
@@ -199,9 +201,10 @@ export const useAppInitialization = ({
         if (settings?.uiVisibility)
           setUI((state) => ({ uiVisibility: { ...state.uiVisibility, ...settings.uiVisibility } }));
 
-        if (typeof settings?.leftBottomPanelHeight === 'number') {
-          setUI({ leftBottomPanelHeight: settings.leftBottomPanelHeight });
-        }
+        const legacyHeight = settings?.leftBottomPanelHeight;
+        const galleryHeight = settings?.leftBottomPanelHeightGallery ?? legacyHeight ?? 0;
+        const editorHeight = settings?.leftBottomPanelHeightEditor ?? legacyHeight ?? 0;
+        setUI({ leftBottomPanelHeightGallery: galleryHeight, leftBottomPanelHeightEditor: editorHeight });
 
         if (settings?.activeRightPanel && Object.values(Panel).includes(settings.activeRightPanel)) {
           // Set both: the tab highlight follows activeRightPanel, but the panel
@@ -432,10 +435,17 @@ export const useAppInitialization = ({
 
   useEffect(() => {
     if (isInitialMount.current || !appSettings) return;
-    if ((appSettings.leftBottomPanelHeight ?? null) !== leftBottomPanelHeight) {
-      handleSettingsChange({ ...appSettings, leftBottomPanelHeight });
+    if ((appSettings.leftBottomPanelHeightGallery ?? null) !== leftBottomPanelHeightGallery) {
+      handleSettingsChange({ ...appSettings, leftBottomPanelHeightGallery });
     }
-  }, [leftBottomPanelHeight, appSettings, handleSettingsChange]);
+  }, [leftBottomPanelHeightGallery, appSettings, handleSettingsChange]);
+
+  useEffect(() => {
+    if (isInitialMount.current || !appSettings) return;
+    if ((appSettings.leftBottomPanelHeightEditor ?? null) !== leftBottomPanelHeightEditor) {
+      handleSettingsChange({ ...appSettings, leftBottomPanelHeightEditor });
+    }
+  }, [leftBottomPanelHeightEditor, appSettings, handleSettingsChange]);
 
   useEffect(() => {
     if (!appSettings) return;
