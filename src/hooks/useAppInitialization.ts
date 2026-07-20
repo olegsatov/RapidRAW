@@ -249,11 +249,6 @@ export const useAppInitialization = ({
 
         if (!isAndroid && rootFolders.length > 0) {
           const currentPath = settings.lastFolderState?.currentFolderPath || rootFolders[0];
-          const isAlbum = currentPath.startsWith('Album: ');
-          const command =
-            settings.libraryViewMode === LibraryViewMode.Recursive
-              ? Invokes.ListImagesRecursive
-              : Invokes.ListImagesInDir;
 
           preloadedDataRef.current = {
             rootPaths: rootFolders,
@@ -263,7 +258,6 @@ export const useAppInitialization = ({
               expandedFolders: settings.lastFolderState?.expandedFolders ?? rootFolders,
               showImageCounts: settings.enableFolderImageCounts || settings.folderTreeSort?.key === 'imageCount',
             }),
-            images: isAlbum ? undefined : invoke(command, { path: currentPath }),
           };
         }
 

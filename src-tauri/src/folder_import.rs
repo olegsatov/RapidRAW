@@ -296,8 +296,17 @@ pub fn load_folder_files(
     offset: usize,
     limit: usize,
 ) -> Result<Vec<ImageFile>, String> {
-    let normalized = normalize_folder_path(&path);
-    library_db::load_folder_files(&app_handle, &normalized, recursive, offset, limit)
+    // Catalog-only: this command must never touch the source disk. The path is
+    // used as a prefix against the file paths stored in the catalog.
+    library_db::load_folder_files_for_path(&app_handle, &path, recursive, offset, limit)
+}
+
+/// Returns whether the requested path is part of the catalog. Used by the
+/// frontend to decide whether selecting a folder can be served from the catalog
+/// or needs a manual import.
+#[tauri::command]
+pub fn is_folder_cataloged(app_handle: AppHandle, path: String) -> Result<bool, String> {
+    library_db::is_folder_cataloged(&app_handle, &path)
 }
 
 fn folder_key(path: &str, recursive: bool) -> String {
@@ -605,7 +614,7 @@ async fn process_exif_file(
     }
 }
 
-/// Phase 2: EXIF scan for catalog rows with `exif_scanned = 0`. Only pending
+/// Phase 3: EXIF scan for catalog rows with `exif_scanned = 0`. Only pending
 /// rows are processed, so a re-run after cancel (or after new files were
 /// scanned in) resumes where the previous run stopped. Returns the number of
 /// per-file failures for the final `folder-import-complete` tally, or `None`
@@ -707,7 +716,7 @@ enum ThumbOutcome {
     Cancelled,
 }
 
-/// Phase 3: thumbnail generation for every catalog row of the folder, real
+/// Phase 2: thumbnail generation for every catalog row of the folder, real
 /// files and virtual copies alike (each VC has its own sidecar/adjustments,
 /// so the frontend requests thumbnails per virtual path). Cache entries are
 /// keyed by the stable file_id, so a later rename/move reuses the cached
@@ -787,18 +796,30 @@ async fn run_thumbs_phase(
                 if file_management::is_cloud_placeholder(&source_path) {
                     return ThumbOutcome::Skipped;
                 }
-                match file_management::generate_single_thumbnail_and_cache(
+                if file_management::generate_thumbnail_from_embedded_preview(
                     &gen_path,
                     &cache_dir_task,
-                    gpu_task.as_ref(),
-                    None,
-                    false,
                     &app_inner,
                     &settings_task,
                     Some(file_id),
-                ) {
-                    Some(_) => ThumbOutcome::Done,
-                    None => ThumbOutcome::Failed,
+                )
+                .is_some()
+                {
+                    ThumbOutcome::Done
+                } else {
+                    match file_management::generate_single_thumbnail_and_cache(
+                        &gen_path,
+                        &cache_dir_task,
+                        gpu_task.as_ref(),
+                        None,
+                        false,
+                        &app_inner,
+                        &settings_task,
+                        Some(file_id),
+                    ) {
+                        Some(_) => ThumbOutcome::Done,
+                        None => ThumbOutcome::Failed,
+                    }
                 }
             })
             .await
@@ -925,26 +946,28 @@ async fn run_import_job(
         }
     }
 
-    // Phase 2: EXIF scan for catalog rows with exif_scanned = 0 (resumable:
-    // only pending rows are processed).
+    // Phase 2: thumbnail generation with stable file_id-keyed cache entries.
+    // Thumbs are produced from the embedded JPEG preview first, so the UI
+    // populates quickly; the slower full RAW development path is a fallback.
     if cancel.load(Ordering::SeqCst) {
         emit_cancelled(&app_handle, &path, recursive, scanned);
         return;
     }
     // A systemic phase failure already emitted `folder-import-error`; stop
     // here so the job never reports a false `folder-import-complete`.
-    let Some(exif_failed) = run_exif_phase(&app_handle, &path, recursive, folder_id, &cancel).await
+    let Some(thumbs_failed) =
+        run_thumbs_phase(&app_handle, &path, recursive, folder_id, &cancel).await
     else {
         return;
     };
 
-    // Phase 3: thumbnail generation with stable file_id-keyed cache entries.
+    // Phase 3: EXIF scan for catalog rows with exif_scanned = 0 (resumable:
+    // only pending rows are processed).
     if cancel.load(Ordering::SeqCst) {
         emit_cancelled(&app_handle, &path, recursive, scanned);
         return;
     }
-    let Some(thumbs_failed) =
-        run_thumbs_phase(&app_handle, &path, recursive, folder_id, &cancel).await
+    let Some(exif_failed) = run_exif_phase(&app_handle, &path, recursive, folder_id, &cancel).await
     else {
         return;
     };
@@ -1191,26 +1214,28 @@ async fn run_sync_job(
         }
     }
 
-    // Phase 2: EXIF scan for rows with exif_scanned = 0 (unchanged files kept
-    // their flag through the upsert; new and changed rows are pending).
+    // Phase 2: thumbnails for every catalog row. The fast embedded-preview
+    // path runs first so the UI updates quickly; full RAW development is the
+    // fallback for files without a usable preview.
     if cancel.load(Ordering::SeqCst) {
         emit_cancelled(&app_handle, &path, recursive, scanned);
         return;
     }
     // A systemic phase failure already emitted `folder-import-error`; stop
     // here so the job never reports a false `folder-import-complete`.
-    let Some(exif_failed) = run_exif_phase(&app_handle, &path, recursive, folder_id, &cancel).await
+    let Some(thumbs_failed) =
+        run_thumbs_phase(&app_handle, &path, recursive, folder_id, &cancel).await
     else {
         return;
     };
 
-    // Phase 3: thumbnails for every remaining catalog row.
+    // Phase 3: EXIF scan for rows with exif_scanned = 0 (unchanged files kept
+    // their flag through the upsert; new and changed rows are pending).
     if cancel.load(Ordering::SeqCst) {
         emit_cancelled(&app_handle, &path, recursive, scanned);
         return;
     }
-    let Some(thumbs_failed) =
-        run_thumbs_phase(&app_handle, &path, recursive, folder_id, &cancel).await
+    let Some(exif_failed) = run_exif_phase(&app_handle, &path, recursive, folder_id, &cancel).await
     else {
         return;
     };

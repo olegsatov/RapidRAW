@@ -513,135 +513,6 @@ pub(crate) fn build_image_files(
     file_results
 }
 
-#[tauri::command]
-pub async fn list_images_in_dir(path: String, app_handle: AppHandle) -> Result<Vec<ImageFile>, String> {
-    tokio::task::spawn_blocking(move || {
-        let settings = load_settings(app_handle.clone()).unwrap_or_default();
-        let enable_xmp_sync = settings.enable_xmp_sync.unwrap_or(false);
-
-        let entries = fs::read_dir(&path).map_err(|e| e.to_string())?;
-        let mut images = Vec::new();
-        let mut sidecars_by_filename: HashMap<String, Vec<Option<String>>> = HashMap::new();
-
-        for entry in entries.filter_map(Result::ok) {
-            let entry_path = entry.path();
-            let file_name = entry
-                .file_name()
-                .into_string()
-                .unwrap_or_else(|os| os.to_string_lossy().into_owned());
-
-            if let Some((source_filename, copy_id)) = parse_sidecar_filename(&file_name) {
-                sidecars_by_filename
-                    .entry(source_filename)
-                    .or_default()
-                    .push(copy_id);
-            } else if is_supported_image_file(&file_name) {
-                images.push((file_name, entry_path));
-            }
-        }
-
-        let tasks: Vec<_> = images
-            .into_iter()
-            .map(|(file_name, path_buf)| {
-                let sidecars = sidecars_by_filename
-                    .remove(&file_name)
-                    .unwrap_or_else(|| vec![None]);
-                let path_str = path_buf.to_string_lossy().into_owned();
-                (path_str, file_name, path_buf, sidecars)
-            })
-            .collect();
-
-        let result_list: Vec<ImageFile> = tasks
-            .into_par_iter()
-            .flat_map(|(path_str, file_name, path_buf, sidecars)| {
-                build_image_files(
-                    &app_handle,
-                    &path_str,
-                    &file_name,
-                    &path_buf,
-                    sidecars,
-                    enable_xmp_sync,
-                    &settings,
-                )
-            })
-            .collect();
-
-        Ok(result_list)
-    })
-    .await
-    .map_err(|e| e.to_string())?
-}
-
-#[tauri::command]
-pub async fn list_images_recursive(
-    path: String,
-    app_handle: AppHandle,
-) -> Result<Vec<ImageFile>, String> {
-    tokio::task::spawn_blocking(move || {
-        let settings = load_settings(app_handle.clone()).unwrap_or_default();
-        let enable_xmp_sync = settings.enable_xmp_sync.unwrap_or(false);
-
-        let root_path = Path::new(&path);
-        let mut images = Vec::new();
-
-        let mut sidecars_by_path: HashMap<PathBuf, Vec<Option<String>>> = HashMap::new();
-
-        for entry in WalkDir::new(root_path).into_iter().filter_map(Result::ok) {
-            let entry_path = entry.path();
-            if !entry_path.is_file() {
-                continue;
-            }
-
-            let file_name = entry_path.file_name().unwrap_or_default().to_string_lossy();
-            if let Some((source_filename, copy_id)) = parse_sidecar_filename(&file_name) {
-                if let Some(parent) = entry_path.parent() {
-                    sidecars_by_path
-                        .entry(parent.join(source_filename))
-                        .or_default()
-                        .push(copy_id);
-                }
-            } else if is_supported_image_file(entry_path.to_string_lossy().as_ref()) {
-                images.push(entry_path.to_path_buf());
-            }
-        }
-
-        let tasks: Vec<_> = images
-            .into_iter()
-            .map(|path_buf| {
-                let sidecars = sidecars_by_path
-                    .remove(&path_buf)
-                    .unwrap_or_else(|| vec![None]);
-                let path_str = path_buf.to_string_lossy().into_owned();
-                let file_name = path_buf
-                    .file_name()
-                    .unwrap_or_default()
-                    .to_string_lossy()
-                    .into_owned();
-                (path_str, file_name, path_buf, sidecars)
-            })
-            .collect();
-
-        let result_list: Vec<ImageFile> = tasks
-            .into_par_iter()
-            .flat_map(|(path_str, file_name, path_buf, sidecars)| {
-                build_image_files(
-                    &app_handle,
-                    &path_str,
-                    &file_name,
-                    &path_buf,
-                    sidecars,
-                    enable_xmp_sync,
-                    &settings,
-                )
-            })
-            .collect();
-
-        Ok(result_list)
-    })
-    .await
-    .map_err(|e| e.to_string())?
-}
-
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(tag = "type", rename_all = "camelCase")]
 pub enum AlbumItem {
@@ -917,22 +788,6 @@ pub struct FolderNode {
     pub created: u64,
 }
 
-fn has_subdirs(path: &Path) -> bool {
-    if let Ok(entries) = std::fs::read_dir(path) {
-        for entry in entries.filter_map(Result::ok) {
-            if let Ok(file_type) = entry.file_type()
-                && file_type.is_dir()
-            {
-                let name = entry.file_name();
-                if !name.to_string_lossy().starts_with('.') {
-                    return true;
-                }
-            }
-        }
-    }
-    false
-}
-
 #[derive(Default)]
 struct CatalogFolderNode {
     name: String,
@@ -1093,108 +948,6 @@ fn build_folder_tree_from_catalog(
     Ok(nodes.remove(&root_normalized).map(convert))
 }
 
-fn scan_dir_lazy(
-    path: &Path,
-    expanded_folders: &HashSet<&str>,
-    show_image_counts: bool,
-    prefetch_one_level: bool,
-) -> Result<(Vec<FolderNode>, usize), std::io::Error> {
-    let mut children_folders = Vec::new();
-    let mut current_dir_image_count = 0;
-
-    let entries = match std::fs::read_dir(path) {
-        Ok(entries) => entries,
-        Err(e) => {
-            log::warn!("Could not scan directory '{}': {}", path.display(), e);
-            return Ok((Vec::new(), 0));
-        }
-    };
-
-    for entry in entries.filter_map(Result::ok) {
-        let current_path = entry.path();
-        let (file_type, modified, created) = match entry.metadata() {
-            Ok(meta) => {
-                let ft = meta.file_type();
-                let mod_time = meta.modified().unwrap_or(std::time::SystemTime::UNIX_EPOCH);
-                let cre_time = meta.created().unwrap_or(mod_time);
-
-                (
-                    ft,
-                    mod_time
-                        .duration_since(std::time::SystemTime::UNIX_EPOCH)
-                        .unwrap_or_default()
-                        .as_secs(),
-                    cre_time
-                        .duration_since(std::time::SystemTime::UNIX_EPOCH)
-                        .unwrap_or_default()
-                        .as_secs(),
-                )
-            }
-            Err(_) => continue,
-        };
-
-        let file_name = entry.file_name();
-        let name_str = file_name.to_string_lossy();
-
-        if name_str.starts_with('.') {
-            continue;
-        }
-
-        if file_type.is_dir() {
-            let path_str = current_path.to_string_lossy().into_owned();
-            let is_expanded = expanded_folders.contains(path_str.as_str());
-
-            let should_scan = is_expanded || prefetch_one_level;
-            let next_prefetch = is_expanded;
-
-            let (grand_children, sub_dir_own_images) = if should_scan {
-                scan_dir_lazy(
-                    &current_path,
-                    expanded_folders,
-                    show_image_counts,
-                    next_prefetch,
-                )?
-            } else {
-                // Collapsed folders are not walked for counts: on a large or
-                // offline network volume that would block the tree load for
-                // minutes. The catalog path above provides accurate counts for
-                // imported folders; for uncataloged folders we show 0 until the
-                // folder is expanded or imported.
-                (Vec::new(), 0)
-            };
-
-            let has_any_subdirs = if should_scan {
-                grand_children.iter().any(|c| c.is_dir)
-            } else {
-                has_subdirs(&current_path)
-            };
-
-            let grand_children_sum: usize = grand_children.iter().map(|c| c.image_count).sum();
-            let total_child_count = sub_dir_own_images + grand_children_sum;
-
-            children_folders.push(FolderNode {
-                name: name_str.into_owned(),
-                path: path_str,
-                children: grand_children,
-                is_dir: true,
-                image_count: total_child_count,
-                has_subdirs: has_any_subdirs,
-                modified,
-                created,
-            });
-        } else if show_image_counts
-            && file_type.is_file()
-            && crate::formats::is_supported_image_file(&current_path)
-        {
-            current_dir_image_count += 1;
-        }
-    }
-
-    children_folders.sort_by_key(|a| a.name.to_lowercase());
-
-    Ok((children_folders, current_dir_image_count))
-}
-
 fn get_folder_tree_sync(
     app_handle: &AppHandle,
     path: String,
@@ -1211,30 +964,6 @@ fn get_folder_tree_sync(
     // The folder tree is authoritative: if the folder is not in the catalog it
     // has not been imported and should not be displayed at all.
     Err(format!("Folder not cataloged: {}", path))
-}
-
-#[tauri::command]
-pub async fn get_folder_children(
-    path: String,
-    show_image_counts: bool,
-) -> Result<Vec<FolderNode>, String> {
-    match tauri::async_runtime::spawn_blocking(move || {
-        let root_path = Path::new(&path);
-        if !root_path.is_dir() {
-            return Err(format!("Directory does not exist: {}", path));
-        }
-        let empty_set = HashSet::new();
-        let (children, _) = scan_dir_lazy(root_path, &empty_set, show_image_counts, false)
-            .map_err(|e| e.to_string())?;
-
-        Ok(children)
-    })
-    .await
-    {
-        Ok(Ok(children)) => Ok(children),
-        Ok(Err(e)) => Err(e),
-        Err(e) => Err(format!("Task failed: {}", e)),
-    }
 }
 
 #[tauri::command]
@@ -1691,10 +1420,68 @@ pub(crate) fn generate_single_thumbnail_and_cache(
         Some(adjustments),
     ) && let Ok(thumb_data) = encode_thumbnail(&thumb_image, target_width)
     {
-        let _ = fs::write(&cache_path, &thumb_data);
+        if fs::write(&cache_path, &thumb_data).is_err() {
+            return None;
+        }
         return Some((cache_path.to_string_lossy().into_owned(), rating, is_edited));
     }
     None
+}
+
+/// Fast-path thumbnail generation from the embedded JPEG preview inside a RAW
+/// file. This avoids full RAW development and GPU/CPU adjustment processing,
+/// so it is cheap enough to run during the initial import thumbs phase.
+/// Returns the cache path, rating, and edited flag on success, or `None` when
+/// no preview could be extracted (non-RAW files, unsupported RAWs), the file
+/// is a cloud placeholder, or the image has active adjustments (which require
+/// full rendering to produce a correct thumbnail).
+pub(crate) fn generate_thumbnail_from_embedded_preview(
+    path_str: &str,
+    thumb_cache_dir: &Path,
+    app_handle: &AppHandle,
+    settings: &AppSettings,
+    file_id: Option<i64>,
+) -> Option<(String, u8, bool)> {
+    let (source_path, _sidecar_path) = parse_virtual_path(path_str);
+
+    if is_cloud_placeholder(&source_path) {
+        return None;
+    }
+
+    let metadata =
+        metadata_store::load_image_metadata(app_handle, file_id, path_str).unwrap_or_default();
+    let adjustments = &metadata.adjustments;
+
+    let is_raw = crate::formats::is_raw_file(path_str);
+    let tm = crate::image_processing::resolve_tonemapper_override(settings, is_raw);
+
+    let rating = metadata.rating;
+    let is_edited = crate::image_processing::is_image_edited(adjustments, is_raw, tm);
+    let adjustments_bytes = serde_json::to_vec(adjustments).unwrap_or_default();
+
+    if is_edited {
+        return None;
+    }
+
+    let cache_hash = compute_thumbnail_cache_hash(path_str, file_id, &adjustments_bytes)?;
+
+    let cache_filename = format!("{}.jpg", cache_hash);
+    let cache_path = thumb_cache_dir.join(cache_filename);
+
+    if cache_path.exists() {
+        return Some((cache_path.to_string_lossy().into_owned(), rating, is_edited));
+    }
+
+    let bytes = read_file_bytes(&source_path).ok()?;
+    let source_path_str = source_path.to_string_lossy().to_string();
+    let preview = image_loader::extract_embedded_preview_for_thumbnail(&bytes, &source_path_str)?;
+
+    let target_width = settings.thumbnail_resolution.unwrap_or(720);
+    let thumb_data = encode_thumbnail(&preview, target_width).ok()?;
+    if fs::write(&cache_path, &thumb_data).is_err() {
+        return None;
+    }
+    Some((cache_path.to_string_lossy().into_owned(), rating, is_edited))
 }
 
 pub fn start_thumbnail_workers(app_handle: tauri::AppHandle) {

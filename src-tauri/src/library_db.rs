@@ -1099,14 +1099,11 @@ fn get_all_file_paths_in_conn(
         .map_err(|e| e.to_string())
 }
 
-/// Loads one page of a folder's cataloged files as fully-populated
-/// `ImageFile`s by deserializing each row's `metadata_json` (which the EXIF
-/// phase has already merged `exif` into). Rows are ordered by `name`
-/// (case-insensitive via the column's COLLATE NOCASE) with the row id as a
-/// tiebreaker — virtual-copy rows share the base row's `name` — so paging is
-/// deterministic. A row whose `metadata_json` fails to deserialize is skipped
-/// with a log line: one corrupt row must not blank the whole folder listing.
-pub fn load_folder_files(
+/// Loads one page of files under any path that belongs to the catalog. Works
+/// for root folders as well as subfolders: it matches `files.path` against the
+/// requested prefix, so a recursive import that stored everything under the
+/// root folder_id still returns the correct subset for a subfolder.
+pub fn load_folder_files_for_path(
     app_handle: &AppHandle,
     path: &str,
     recursive: bool,
@@ -1114,30 +1111,33 @@ pub fn load_folder_files(
     limit: usize,
 ) -> Result<Vec<ImageFile>, String> {
     let conn = open_connection(app_handle)?;
-    load_folder_files_in_conn(&conn, path, recursive, offset, limit)
+    load_folder_files_for_path_in_conn(&conn, path, recursive, offset, limit)
 }
 
-fn load_folder_files_in_conn(
+fn load_folder_files_for_path_in_conn(
     conn: &Connection,
     path: &str,
     recursive: bool,
     offset: usize,
     limit: usize,
 ) -> Result<Vec<ImageFile>, String> {
-    let mut stmt = conn
-        .prepare(
-            "SELECT f.metadata_json FROM files f
-             JOIN folders fo ON fo.id = f.folder_id
-             WHERE fo.path = ?1 AND fo.recursive = ?2
-             ORDER BY f.name, f.id
-             LIMIT ?3 OFFSET ?4",
-        )
-        .map_err(|e| e.to_string())?;
+    let normalized = path.trim_end_matches(|c| c == '/' || c == '\\');
+    let sql = if recursive {
+        "SELECT f.metadata_json FROM files f \
+         WHERE f.path LIKE ?1 || '/%' \
+         ORDER BY f.name, f.id \
+         LIMIT ?2 OFFSET ?3"
+    } else {
+        "SELECT f.metadata_json FROM files f \
+         WHERE f.path LIKE ?1 || '/%' AND instr(substr(f.path, length(?1)+2), '/') = 0 \
+         ORDER BY f.name, f.id \
+         LIMIT ?2 OFFSET ?3"
+    };
+    let mut stmt = conn.prepare(sql).map_err(|e| e.to_string())?;
     let rows = stmt
-        .query_map(
-            params![path, recursive as i32, limit as i64, offset as i64],
-            |row| row.get::<_, String>(0),
-        )
+        .query_map(params![normalized, limit as i64, offset as i64], |row| {
+            row.get::<_, String>(0)
+        })
         .map_err(|e| e.to_string())?;
     let mut files = Vec::new();
     for row in rows {
@@ -1148,6 +1148,21 @@ fn load_folder_files_in_conn(
         }
     }
     Ok(files)
+}
+
+/// Returns true when `path` is exactly a cataloged folder or lies under one.
+pub fn is_folder_cataloged(app_handle: &AppHandle, path: &str) -> Result<bool, String> {
+    let conn = open_connection(app_handle)?;
+    let normalized = path.trim_end_matches(|c| c == '/' || c == '\\');
+    let pattern = format!("{}/%", normalized);
+    let count: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM folders WHERE path = ?1 OR path LIKE ?2",
+            params![normalized, pattern],
+            |row| row.get(0),
+        )
+        .map_err(|e| e.to_string())?;
+    Ok(count > 0)
 }
 
 /// Sets the `exif` field of the serialized `ImageFile` stored in
@@ -2462,9 +2477,9 @@ mod tests {
         .unwrap();
 
         // Page size 2: ordering is by name COLLATE NOCASE (id tiebreaker).
-        let page1 = load_folder_files_in_conn(&conn, "/tmp/x", false, 0, 2).unwrap();
-        let page2 = load_folder_files_in_conn(&conn, "/tmp/x", false, 2, 2).unwrap();
-        let page3 = load_folder_files_in_conn(&conn, "/tmp/x", false, 4, 2).unwrap();
+        let page1 = load_folder_files_for_path_in_conn(&conn, "/tmp/x", false, 0, 2).unwrap();
+        let page2 = load_folder_files_for_path_in_conn(&conn, "/tmp/x", false, 2, 2).unwrap();
+        let page3 = load_folder_files_for_path_in_conn(&conn, "/tmp/x", false, 4, 2).unwrap();
         let names = |files: &[ImageFile]| {
             files
                 .iter()
@@ -2479,11 +2494,10 @@ mod tests {
         // Deserialized rows carry the EXIF merged by the EXIF phase.
         assert_eq!(page1[0].exif.as_ref().unwrap().get("ISO").unwrap(), "400");
 
-        // The recursive variant of the same path is a different folder.
-        assert!(
-            load_folder_files_in_conn(&conn, "/tmp/x", true, 0, 10)
-                .unwrap()
-                .is_empty()
+        // The recursive variant also includes direct children of the path.
+        assert_eq!(
+            names(&load_folder_files_for_path_in_conn(&conn, "/tmp/x", true, 0, 10).unwrap()),
+            vec!["A.jpg", "b.jpg", "c.jpg"]
         );
     }
 

@@ -305,7 +305,7 @@ fn largest_tiff_jpeg_preview(buf: &[u8]) -> Option<DynamicImage> {
     None
 }
 
-fn embedded_preview_fallback(bytes: &[u8], path: &str) -> Option<DynamicImage> {
+pub fn extract_embedded_preview_for_thumbnail(bytes: &[u8], path: &str) -> Option<DynamicImage> {
     let img = match largest_tiff_jpeg_preview(bytes) {
         Some(img) => img,
         None => rawler::analyze::extract_preview_pixels(
@@ -328,6 +328,29 @@ fn embedded_preview_fallback(bytes: &[u8], path: &str) -> Option<DynamicImage> {
         Some(o) if o > 1 => apply_orientation(img, Orientation::from_u16(o as u16)),
         _ => img,
     })
+}
+
+fn embedded_preview_fallback(bytes: &[u8], path: &str) -> Option<DynamicImage> {
+    let preview = extract_embedded_preview_for_thumbnail(bytes, path)?;
+    let mut linear_preview = apply_srgb_to_linear(preview);
+    match &mut linear_preview {
+        image::DynamicImage::ImageRgb32F(img) => {
+            for p in img.pixels_mut() {
+                p[0] *= 0.4;
+                p[1] *= 0.4;
+                p[2] *= 0.4;
+            }
+        }
+        image::DynamicImage::ImageRgba32F(img) => {
+            for p in img.pixels_mut() {
+                p[0] *= 0.4;
+                p[1] *= 0.4;
+                p[2] *= 0.4;
+            }
+        }
+        _ => {}
+    }
+    Some(linear_preview)
 }
 
 pub fn load_image_with_orientation(

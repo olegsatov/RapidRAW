@@ -14,7 +14,7 @@ import { globalImageCache } from '../utils/ImageLRUCache';
 import { globalHistoryCache } from '../utils/historyCache';
 import { flushHistoryPersistence } from '../utils/historyPersistence';
 import { debouncedSave, debouncedSetHistory } from './useEditorActions';
-import { useFolderImport, useFolderImportMirror } from './useFolderImport';
+import { loadFolderFromCatalog, useFolderImport, useFolderImportMirror } from './useFolderImport';
 
 export interface AppNavigationProps {
   clearThumbnailQueue: () => void;
@@ -386,20 +386,39 @@ export function useAppNavigation({ clearThumbnailQueue, refs }: AppNavigationPro
               initialFlags[f.path] = f.flag;
             }
           });
-          setLibrary({ imageList: preloadedImages, imageRatings: initialRatings, imageFlags: initialFlags });
-        }
-
-        // Fire-and-forget: the import job streams folder-import-* events into
-        // the folder import store, and the useFolderImport effect mirrors the
-        // job's files into imageList as they arrive.
-        if (path) {
-          openFolder(path, libraryViewMode === LibraryViewMode.Recursive);
-        }
-
-        if (!preserveEditor) {
-          invoke(Invokes.StartBackgroundIndexing, { folderPath: path }).catch((err) => {
-            console.error('Failed to start background indexing:', err);
+          setLibrary({
+            imageList: preloadedImages,
+            imageRatings: initialRatings,
+            imageFlags: initialFlags,
+            isViewLoading: false,
           });
+        } else if (path) {
+          const recursive = libraryViewMode === LibraryViewMode.Recursive;
+          const cataloged = await invoke<boolean>(Invokes.IsFolderCataloged, { path });
+          if (cataloged) {
+            // Catalog-only path: never touch the source disk.
+            const files = await loadFolderFromCatalog(path, recursive);
+            const initialRatings: Record<string, number> = {};
+            const initialFlags: Record<string, number> = {};
+            files.forEach((f) => {
+              if (f.rating !== undefined) {
+                initialRatings[f.path] = f.rating;
+              }
+              if (f.flag !== undefined) {
+                initialFlags[f.path] = f.flag;
+              }
+            });
+            setLibrary({
+              imageList: files,
+              imageRatings: initialRatings,
+              imageFlags: initialFlags,
+              isViewLoading: false,
+            });
+          } else {
+            // Folder not yet cataloged: this is a manual import/add-folder
+            // action, so touching the source disk here is allowed.
+            openFolder(path, recursive);
+          }
         }
       } catch (err) {
         console.error('Failed to load folder contents:', err);

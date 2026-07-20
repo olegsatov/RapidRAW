@@ -601,7 +601,7 @@ function App() {
   );
 
   const handleToggleFolder = useCallback(
-    async (path: string) => {
+    (path: string) => {
       const isExpanding = !expandedFolders.has(path);
       setLibrary((state) => {
         const newSet = new Set(state.expandedFolders);
@@ -612,24 +612,10 @@ function App() {
         }
         return { expandedFolders: newSet };
       });
-      if (!isExpanding) return;
-      try {
-        const showCounts = appSettings?.enableFolderImageCounts ?? false;
-        const newChildren: any[] = await invoke(Invokes.GetFolderChildren, {
-          path,
-          showImageCounts: showCounts,
-        });
-        setLibrary((state) => ({
-          folderTrees: state.folderTrees.map((t: any) => insertChildrenIntoTree(t, path, newChildren)),
-        }));
-        setLibrary((state) => ({
-          pinnedFolderTrees: state.pinnedFolderTrees.map((tree) => insertChildrenIntoTree(tree, path, newChildren)),
-        }));
-      } catch (err) {
-        toast.error(`Failed to load folder: ${err}`);
-      }
+      // Children are already part of the catalog-driven folder tree, so
+      // expanding/collapsing never needs to touch the source disk.
     },
-    [expandedFolders, appSettings?.enableFolderImageCounts, setLibrary],
+    [expandedFolders, setLibrary],
   );
 
   const hasRoots = rootPaths && rootPaths.length > 0;
