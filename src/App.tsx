@@ -4,12 +4,11 @@ import { listen } from '@tauri-apps/api/event';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { ClerkProvider } from '@clerk/react';
 import { ToastContainer, toast, Slide } from 'react-toastify';
-import { MotionConfig } from 'framer-motion';
+
 import clsx from 'clsx';
 
 import TitleBar from './window/TitleBar';
-import FolderTree from './components/panel/FolderTree';
-import LeftBottomPanel from './components/panel/left/LeftBottomPanel';
+import LeftSidebar from './components/panel/left/LeftSidebar';
 import ExportPanel from './components/panel/right/ExportPanel';
 import Resizer from './components/ui/Resizer';
 import GlobalTooltip from './components/ui/GlobalTooltip';
@@ -109,7 +108,8 @@ function App() {
     leftPanelWidth,
     rightPanelWidth,
     compactEditorPanelHeightOverride,
-    leftBottomPanelHeight,
+    leftBottomPanelHeightGallery,
+    leftBottomPanelHeightEditor,
     activeRightPanel,
     setUI,
     setRightPanel,
@@ -124,7 +124,8 @@ function App() {
       leftPanelWidth: state.leftPanelWidth,
       rightPanelWidth: state.rightPanelWidth,
       compactEditorPanelHeightOverride: state.compactEditorPanelHeightOverride,
-      leftBottomPanelHeight: state.leftBottomPanelHeight,
+      leftBottomPanelHeightGallery: state.leftBottomPanelHeightGallery,
+      leftBottomPanelHeightEditor: state.leftBottomPanelHeightEditor,
       activeRightPanel: state.activeRightPanel,
       setUI: state.setUI,
       setRightPanel: state.setRightPanel,
@@ -532,10 +533,9 @@ function App() {
         const bottomPanel = (e.target as HTMLDivElement).nextElementSibling as HTMLDivElement | null;
         const actualStartSize = startSize > 0 ? startSize : (bottomPanel?.clientHeight ?? 300);
         const maxHeight = container ? container.clientHeight - 120 : 800;
+        const heightKey = selectedImage ? 'leftBottomPanelHeightEditor' : 'leftBottomPanelHeightGallery';
         setUI({
-          leftBottomPanelHeight: Math.round(
-            Math.max(120, Math.min(actualStartSize - (moveEvent.clientY - startY), maxHeight)),
-          ),
+          [heightKey]: Math.round(Math.max(120, Math.min(actualStartSize - (moveEvent.clientY - startY), maxHeight))),
         });
       } else if (stateKey === 'compact') {
         setUI({
@@ -621,62 +621,8 @@ function App() {
   const hasRoots = rootPaths && rootPaths.length > 0;
   const hasMainContent = hasRoots || !!selectedImage;
 
-  const renderFolderTree = () => {
-    if (!hasRoots) return null;
-
-    return (
-      <div
-        className={clsx(
-          'flex h-full overflow-hidden shrink-0',
-          !isResizing && !isInstantTransition && 'transition-all duration-300 ease-in-out',
-        )}
-        style={{
-          maxWidth: isFullScreen ? '0px' : '1000px',
-          opacity: isFullScreen ? 0 : 1,
-        }}
-      >
-        <div
-          className="flex flex-col h-full"
-          style={{ width: uiVisibility.folderTree ? `${leftPanelWidth}px` : '32px' }}
-        >
-          <div className="flex-1 min-h-0 overflow-hidden">
-            <MotionConfig reducedMotion={isInstantTransition ? 'always' : 'user'}>
-              <FolderTree
-                isResizing={isResizing}
-                isVisible={uiVisibility.folderTree}
-                onContextMenu={handleFolderTreeContextMenu}
-                onAlbumContextMenu={handleAlbumTreeContextMenu}
-                onSelectAlbum={handleSelectAlbum}
-                onFolderSelect={(path) => handleSelectSubfolder(path, false)}
-                onToggleFolder={handleToggleFolder}
-                onOpenFolder={handleOpenFolder}
-                setIsVisible={(value: boolean) =>
-                  setUI((state) => ({ uiVisibility: { ...state.uiVisibility, folderTree: value } }))
-                }
-                style={{ width: '100%', height: '100%' }}
-                isInstantTransition={isInstantTransition}
-              />
-            </MotionConfig>
-          </div>
-          {uiVisibility.folderTree && uiVisibility.leftBottomPanel && (
-            <>
-              <Resizer
-                direction={Orientation.Horizontal}
-                onMouseDown={createResizeHandler('leftBottom', leftBottomPanelHeight)}
-              />
-              <div
-                className="shrink-0 overflow-hidden"
-                style={{ height: leftBottomPanelHeight > 0 ? `${leftBottomPanelHeight}px` : '50%' }}
-              >
-                <LeftBottomPanel />
-              </div>
-            </>
-          )}
-        </div>
-        <Resizer direction={Orientation.Vertical} onMouseDown={createResizeHandler('left', leftPanelWidth)} />
-      </div>
-    );
-  };
+  const leftSidebarMode = selectedImage ? 'editor' : 'gallery';
+  const activeLeftBottomHeight = selectedImage ? leftBottomPanelHeightEditor : leftBottomPanelHeightGallery;
 
   const shouldHideFolderTree = isAndroid;
   const isWgpuActive = appSettings?.useWgpuRenderer !== false && selectedImage?.isReady && hasRenderedFirstFrame;
@@ -716,7 +662,28 @@ function App() {
           )}
         >
           <div className="flex flex-row grow h-full min-h-0">
-            {!shouldHideFolderTree && renderFolderTree()}
+            {!shouldHideFolderTree && (hasRoots || selectedImage) && (
+              <LeftSidebar
+                mode={leftSidebarMode}
+                isResizing={isResizing}
+                isInstantTransition={isInstantTransition}
+                isFullScreen={isFullScreen}
+                leftPanelWidth={leftPanelWidth}
+                leftBottomPanelHeight={activeLeftBottomHeight}
+                folderTreeVisible={uiVisibility.folderTree}
+                leftBottomPanelVisible={uiVisibility.leftBottomPanel}
+                createResizeHandler={createResizeHandler}
+                onFolderSelect={(path) => handleSelectSubfolder(path, false)}
+                onToggleFolder={handleToggleFolder}
+                onSelectAlbum={handleSelectAlbum}
+                onOpenFolder={handleOpenFolder}
+                onFolderTreeContextMenu={handleFolderTreeContextMenu}
+                onAlbumTreeContextMenu={handleAlbumTreeContextMenu}
+                setFolderTreeVisible={(value: boolean) =>
+                  setUI((state) => ({ uiVisibility: { ...state.uiVisibility, folderTree: value } }))
+                }
+              />
+            )}
             <div className="relative flex-1 flex flex-col min-w-0">
               {selectedImage && externalEditSession && (
                 <ExternalEditBar
