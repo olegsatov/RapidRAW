@@ -25,6 +25,7 @@ interface EditorToolbarProps {
   onToggleDateView(): void;
   adjustmentsHistory: any[];
   adjustmentsHistoryIndex: number;
+  adjustmentsHistoryLabels: (string | null)[];
   goToAdjustmentsHistoryIndex(index: number): void;
 }
 
@@ -45,6 +46,7 @@ const EditorToolbar = memo(
     onToggleDateView,
     adjustmentsHistory,
     adjustmentsHistoryIndex,
+    adjustmentsHistoryLabels,
     goToAdjustmentsHistoryIndex,
   }: EditorToolbarProps) => {
     const { t } = useTranslation();
@@ -155,7 +157,7 @@ const EditorToolbar = memo(
       return () => document.removeEventListener('mousedown', handleClickOutside);
     }, [isHistoryVisible]);
 
-    const historyNames = useHistoryNames(adjustmentsHistory);
+    const historyNames = useHistoryNames(adjustmentsHistory, adjustmentsHistoryLabels);
 
     useEffect(() => {
       if (isHistoryVisible && historyContainerRef.current) {

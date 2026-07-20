@@ -27,6 +27,7 @@ interface EditorState {
   history: Adjustments[];
   historyIndex: number;
   historyDeltas: HistoryDelta[][];
+  historyLabels: (string | null)[];
 
   // Previews & Overlays
   finalPreviewUrl: string | null;
@@ -85,10 +86,16 @@ interface EditorState {
   setEditor: (updater: Partial<EditorState> | ((state: EditorState) => Partial<EditorState>)) => void;
   setHistoryDeltas: (deltas: HistoryDelta[][]) => void;
   pushHistory: (newAdjustments: Adjustments) => void;
+  pushNamedSnapshot: (name: string) => void;
   undo: () => void;
   redo: () => void;
   resetHistory: (initialState: Adjustments) => void;
-  restoreHistory: (history: Adjustments[], historyIndex: number, historyDeltas?: HistoryDelta[][]) => void;
+  restoreHistory: (
+    history: Adjustments[],
+    historyIndex: number,
+    historyDeltas?: HistoryDelta[][],
+    historyLabels?: (string | null)[],
+  ) => void;
   goToHistoryIndex: (index: number) => void;
 }
 
@@ -99,6 +106,7 @@ export const useEditorStore = create<EditorState>((set) => ({
   history: [INITIAL_ADJUSTMENTS],
   historyIndex: 0,
   historyDeltas: [[]],
+  historyLabels: [null],
 
   finalPreviewUrl: null,
   uncroppedAdjustedPreviewUrl: null,
@@ -163,11 +171,15 @@ export const useEditorStore = create<EditorState>((set) => ({
           newHistory.push(newAdj);
           const newDeltas = state.historyDeltas.slice(0, state.historyIndex);
           newDeltas.push(delta);
+          const newLabels = state.historyLabels.slice(0, state.historyIndex);
+          // Preserve any user-given label on the step being replaced.
+          newLabels.push(state.historyLabels[state.historyIndex] ?? null);
           return {
             history: newHistory,
             historyIndex: state.historyIndex,
             adjustments: newAdj,
             historyDeltas: newDeltas,
+            historyLabels: newLabels,
           };
         }
       }
@@ -176,15 +188,52 @@ export const useEditorStore = create<EditorState>((set) => ({
       newHistory.push(newAdj);
       const newDeltas = state.historyDeltas.slice(0, state.historyIndex + 1);
       newDeltas.push(delta);
+      const newLabels = state.historyLabels.slice(0, state.historyIndex + 1);
+      newLabels.push(null);
       if (newHistory.length > HISTORY_LIMIT) {
         newHistory.shift();
         newDeltas.shift();
+        newLabels.shift();
       }
       return {
         history: newHistory,
         historyIndex: newHistory.length - 1,
         adjustments: newAdj,
         historyDeltas: newDeltas,
+        historyLabels: newLabels,
+      };
+    }),
+
+  pushNamedSnapshot: (name) =>
+    set((state) => {
+      const current = state.history[state.historyIndex];
+      if (state.historyIndex > 0) {
+        const prev = state.history[state.historyIndex - 1];
+        if (JSON.stringify(prev) === JSON.stringify(current)) {
+          // No actual change from the previous step; just label it.
+          const newLabels = [...state.historyLabels];
+          newLabels[state.historyIndex] = name;
+          return { historyLabels: newLabels };
+        }
+      }
+
+      const newHistory = state.history.slice(0, state.historyIndex + 1);
+      newHistory.push(current);
+      const newDeltas = state.historyDeltas.slice(0, state.historyIndex + 1);
+      newDeltas.push([]);
+      const newLabels = state.historyLabels.slice(0, state.historyIndex + 1);
+      newLabels.push(name);
+      if (newHistory.length > HISTORY_LIMIT) {
+        newHistory.shift();
+        newDeltas.shift();
+        newLabels.shift();
+      }
+      return {
+        history: newHistory,
+        historyIndex: newHistory.length - 1,
+        adjustments: current,
+        historyDeltas: newDeltas,
+        historyLabels: newLabels,
       };
     }),
 
@@ -212,9 +261,10 @@ export const useEditorStore = create<EditorState>((set) => ({
       historyIndex: 0,
       adjustments: initialState,
       historyDeltas: [[]],
+      historyLabels: [null],
     })),
 
-  restoreHistory: (history, historyIndex, historyDeltas) =>
+  restoreHistory: (history, historyIndex, historyDeltas, historyLabels) =>
     set(() => {
       if (history.length === 0) return {} as Partial<EditorState>;
       const clamped = Math.min(Math.max(historyIndex, 0), history.length - 1);
@@ -223,6 +273,7 @@ export const useEditorStore = create<EditorState>((set) => ({
         historyIndex: clamped,
         adjustments: history[clamped],
         historyDeltas: historyDeltas ?? Array.from({ length: history.length }, () => []),
+        historyLabels: historyLabels ?? Array.from({ length: history.length }, () => null),
       };
     }),
 

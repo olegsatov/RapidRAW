@@ -3,6 +3,7 @@ import type { Adjustments } from './adjustments';
 export interface HistoryCacheEntry {
   history: Adjustments[];
   historyIndex: number;
+  historyLabels?: (string | null)[];
 }
 
 const MAX_ENTRIES = 20;

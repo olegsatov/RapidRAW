@@ -44,6 +44,7 @@ let pendingPath: string | null = null;
 let pendingHistory: Adjustments[] | null = null;
 let pendingHistoryIndex: number | null = null;
 let pendingHistoryDeltas: HistoryDelta[][] | null = null;
+let pendingHistoryLabels: (string | null)[] | null = null;
 let debounceTimer: ReturnType<typeof setTimeout> | null = null;
 let flushPromise: Promise<void> | null = null;
 
@@ -65,7 +66,13 @@ export async function flushHistoryPersistence(): Promise<void> {
 
   flushPromise = (async () => {
     try {
-      if (!pendingPath || !pendingHistory || pendingHistoryIndex === null || !pendingHistoryDeltas) {
+      if (
+        !pendingPath ||
+        !pendingHistory ||
+        pendingHistoryIndex === null ||
+        !pendingHistoryDeltas ||
+        !pendingHistoryLabels
+      ) {
         return;
       }
 
@@ -73,11 +80,13 @@ export async function flushHistoryPersistence(): Promise<void> {
       const history = pendingHistory;
       const historyIndex = pendingHistoryIndex;
       const historyDeltas = pendingHistoryDeltas;
+      const historyLabels = pendingHistoryLabels;
 
       pendingPath = null;
       pendingHistory = null;
       pendingHistoryIndex = null;
       pendingHistoryDeltas = null;
+      pendingHistoryLabels = null;
       if (debounceTimer) {
         clearTimeout(debounceTimer);
         debounceTimer = null;
@@ -90,13 +99,14 @@ export async function flushHistoryPersistence(): Promise<void> {
       const snapshot: SnapshotPayload = {
         idx: 0,
         adjustments_json: JSON.stringify(history[0]),
-        description: null,
+        description: historyLabels[0] ?? null,
         created_at: Date.now(),
       };
 
       const deltas: DeltaPayload[] = [];
       for (let step = 1; step < history.length; step++) {
         const stepDeltas = historyDeltas[step] ?? [];
+        const stepLabel = historyLabels[step] ?? null;
         for (let i = 0; i < stepDeltas.length; i++) {
           const d = stepDeltas[i];
           deltas.push({
@@ -105,7 +115,7 @@ export async function flushHistoryPersistence(): Promise<void> {
             adjustment_key: d.adjustment_key,
             old_value: d.old_value,
             new_value: d.new_value,
-            description: i === 0 ? null : null, // labels are stored per-step, not per-delta in Phase 2
+            description: i === 0 ? stepLabel : null,
             created_at: Date.now(),
           });
         }
@@ -135,17 +145,22 @@ export function scheduleHistoryPersistence(
   history: Adjustments[],
   historyIndex: number,
   historyDeltas: HistoryDelta[][],
+  historyLabels: (string | null)[],
 ): void {
   pendingPath = path;
   pendingHistory = history;
   pendingHistoryIndex = historyIndex;
   pendingHistoryDeltas = historyDeltas;
+  pendingHistoryLabels = historyLabels;
   debouncedSave();
 }
 
-export async function loadPersistedHistory(
-  path: string,
-): Promise<{ history: Adjustments[]; historyIndex: number; historyDeltas: HistoryDelta[][] } | null> {
+export async function loadPersistedHistory(path: string): Promise<{
+  history: Adjustments[];
+  historyIndex: number;
+  historyDeltas: HistoryDelta[][];
+  historyLabels: (string | null)[];
+} | null> {
   try {
     const response = await invoke<LoadEditHistoryResponse>('load_edit_history', { path });
     if (!response.history || response.history.length <= 1) {
@@ -154,15 +169,18 @@ export async function loadPersistedHistory(
 
     const history: Adjustments[] = [];
     const historyDeltas: HistoryDelta[][] = [];
+    const historyLabels: (string | null)[] = [];
     for (let i = 0; i < response.history.length; i++) {
       history.push(JSON.parse(response.history[i].adjustments_json) as Adjustments);
       historyDeltas.push([]);
+      historyLabels.push(response.history[i].label ?? null);
     }
 
     return {
       history,
       historyIndex: response.history_index,
       historyDeltas,
+      historyLabels,
     };
   } catch (err) {
     console.error('Failed to load persisted edit history:', err);
@@ -172,9 +190,9 @@ export async function loadPersistedHistory(
 
 export function subscribeHistoryPersistence(): () => void {
   const unsubscribe = useEditorStore.subscribe((state) => {
-    const { selectedImage, history, historyIndex, historyDeltas } = state;
+    const { selectedImage, history, historyIndex, historyDeltas, historyLabels } = state;
     if (selectedImage?.path && history.length > 1) {
-      scheduleHistoryPersistence(selectedImage.path, history, historyIndex, historyDeltas);
+      scheduleHistoryPersistence(selectedImage.path, history, historyIndex, historyDeltas, historyLabels);
     }
   });
 

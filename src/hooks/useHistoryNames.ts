@@ -4,7 +4,7 @@ import type { Adjustments } from '../utils/adjustments';
 // Human-readable names for undo-history entries, diffed incrementally
 // between consecutive snapshots. Shared by the toolbar history dropdown
 // (EditorToolbar) and the History panel (HistoryPanel).
-export function useHistoryNames(adjustmentsHistory: Adjustments[]): string[] {
+export function useHistoryNames(adjustmentsHistory: Adjustments[], labels: (string | null)[]): string[] {
   const prevNamesRef = useRef<string[]>(['Initial State']);
 
   return useMemo(() => {
@@ -92,7 +92,12 @@ export function useHistoryNames(adjustmentsHistory: Adjustments[]): string[] {
 
     for (let i = newNames.length; i < adjustmentsHistory.length; i++) {
       if (i === 0) {
-        newNames[i] = 'Initial State';
+        newNames[i] = labels[i] ?? 'Initial State';
+        continue;
+      }
+
+      if (labels[i]) {
+        newNames[i] = labels[i] as string;
         continue;
       }
 

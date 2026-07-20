@@ -828,7 +828,11 @@
     },
     "history": {
       "title": "История",
-      "empty": "Изменений пока нет"
+      "empty": "Изменений пока нет",
+      "snapshot": {
+        "tooltip": "Сохранить снапшот",
+        "placeholder": "Название снапшота"
+      }
     },
     "switcher": {
       "tooltips": {

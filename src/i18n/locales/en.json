@@ -829,7 +829,11 @@
     },
     "history": {
       "title": "History",
-      "empty": "No edits yet"
+      "empty": "No edits yet",
+      "snapshot": {
+        "tooltip": "Save snapshot",
+        "placeholder": "Snapshot name"
+      }
     },
     "switcher": {
       "tooltips": {

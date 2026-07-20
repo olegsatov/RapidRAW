@@ -88,6 +88,7 @@ export default function Editor({ onBackToLibrary, onContextMenu, transformWrappe
   const adjustments = useEditorStore((s) => s.adjustments);
   const adjustmentsHistory = useEditorStore((s) => s.history);
   const adjustmentsHistoryIndex = useEditorStore((s) => s.historyIndex);
+  const adjustmentsHistoryLabels = useEditorStore((s) => s.historyLabels);
   const finalPreviewUrl = useEditorStore((s) => s.finalPreviewUrl);
   const uncroppedAdjustedPreviewUrl = useEditorStore((s) => s.uncroppedAdjustedPreviewUrl);
   const transformedOriginalUrl = useEditorStore((s) => s.transformedOriginalUrl);
@@ -2058,6 +2059,7 @@ export default function Editor({ onBackToLibrary, onContextMenu, transformWrappe
           onToggleDateView={() => setShowExifDateView((prev) => !prev)}
           adjustmentsHistory={adjustmentsHistory}
           adjustmentsHistoryIndex={adjustmentsHistoryIndex}
+          adjustmentsHistoryLabels={adjustmentsHistoryLabels}
           goToAdjustmentsHistoryIndex={goToHistoryIndex}
         />
       </div>

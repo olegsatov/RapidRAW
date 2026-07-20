@@ -85,9 +85,18 @@ export function useAppNavigation({ clearThumbnailQueue, refs }: AppNavigationPro
 
     const lastActivePath = selectedImage?.path ?? null;
 
-    const { selectedImage: prevImage, history: prevHistory, historyIndex: prevIndex } = useEditorStore.getState();
+    const {
+      selectedImage: prevImage,
+      history: prevHistory,
+      historyIndex: prevIndex,
+      historyLabels: prevLabels,
+    } = useEditorStore.getState();
     if (prevImage?.path && prevHistory.length > 0) {
-      globalHistoryCache.set(prevImage.path, { history: prevHistory, historyIndex: prevIndex });
+      globalHistoryCache.set(prevImage.path, {
+        history: prevHistory,
+        historyIndex: prevIndex,
+        historyLabels: prevLabels,
+      });
     }
 
     setEditor({
@@ -141,11 +150,16 @@ export function useAppNavigation({ clearThumbnailQueue, refs }: AppNavigationPro
         globalImageCache.set(selectedImage.path, cachedEditStateRef.current);
       }
 
-      const { history: outgoingHistory, historyIndex: outgoingIndex } = useEditorStore.getState();
+      const {
+        history: outgoingHistory,
+        historyIndex: outgoingIndex,
+        historyLabels: outgoingLabels,
+      } = useEditorStore.getState();
       if (selectedImage?.path && outgoingHistory.length > 0) {
         globalHistoryCache.set(selectedImage.path, {
           history: outgoingHistory,
           historyIndex: outgoingIndex,
+          historyLabels: outgoingLabels,
         });
       }
 
@@ -198,7 +212,7 @@ export function useAppNavigation({ clearThumbnailQueue, refs }: AppNavigationPro
 
         const cachedHistory = globalHistoryCache.get(path);
         if (cachedHistory) {
-          restoreHistory(cachedHistory.history, cachedHistory.historyIndex);
+          restoreHistory(cachedHistory.history, cachedHistory.historyIndex, undefined, cachedHistory.historyLabels);
         } else {
           setEditor({ adjustments: cached.adjustments });
           resetHistory(cached.adjustments);
@@ -365,9 +379,18 @@ export function useAppNavigation({ clearThumbnailQueue, refs }: AppNavigationPro
         if (!preserveEditor && selectedImage) {
           debouncedSave.flush();
           debouncedSetHistory.flush();
-          const { selectedImage: prevImage, history: prevHistory, historyIndex: prevIndex } = useEditorStore.getState();
+          const {
+            selectedImage: prevImage,
+            history: prevHistory,
+            historyIndex: prevIndex,
+            historyLabels: prevLabels,
+          } = useEditorStore.getState();
           if (prevImage?.path && prevHistory.length > 0) {
-            globalHistoryCache.set(prevImage.path, { history: prevHistory, historyIndex: prevIndex });
+            globalHistoryCache.set(prevImage.path, {
+              history: prevHistory,
+              historyIndex: prevIndex,
+              historyLabels: prevLabels,
+            });
           }
           setEditor({ selectedImage: null, finalPreviewUrl: null, uncroppedAdjustedPreviewUrl: null, histogram: null });
           setEditor({ adjustments: INITIAL_ADJUSTMENTS });
