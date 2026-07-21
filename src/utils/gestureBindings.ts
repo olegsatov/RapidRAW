@@ -42,6 +42,6 @@ export const GESTURE_BINDINGS: GestureBinding[] = [
       { key: 'flimShoulder', min: -100, max: 100, step: 1 },
       { key: 'flimToe', min: -100, max: 100, step: 1 },
     ],
-    moveSign: [1, -1],
+    moveSign: [1, 1],
   },
 ];
