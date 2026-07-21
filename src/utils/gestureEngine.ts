@@ -116,7 +116,7 @@ export const SCROLL_AXIS_LOCK: AxisLockConfig = {
 
 export const MOUSE_MOVE_STEP = { stepX: 6, stepY: 6 };
 export const MOUSE_SCROLL_STEP = 6;
-export const TRACKPAD_SCROLL_STEP = 2.5;
+export const TRACKPAD_SCROLL_STEP = 12.5; // trackpad deltas are much finer than mouse notches
 
 // Accumulates sub-pixel movement and returns fractional parameter units.
 // pxPerUnit = how many pixels the cursor must travel to change the parameter by 1.

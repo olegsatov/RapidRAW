@@ -242,11 +242,11 @@ export function useGestureAdjust() {
       }
 
       if (locked === 'vertical' || locked === 'both') {
-        const steps = scrollAccY.push(-dy);
+        const steps = scrollAccY.push(dy);
         applyDelta(binding.scroll[0], steps * binding.scroll[0].step);
       }
       if (locked === 'horizontal' || locked === 'both') {
-        const steps = scrollAccX.push(dx);
+        const steps = scrollAccX.push(-dx);
         applyDelta(binding.scroll[1], steps * binding.scroll[1].step);
       }
     };
