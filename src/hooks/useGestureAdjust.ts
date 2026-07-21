@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react';
+import { getCurrentWindow } from '@tauri-apps/api/window';
 import { useEditorStore } from '../store/useEditorStore';
 import { useUIStore } from '../store/useUIStore';
 import { useSettingsStore } from '../store/useSettingsStore';
@@ -63,15 +64,17 @@ export function useGestureAdjust() {
       };
 
       setEditor({ isSliderDragging: true });
-      document.body?.requestPointerLock().catch(() => {});
+      const appWindow = getCurrentWindow();
+      appWindow.setCursorGrab(true).catch(() => {});
+      appWindow.setCursorVisible(false).catch(() => {});
     };
 
     const endSession = () => {
       const hadSession = sessionRef.current !== null;
       sessionRef.current = null;
-      if (document.pointerLockElement === document.body) {
-        document.exitPointerLock();
-      }
+      const appWindow = getCurrentWindow();
+      appWindow.setCursorGrab(false).catch(() => {});
+      appWindow.setCursorVisible(true).catch(() => {});
       if (hadSession) {
         setEditor({ isSliderDragging: false });
       }
@@ -192,7 +195,6 @@ export function useGestureAdjust() {
 
     const handlePointerMove = (event: PointerEvent) => {
       if (!sessionRef.current) return;
-      if (document.pointerLockElement !== document.body) return;
 
       const { binding, moveLock, moveAccX, moveAccY } = sessionRef.current;
       const locked = moveLock.push(event.movementX, event.movementY);
@@ -250,24 +252,16 @@ export function useGestureAdjust() {
       }
     };
 
-    const handlePointerLockChange = () => {
-      if (sessionRef.current && document.pointerLockElement !== document.body) {
-        endSession();
-      }
-    };
-
     window.addEventListener('keydown', handleKeyDown, true);
     window.addEventListener('keyup', handleKeyUp, true);
     window.addEventListener('pointermove', handlePointerMove, true);
     window.addEventListener('wheel', handleWheel, { capture: true, passive: false });
-    document.addEventListener('pointerlockchange', handlePointerLockChange);
 
     return () => {
       window.removeEventListener('keydown', handleKeyDown, true);
       window.removeEventListener('keyup', handleKeyUp, true);
       window.removeEventListener('pointermove', handlePointerMove, true);
       window.removeEventListener('wheel', handleWheel, { capture: true });
-      document.removeEventListener('pointerlockchange', handlePointerLockChange);
       if (pendingRef.current) {
         clearTimeout(pendingRef.current.timer);
         pendingRef.current = null;
