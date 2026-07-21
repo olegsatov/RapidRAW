@@ -35,7 +35,7 @@ export const GESTURE_BINDINGS: GestureBinding[] = [
   {
     action: 'gesture_tone_basic',
     move: [
-      { key: 'flimEv', min: -3, max: 3, step: 0.1 },
+      { key: 'flimEv', min: -3, max: 3, step: 0.05 },
       { key: 'flimContrast', min: 50, max: 150, step: 1 },
     ],
     scroll: [
