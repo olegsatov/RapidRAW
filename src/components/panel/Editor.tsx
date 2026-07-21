@@ -13,6 +13,7 @@ import ImageCanvas, { CropDragInfo } from './editor/ImageCanvas';
 import { Mask, SubMask } from './right/Masks';
 import { Panel, TransformState, Invokes } from '../ui/AppProperties';
 import Text from '../ui/Text';
+import GestureOverlay from '../ui/GestureOverlay';
 import { TextColors, TextVariants, TextWeights } from '../../types/typography';
 import { useEditorStore } from '../../store/useEditorStore';
 import { useSettingsStore } from '../../store/useSettingsStore';
@@ -2160,6 +2161,8 @@ export default function Editor({ onBackToLibrary, onContextMenu, transformWrappe
             hasRenderedFirstFrame={hasRenderedFirstFrame}
           />
         </div>
+
+        <GestureOverlay />
       </div>
     </div>
   );
