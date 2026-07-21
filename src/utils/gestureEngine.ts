@@ -94,7 +94,10 @@ export function detectWheelDevice(e: WheelEvent): 'mouse' | 'trackpad' {
   if (e.deltaMode === 1 || e.deltaMode === 2) {
     return 'mouse';
   }
-  return Math.abs(e.deltaY) > 40 ? 'mouse' : 'trackpad';
+  if (Number.isInteger(e.deltaY) && Math.abs(e.deltaY) >= 100) {
+    return 'mouse';
+  }
+  return 'trackpad';
 }
 
 export const MOVE_AXIS_LOCK: AxisLockConfig = {

@@ -217,17 +217,28 @@ export function useGestureAdjust() {
 
       let dx: number;
       let dy: number;
+      let locked: 'none' | 'horizontal' | 'vertical' | 'both';
       if (device === 'mouse') {
-        dx = quantizeMouseWheel(event.deltaX) * MOUSE_SCROLL_STEP;
-        dy = quantizeMouseWheel(event.deltaY) * MOUSE_SCROLL_STEP;
+        const qx = quantizeMouseWheel(event.deltaX);
+        const qy = quantizeMouseWheel(event.deltaY);
+        dx = qx * MOUSE_SCROLL_STEP;
+        dy = qy * MOUSE_SCROLL_STEP;
+        if (qx !== 0 && qy !== 0) {
+          locked = 'both';
+        } else if (qx !== 0) {
+          locked = 'horizontal';
+        } else if (qy !== 0) {
+          locked = 'vertical';
+        } else {
+          locked = 'none';
+        }
       } else {
         scrollAccX.step = TRACKPAD_SCROLL_STEP;
         scrollAccY.step = TRACKPAD_SCROLL_STEP;
         dx = event.deltaX;
         dy = event.deltaY;
+        locked = scrollLock.push(dx, dy);
       }
-
-      const locked = scrollLock.push(dx, dy);
 
       if (locked === 'vertical' || locked === 'both') {
         const steps = scrollAccY.push(-dy);

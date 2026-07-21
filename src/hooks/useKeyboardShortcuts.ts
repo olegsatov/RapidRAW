@@ -621,7 +621,7 @@ export const useKeyboardShortcuts = ({
       const comboMap = new Map<string, string>();
       for (const def of KEYBIND_DEFINITIONS) {
         const effective = getEffectiveKeybind(keybinds?.[def.action], def.defaultCombo);
-        if (effective) {
+        if (effective && actions[def.action]) {
           comboMap.set(effective.join('+'), def.action);
         }
       }
