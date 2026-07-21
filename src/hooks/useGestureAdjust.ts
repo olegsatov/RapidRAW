@@ -87,6 +87,45 @@ export function useGestureAdjust() {
             },
           ];
         }
+
+        if (action === 'gesture_tone_basic') {
+          return [
+            {
+              label: t('gesture.overlay.exposureContrast'),
+              axisLabels: ['flimEv', 'flimContrast'],
+              values: [adjustments.flimEv, adjustments.flimContrast],
+              min: [binding.move[0].min, binding.move[1].min],
+              max: [binding.move[0].max, binding.move[1].max],
+            },
+            {
+              label: t('gesture.overlay.lightsShadows'),
+              axisLabels: ['flimShoulder', 'flimToe'],
+              values: [adjustments.flimShoulder, adjustments.flimToe],
+              min: [binding.scroll[0].min, binding.scroll[1].min],
+              max: [binding.scroll[0].max, binding.scroll[1].max],
+            },
+          ];
+        }
+
+        if (action === 'gesture_lut') {
+          return [
+            {
+              label: t('gesture.overlay.lutIntensity'),
+              axisLabels: ['lutIntensity', 'lutIntensity'],
+              values: [adjustments.lutIntensity ?? 100, adjustments.lutIntensity ?? 100],
+              min: [binding.scroll[0].min, binding.scroll[1].min],
+              max: [binding.scroll[0].max, binding.scroll[1].max],
+            },
+            {
+              label: t('gesture.overlay.lutInput'),
+              axisLabels: ['lutInputOffset', 'lutInputRange'],
+              values: [adjustments.lutInputOffset ?? 0, adjustments.lutInputRange ?? 6],
+              min: [binding.move[0].min, binding.move[1].min],
+              max: [binding.move[0].max, binding.move[1].max],
+            },
+          ];
+        }
+
         return [];
       };
 

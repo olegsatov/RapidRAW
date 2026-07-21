@@ -2,7 +2,11 @@
   "gesture": {
     "overlay": {
       "colorBalance": "Баланс белого",
-      "warmSat": "Тепло / Насыщ."
+      "warmSat": "Тепло / Насыщ.",
+      "exposureContrast": "Экспозиция / Контраст",
+      "lightsShadows": "Света / Тени",
+      "lutIntensity": "Интенсивность LUT",
+      "lutInput": "Вход LUT"
     }
   },
   "adjustments": {

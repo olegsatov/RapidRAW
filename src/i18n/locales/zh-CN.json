@@ -2,7 +2,11 @@
   "gesture": {
     "overlay": {
       "colorBalance": "Color Balance",
-      "warmSat": "Warm / Sat"
+      "warmSat": "Warm / Sat",
+      "exposureContrast": "Exposure / Contrast",
+      "lightsShadows": "Lights / Shadows",
+      "lutIntensity": "LUT Intensity",
+      "lutInput": "LUT Input"
     }
   },
   "adjustments": {
