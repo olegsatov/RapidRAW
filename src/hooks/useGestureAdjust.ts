@@ -3,9 +3,11 @@ import { getCurrentWindow } from '@tauri-apps/api/window';
 import { useEditorStore } from '../store/useEditorStore';
 import { useUIStore } from '../store/useUIStore';
 import { useSettingsStore } from '../store/useSettingsStore';
+import { useGestureStore, GestureOverlayParam } from '../store/useGestureStore';
 import { useEditorActions } from './useEditorActions';
 import { getEffectiveKeybind, KEYBIND_DEFINITIONS } from '../utils/keyboardUtils';
 import { GESTURE_BINDINGS, GestureBinding, GestureParam } from '../utils/gestureBindings';
+import { Adjustments } from '../utils/adjustments';
 import {
   AxisLock,
   clamp,
@@ -33,6 +35,7 @@ interface GestureSession {
   scrollContAccX: ContinuousAccumulator;
   scrollContAccY: ContinuousAccumulator;
   gestureKey: string;
+  overlayParams: GestureOverlayParam[];
 }
 
 const GESTURE_HOLD_DELAY_MS = 150;
@@ -61,6 +64,33 @@ export function useGestureAdjust() {
       const binding = GESTURE_BINDINGS.find((b) => b.action === action);
       if (!binding) return;
 
+      const adjustments = useEditorStore.getState().adjustments;
+
+      const buildOverlayParams = (): GestureOverlayParam[] => {
+        if (action === 'gesture_color_balance') {
+          return [
+            {
+              label: 'Color Balance',
+              axisLabels: ['temperature', 'tint'],
+              values: [adjustments.temperature, adjustments.tint],
+              min: [binding.move[0].min, binding.move[1].min],
+              max: [binding.move[0].max, binding.move[1].max],
+            },
+            {
+              label: 'Warmth / Saturation',
+              axisLabels: ['flimWarmth', 'flimSaturation'],
+              values: [adjustments.flimWarmth, adjustments.flimSaturation],
+              min: [binding.scroll[0].min, binding.scroll[1].min],
+              max: [binding.scroll[0].max, binding.scroll[1].max],
+            },
+          ];
+        }
+        return [];
+      };
+
+      const overlayParams = buildOverlayParams();
+      useGestureStore.getState().startOverlay(action, overlayParams);
+
       sessionRef.current = {
         binding,
         moveLock: new AxisLock(MOVE_AXIS_LOCK),
@@ -81,6 +111,7 @@ export function useGestureAdjust() {
           binding.scroll[0].step,
         ),
         gestureKey,
+        overlayParams,
       };
 
       setEditor({ isSliderDragging: true });
@@ -92,6 +123,7 @@ export function useGestureAdjust() {
     const endSession = () => {
       const hadSession = sessionRef.current !== null;
       sessionRef.current = null;
+      useGestureStore.getState().endOverlay();
       const appWindow = getCurrentWindow();
       appWindow.setCursorGrab(false).catch(() => {});
       appWindow.setCursorVisible(true).catch(() => {});
@@ -131,10 +163,27 @@ export function useGestureAdjust() {
 
     const applyDelta = (param: GestureParam, rawDelta: number) => {
       if (rawDelta === 0) return;
-      setAdjustments((prev) => ({
-        ...prev,
-        [param.key]: clamp(prev[param.key] + rawDelta, param.min, param.max),
-      }));
+      setAdjustments((prev) => {
+        const current = prev[param.key] ?? 0;
+        const next = { ...prev, [param.key]: clamp(current + rawDelta, param.min, param.max) };
+        updateOverlayValues(next);
+        return next;
+      });
+    };
+
+    const updateOverlayValues = (adjustments: Adjustments) => {
+      const session = sessionRef.current;
+      if (!session || session.overlayParams.length === 0) return;
+
+      useGestureStore.getState().setParams(
+        session.overlayParams.map((panel) => ({
+          ...panel,
+          values: [
+            clamp(adjustments[panel.axisLabels[0]], panel.min[0], panel.max[0]),
+            clamp(adjustments[panel.axisLabels[1]], panel.min[1], panel.max[1]),
+          ] as [number, number],
+        })),
+      );
     };
 
     const handleKeyDown = (event: KeyboardEvent) => {
