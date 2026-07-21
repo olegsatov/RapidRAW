@@ -102,7 +102,7 @@ export function detectWheelDevice(e: WheelEvent): 'mouse' | 'trackpad' {
 
 export const MOVE_AXIS_LOCK: AxisLockConfig = {
   windowSize: 5,
-  axisThreshold: 1.5,
+  axisThreshold: 1,
   diagRatio: 0.5,
   bothFactor: 1.5,
 };
@@ -114,7 +114,7 @@ export const SCROLL_AXIS_LOCK: AxisLockConfig = {
   bothFactor: 1,
 };
 
-export const MOUSE_MOVE_STEP = { stepX: 6, stepY: 6 };
+export const MOUSE_MOVE_STEP = { stepX: 3, stepY: 3 };
 export const MOUSE_SCROLL_STEP = 6;
 export const TRACKPAD_SCROLL_STEP = 2.5;
 
