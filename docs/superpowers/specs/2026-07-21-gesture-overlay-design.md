@@ -17,7 +17,7 @@
 
 ```ts
 interface GestureOverlayParam {
-  label: string;          // i18n-ключ названия пары, например "gesture.overlay.colorBalance"
+  label: string;          // переведённое название пары параметров
   axisLabels: [string, string]; // ['temperature', 'tint']
   values: [number, number];
   min: [number, number];
