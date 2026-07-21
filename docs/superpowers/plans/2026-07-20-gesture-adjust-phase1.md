@@ -11,6 +11,7 @@
 **Spec:** `docs/superpowers/specs/2026-07-20-gesture-adjust-phase1-design.md`
 
 **Key facts established during research (do not re-verify):**
+
 - No test runner in `package.json`; verification gate is `npm run build`.
 - `KeyA` is already the default for `toggle_analytics` (`src/utils/keyboardUtils.ts:220`). Gesture handler uses **capture-phase** window listeners + `stopImmediatePropagation()` so it wins over `useKeyboardShortcuts` (bubble phase) whenever the gesture session can start; when flim is off the key falls through to `toggle_analytics` untouched.
 - `setAdjustments` signature: `setAdjustments(value: Partial<Adjustments> | ((prev: Adjustments) => Adjustments))` from `useEditorActions()` (`src/hooks/useEditorActions.ts:41`).
@@ -29,6 +30,7 @@
 Pure math, no DOM. Port of BetterSpeedEdit `MouseInterpreter.swift:63-111` and `EventEngine.swift:659-698,847-866`.
 
 **Files:**
+
 - Create: `src/utils/gestureEngine.ts`
 - Test: `scratch/gesture-engine.test.ts`
 
@@ -233,6 +235,7 @@ git commit -m "add gesture engine core (axis lock, step accumulator, device dete
 ### Task 2: Binding table (`src/utils/gestureBindings.ts`)
 
 **Files:**
+
 - Create: `src/utils/gestureBindings.ts`
 
 - [ ] **Step 1: Write the module**
@@ -289,6 +292,7 @@ git commit -m "add gesture binding table (white balance: move temp/tint, scroll 
 Window-level capture-phase listeners; Pointer Lock for cursor freeze. Self-contained, mounted once in EditorView.
 
 **Files:**
+
 - Create: `src/hooks/useGestureAdjust.ts`
 
 - [ ] **Step 1: Write the hook**
@@ -356,7 +360,13 @@ export function useGestureAdjust() {
       return eff && eff.length === 1 ? eff[0] : null; // phase 1: single-key combos only
     };
 
-    const applySteps = (key: GestureBinding['move'][number]['key'], steps: number, min: number, max: number, step: number) => {
+    const applySteps = (
+      key: GestureBinding['move'][number]['key'],
+      steps: number,
+      min: number,
+      max: number,
+      step: number,
+    ) => {
       if (steps === 0) return;
       setAdjustments((prev: Adjustments) => ({
         ...prev,
@@ -501,6 +511,7 @@ git commit -m "add gesture adjust session hook (pointer lock, capture-phase list
 ### Task 4: Integration — keybind definition, i18n, EditorView mount
 
 **Files:**
+
 - Modify: `src/utils/keyboardUtils.ts` (KEYBIND_DEFINITIONS array, near line 220)
 - Modify: `src/i18n/locales/en.json` (`settings.keybinds.actions`)
 - Modify: other locale JSONs that already contain `settings.keybinds.actions` (same key, English string is acceptable as fallback-only entries are fine — check which locales have the section: `grep -l '"toggle_analytics"' src/i18n/locales/*.json`)
@@ -536,7 +547,7 @@ Run `grep -l '"toggle_analytics"' src/i18n/locales/*.json` and add the same key 
 In `src/components/views/EditorView.tsx` after the store hooks (after line ~141, before `const editorNode = ...`):
 
 ```ts
-  useGestureAdjust();
+useGestureAdjust();
 ```
 
 plus the import at the top:
