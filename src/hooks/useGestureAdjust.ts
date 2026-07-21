@@ -77,7 +77,7 @@ export function useGestureAdjust() {
               max: [binding.move[0].max, binding.move[1].max],
             },
             {
-              label: 'Warmth / Saturation',
+              label: 'Warm / Sat',
               axisLabels: ['flimWarmth', 'flimSaturation'],
               values: [adjustments.flimWarmth, adjustments.flimSaturation],
               min: [binding.scroll[0].min, binding.scroll[1].min],
