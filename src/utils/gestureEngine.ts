@@ -115,10 +115,10 @@ export const SCROLL_AXIS_LOCK: AxisLockConfig = {
 };
 
 export const TRACKPAD_SCROLL_AXIS_LOCK: AxisLockConfig = {
-  windowSize: 3,
-  axisThreshold: 1.5,
-  diagRatio: 0.45,
-  bothFactor: 100, // treat two-finger scroll as either vertical or horizontal
+  windowSize: 5,
+  axisThreshold: 1,
+  diagRatio: 0.5,
+  bothFactor: 1.5,
 };
 
 export const MOUSE_MOVE_STEP = { stepX: 6, stepY: 6 };
