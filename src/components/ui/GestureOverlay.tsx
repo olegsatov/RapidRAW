@@ -26,7 +26,7 @@ export default function GestureOverlay() {
         return (
           <div
             key={index}
-            className="bg-bg-secondary/70 backdrop-blur-sm rounded-lg p-2 shadow-lg border border-surface/50"
+            className="bg-bg-secondary/35 backdrop-blur-sm rounded-lg p-2 shadow-lg border border-surface/50"
           >
             <div
               className="relative bg-bg-primary/50 rounded border border-surface/50"
