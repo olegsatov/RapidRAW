@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 
 export interface GestureOverlayParam {
-  label: 'gesture.overlay.colorBalance' | 'gesture.overlay.warmSat';
+  label: string;
   axisLabels: [string, string];
   values: [number, number];
   min: [number, number];
