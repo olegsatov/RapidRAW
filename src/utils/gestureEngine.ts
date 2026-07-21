@@ -130,9 +130,11 @@ export const TRACKPAD_SCROLL_STEP = 6.25; // trackpad deltas are much finer than
 export class ContinuousAccumulator {
   private remainder = 0;
   private prevDelta = 0;
-  private readonly smooth = 0.6; // stronger EMA: 60% current, 40% previous
 
-  constructor(private pxPerUnit: number) {}
+  constructor(
+    private pxPerUnit: number,
+    private readonly smooth = 0.6, // EMA: smooth current, (1 - smooth) previous
+  ) {}
 
   push(deltaPx: number): number {
     const smoothed = deltaPx * this.smooth + this.prevDelta * (1 - this.smooth);

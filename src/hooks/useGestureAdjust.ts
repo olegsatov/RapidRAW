@@ -64,8 +64,8 @@ export function useGestureAdjust() {
       sessionRef.current = {
         binding,
         moveLock: new AxisLock(MOVE_AXIS_LOCK),
-        moveAccX: new ContinuousAccumulator(MOUSE_MOVE_STEP.stepX / binding.move[1].step),
-        moveAccY: new ContinuousAccumulator(MOUSE_MOVE_STEP.stepY / binding.move[0].step),
+        moveAccX: new ContinuousAccumulator(MOUSE_MOVE_STEP.stepX / binding.move[1].step, 0.4),
+        moveAccY: new ContinuousAccumulator(MOUSE_MOVE_STEP.stepY / binding.move[0].step, 0.4),
         scrollLock: new AxisLock(SCROLL_AXIS_LOCK, true),
         trackpadScrollLock: new AxisLock(TRACKPAD_SCROLL_AXIS_LOCK),
         scrollStepAccX: new StepAccumulator(MOUSE_SCROLL_STEP),
