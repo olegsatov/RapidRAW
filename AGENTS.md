@@ -116,10 +116,12 @@ with extra care, and keep this list current as features are added:
   `src/hooks/useAppContextMenus.ts` (sync/locate),
   `src/hooks/useAppInitialization.ts` (availability checks),
   `src/components/ui/ImportJobsIndicator.tsx`, `src/i18n/locales/*.json`.
-- Gesture overlay (in-app visual feedback for the A-key color-balance gesture):
-  `src/store/useGestureStore.ts`, `src/components/ui/GestureOverlay.tsx`,
-  gesture-overlay parts of `src/hooks/useGestureAdjust.ts` and
-  `src/components/panel/Editor.tsx`, `gesture.overlay.*` keys in
+- Gesture adjustment engine + overlay (hold-to-adjust image parameters directly
+  with mouse/trackpad, visual overlay for A/S/D gestures):
+  `src/utils/gestureEngine.ts`, `src/utils/gestureBindings.ts`,
+  `src/hooks/useGestureAdjust.ts`, `src/store/useGestureStore.ts`,
+  `src/components/ui/GestureOverlay.tsx`, gesture parts of
+  `src/components/panel/Editor.tsx`, `gesture.*` / `gesture.overlay.*` keys in
   `src/i18n/locales/*.json`.
 - Locale strings for the above: `src/i18n/locales/*.json`.
 

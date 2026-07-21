@@ -8,7 +8,7 @@ import { useGestureStore, GestureOverlayParam } from '../store/useGestureStore';
 import { useEditorActions } from './useEditorActions';
 import { getEffectiveKeybind, KEYBIND_DEFINITIONS } from '../utils/keyboardUtils';
 import { GESTURE_BINDINGS, GestureBinding, GestureParam } from '../utils/gestureBindings';
-import { Adjustments } from '../utils/adjustments';
+import { Adjustments, INITIAL_ADJUSTMENTS } from '../utils/adjustments';
 import {
   AxisLock,
   clamp,
@@ -103,6 +103,7 @@ export function useGestureAdjust() {
               values: [adjustments.flimShoulder, adjustments.flimToe],
               min: [binding.scroll[0].min, binding.scroll[1].min],
               max: [binding.scroll[0].max, binding.scroll[1].max],
+              invert: [true, true],
             },
           ];
         }
@@ -110,18 +111,19 @@ export function useGestureAdjust() {
         if (action === 'gesture_lut') {
           return [
             {
-              label: t('gesture.overlay.lutIntensity'),
-              axisLabels: ['lutIntensity', 'lutIntensity'],
-              values: [adjustments.lutIntensity ?? 100, adjustments.lutIntensity ?? 100],
-              min: [binding.scroll[0].min, binding.scroll[1].min],
-              max: [binding.scroll[0].max, binding.scroll[1].max],
-            },
-            {
               label: t('gesture.overlay.lutInput'),
               axisLabels: ['lutInputOffset', 'lutInputRange'],
               values: [adjustments.lutInputOffset ?? 0, adjustments.lutInputRange ?? 6],
               min: [binding.move[0].min, binding.move[1].min],
               max: [binding.move[0].max, binding.move[1].max],
+            },
+            {
+              label: t('gesture.overlay.lutIntensity'),
+              axisLabels: ['lutIntensity', 'lutIntensity'],
+              values: [adjustments.lutIntensity ?? 100, (binding.scroll[0].max + binding.scroll[0].min) / 2],
+              min: [binding.scroll[0].min, binding.scroll[1].min],
+              max: [binding.scroll[0].max, binding.scroll[1].max],
+              orientation: 'vertical',
             },
           ];
         }
@@ -205,7 +207,7 @@ export function useGestureAdjust() {
     const applyDelta = (param: GestureParam, rawDelta: number) => {
       if (rawDelta === 0) return;
       setAdjustments((prev) => {
-        const current = prev[param.key] ?? 0;
+        const current = prev[param.key] ?? (INITIAL_ADJUSTMENTS[param.key] as number | undefined) ?? 0;
         const next = { ...prev, [param.key]: clamp(current + rawDelta, param.min, param.max) };
         updateOverlayValues(next);
         return next;
@@ -217,13 +219,17 @@ export function useGestureAdjust() {
       if (!session || session.overlayParams.length === 0) return;
 
       useGestureStore.getState().setParams(
-        session.overlayParams.map((panel) => ({
-          ...panel,
-          values: [
-            clamp(adjustments[panel.axisLabels[0]], panel.min[0], panel.max[0]),
-            clamp(adjustments[panel.axisLabels[1]], panel.min[1], panel.max[1]),
-          ] as [number, number],
-        })),
+        session.overlayParams.map((panel) => {
+          const vertical = clamp(adjustments[panel.axisLabels[0]], panel.min[0], panel.max[0]);
+          const horizontal =
+            panel.orientation === 'vertical'
+              ? (panel.max[1] + panel.min[1]) / 2
+              : clamp(adjustments[panel.axisLabels[1]], panel.min[1], panel.max[1]);
+          return {
+            ...panel,
+            values: [vertical, horizontal] as [number, number],
+          };
+        }),
       );
     };
 
@@ -233,11 +239,14 @@ export function useGestureAdjust() {
       }
 
       if (sessionRef.current) {
-        if (event.key === 'Escape') {
-          endSession();
+        const isGestureKey = event.code === sessionRef.current.gestureKey;
+        if (event.key === 'Escape' || isGestureKey) {
+          if (event.key === 'Escape') {
+            endSession();
+          }
+          event.preventDefault();
+          event.stopImmediatePropagation();
         }
-        event.preventDefault();
-        event.stopImmediatePropagation();
         return;
       }
 
@@ -320,15 +329,8 @@ export function useGestureAdjust() {
       event.preventDefault();
       event.stopImmediatePropagation();
 
-      const {
-        binding,
-        scrollLock,
-        trackpadScrollLock,
-        scrollStepAccX,
-        scrollStepAccY,
-        scrollContAccX,
-        scrollContAccY,
-      } = sessionRef.current;
+      const { binding, trackpadScrollLock, scrollStepAccX, scrollStepAccY, scrollContAccX, scrollContAccY } =
+        sessionRef.current;
       const scrollSign = binding.scrollSign ?? [1, 1];
       const device = detectWheelDevice(event);
 
@@ -393,21 +395,39 @@ export function useGestureAdjust() {
       }
     };
 
-    window.addEventListener('keydown', handleKeyDown, true);
-    window.addEventListener('keyup', handleKeyUp, true);
-    window.addEventListener('pointermove', handlePointerMove, true);
-    window.addEventListener('wheel', handleWheel, { capture: true, passive: false });
-
-    return () => {
-      window.removeEventListener('keydown', handleKeyDown, true);
-      window.removeEventListener('keyup', handleKeyUp, true);
-      window.removeEventListener('pointermove', handlePointerMove, true);
-      window.removeEventListener('wheel', handleWheel, { capture: true });
+    const handleBlur = () => {
       if (pendingRef.current) {
         clearTimeout(pendingRef.current.timer);
         pendingRef.current = null;
       }
       endSession();
     };
-  }, [setAdjustments, setEditor]);
+
+    const handleVisibilityChange = () => {
+      if (document.hidden) {
+        handleBlur();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown, true);
+    window.addEventListener('keyup', handleKeyUp, true);
+    window.addEventListener('pointermove', handlePointerMove, true);
+    window.addEventListener('wheel', handleWheel, { capture: true, passive: false });
+    window.addEventListener('blur', handleBlur, true);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown, true);
+      window.removeEventListener('keyup', handleKeyUp, true);
+      window.removeEventListener('pointermove', handlePointerMove, true);
+      window.removeEventListener('wheel', handleWheel, { capture: true });
+      window.removeEventListener('blur', handleBlur, true);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      if (pendingRef.current) {
+        clearTimeout(pendingRef.current.timer);
+        pendingRef.current = null;
+      }
+      endSession();
+    };
+  }, [setAdjustments, setEditor, t]);
 }

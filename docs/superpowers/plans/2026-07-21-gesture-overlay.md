@@ -12,18 +12,19 @@
 
 ## File Structure
 
-| File | Responsibility |
-|------|----------------|
-| `src/store/useGestureStore.ts` | Новый стор: состояние оверлея + actions для старта/обновления/сброса. |
-| `src/hooks/useGestureAdjust.ts` | Модифицируется: заполняет стор при старте сессии, обновляет значения при `applyDelta`, сбрасывает при `endSession`. |
-| `src/components/ui/GestureOverlay.tsx` | Новый компонент: отрисовывает две панели с перекрестиями и ползунками. |
-| `src/components/panel/Editor.tsx` | Модифицируется: встраивает `<GestureOverlay />` внутрь контейнера изображения. |
+| File                                   | Responsibility                                                                                                      |
+| -------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| `src/store/useGestureStore.ts`         | Новый стор: состояние оверлея + actions для старта/обновления/сброса.                                               |
+| `src/hooks/useGestureAdjust.ts`        | Модифицируется: заполняет стор при старте сессии, обновляет значения при `applyDelta`, сбрасывает при `endSession`. |
+| `src/components/ui/GestureOverlay.tsx` | Новый компонент: отрисовывает две панели с перекрестиями и ползунками.                                              |
+| `src/components/panel/Editor.tsx`      | Модифицируется: встраивает `<GestureOverlay />` внутрь контейнера изображения.                                      |
 
 ---
 
 ### Task 1: Create `useGestureStore.ts`
 
 **Files:**
+
 - Create: `src/store/useGestureStore.ts`
 
 - [ ] **Step 1: Write the store**
@@ -81,6 +82,7 @@ git commit -m "add gesture overlay store"
 ### Task 2: Update `useGestureAdjust.ts` to drive the overlay
 
 **Files:**
+
 - Modify: `src/hooks/useGestureAdjust.ts`
 
 - [ ] **Step 1: Import the store and `Adjustments` type**
@@ -158,16 +160,8 @@ sessionRef.current = {
   trackpadScrollLock: new AxisLock(TRACKPAD_SCROLL_AXIS_LOCK),
   scrollStepAccX: new StepAccumulator(MOUSE_SCROLL_STEP),
   scrollStepAccY: new StepAccumulator(MOUSE_SCROLL_STEP),
-  scrollContAccX: new ContinuousAccumulator(
-    TRACKPAD_SCROLL_STEP / binding.scroll[1].step,
-    0.6,
-    binding.scroll[1].step,
-  ),
-  scrollContAccY: new ContinuousAccumulator(
-    TRACKPAD_SCROLL_STEP / binding.scroll[0].step,
-    0.6,
-    binding.scroll[0].step,
-  ),
+  scrollContAccX: new ContinuousAccumulator(TRACKPAD_SCROLL_STEP / binding.scroll[1].step, 0.6, binding.scroll[1].step),
+  scrollContAccY: new ContinuousAccumulator(TRACKPAD_SCROLL_STEP / binding.scroll[0].step, 0.6, binding.scroll[0].step),
   gestureKey,
   overlayParams, // NEW
 };
@@ -228,6 +222,7 @@ git commit -m "drive gesture overlay state from useGestureAdjust"
 ### Task 3: Create `GestureOverlay.tsx`
 
 **Files:**
+
 - Create: `src/components/ui/GestureOverlay.tsx`
 
 - [ ] **Step 1: Implement the component**
@@ -316,6 +311,7 @@ git commit -m "add gesture overlay component"
 ### Task 4: Embed `GestureOverlay` into `Editor.tsx`
 
 **Files:**
+
 - Modify: `src/components/panel/Editor.tsx`
 
 - [ ] **Step 1: Import the component**
@@ -331,7 +327,7 @@ import GestureOverlay from '../ui/GestureOverlay';
 Find the `imageContainerRef` div (around line 2069). Inside it, after the closing `</div>` of `contentRef` / `ImageCanvas` (around line 2162), add:
 
 ```tsx
-        <GestureOverlay />
+<GestureOverlay />
 ```
 
 The surrounding structure should look like:
@@ -371,6 +367,7 @@ git commit -m "embed gesture overlay into editor canvas area"
 ### Task 5: Run verification checks
 
 **Files:**
+
 - All modified files.
 
 - [ ] **Step 1: Check formatting**
@@ -379,6 +376,7 @@ Run: `npx prettier --check src/store/useGestureStore.ts src/hooks/useGestureAdju
 Expected: `All matched files use Prettier code style!`
 
 If failures appear, run:
+
 ```bash
 npx prettier --write src/store/useGestureStore.ts src/hooks/useGestureAdjust.ts src/components/ui/GestureOverlay.tsx src/components/panel/Editor.tsx
 ```
@@ -391,9 +389,11 @@ Expected: completes without new TypeScript errors (the repo has a pre-existing `
 - [ ] **Step 3: Check Rust side**
 
 Run in `src-tauri/`:
+
 ```bash
 cargo check
 ```
+
 Expected: no new errors.
 
 - [ ] **Step 4: Commit any formatting fixes**
@@ -408,6 +408,7 @@ git commit -m "format gesture overlay changes"
 ### Task 6: Manual smoke test checklist
 
 **Files:**
+
 - Application runtime.
 
 - [ ] **Step 1: Open an image in the editor and switch tone mapper to `flim`**
