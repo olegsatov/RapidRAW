@@ -48,7 +48,6 @@ const Slider = ({
   const { t } = useTranslation();
   const [displayValue, setDisplayValue] = useState<number>(value);
   const [isDragging, setIsDragging] = useState(false);
-  const animationFrameRef = useRef<number | undefined>(undefined);
   const [isEditing, setIsEditing] = useState(false);
   const [inputValue, setInputValue] = useState<string>(String(value));
   const inputRef = useRef<HTMLInputElement | null>(null);
@@ -218,51 +217,9 @@ const Slider = ({
   }, [isDragging]);
 
   useEffect(() => {
-    if (isDragging) {
-      if (animationFrameRef.current) {
-        cancelAnimationFrame(animationFrameRef.current);
-      }
-      return;
-    }
-
-    if (isWheelActivelyChangingRef.current) {
-      if (animationFrameRef.current) {
-        cancelAnimationFrame(animationFrameRef.current);
-      }
+    if (!isDragging) {
       setDisplayValue(value);
-      return;
     }
-
-    const startValue = displayValue;
-    const endValue = value;
-    const duration = 300;
-    let startTime: number | null = null;
-
-    const easeInOut = (t: number) => t * t * (3 - 2 * t);
-
-    const animate = (timestamp: number) => {
-      if (!startTime) {
-        startTime = timestamp;
-      }
-
-      const progress = timestamp - startTime;
-      const linearFraction = Math.min(progress / duration, 1);
-      const easedFraction = easeInOut(linearFraction);
-      const currentValue = startValue + (endValue - startValue) * easedFraction;
-      setDisplayValue(currentValue);
-
-      if (linearFraction < 1) {
-        animationFrameRef.current = requestAnimationFrame(animate);
-      }
-    };
-
-    animationFrameRef.current = requestAnimationFrame(animate);
-
-    return () => {
-      if (animationFrameRef.current) {
-        cancelAnimationFrame(animationFrameRef.current);
-      }
-    };
   }, [value, isDragging]);
 
   useEffect(() => {
