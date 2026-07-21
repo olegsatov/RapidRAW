@@ -9,6 +9,7 @@ import { GESTURE_BINDINGS, GestureBinding, GestureParam } from '../utils/gesture
 import {
   AxisLock,
   clamp,
+  ContinuousAccumulator,
   detectWheelDevice,
   MOUSE_MOVE_STEP,
   MOUSE_SCROLL_STEP,
@@ -22,8 +23,8 @@ import {
 interface GestureSession {
   binding: GestureBinding;
   moveLock: AxisLock;
-  moveAccX: StepAccumulator;
-  moveAccY: StepAccumulator;
+  moveAccX: ContinuousAccumulator;
+  moveAccY: ContinuousAccumulator;
   scrollLock: AxisLock;
   scrollAccX: StepAccumulator;
   scrollAccY: StepAccumulator;
@@ -55,8 +56,8 @@ export function useGestureAdjust() {
       sessionRef.current = {
         binding,
         moveLock: new AxisLock(MOVE_AXIS_LOCK),
-        moveAccX: new StepAccumulator(MOUSE_MOVE_STEP.stepX),
-        moveAccY: new StepAccumulator(MOUSE_MOVE_STEP.stepY),
+        moveAccX: new ContinuousAccumulator(MOUSE_MOVE_STEP.stepX / binding.move[1].step),
+        moveAccY: new ContinuousAccumulator(MOUSE_MOVE_STEP.stepY / binding.move[0].step),
         scrollLock: new AxisLock(SCROLL_AXIS_LOCK, true),
         scrollAccX: new StepAccumulator(MOUSE_SCROLL_STEP),
         scrollAccY: new StepAccumulator(MOUSE_SCROLL_STEP),
@@ -111,11 +112,11 @@ export function useGestureAdjust() {
       return true;
     };
 
-    const applyDelta = (param: GestureParam, deltaSteps: number) => {
-      if (deltaSteps === 0) return;
+    const applyDelta = (param: GestureParam, rawDelta: number) => {
+      if (rawDelta === 0) return;
       setAdjustments((prev) => ({
         ...prev,
-        [param.key]: clamp(prev[param.key] + deltaSteps * param.step, param.min, param.max),
+        [param.key]: clamp(prev[param.key] + rawDelta, param.min, param.max),
       }));
     };
 
@@ -200,12 +201,10 @@ export function useGestureAdjust() {
       const locked = moveLock.push(event.movementX, event.movementY);
 
       if (locked === 'vertical' || locked === 'both') {
-        const steps = moveAccY.push(-event.movementY);
-        applyDelta(binding.move[0], steps);
+        applyDelta(binding.move[0], moveAccY.push(-event.movementY));
       }
       if (locked === 'horizontal' || locked === 'both') {
-        const steps = moveAccX.push(event.movementX);
-        applyDelta(binding.move[1], steps);
+        applyDelta(binding.move[1], moveAccX.push(event.movementX));
       }
     };
 
@@ -244,11 +243,11 @@ export function useGestureAdjust() {
 
       if (locked === 'vertical' || locked === 'both') {
         const steps = scrollAccY.push(-dy);
-        applyDelta(binding.scroll[0], steps);
+        applyDelta(binding.scroll[0], steps * binding.scroll[0].step);
       }
       if (locked === 'horizontal' || locked === 'both') {
         const steps = scrollAccX.push(dx);
-        applyDelta(binding.scroll[1], steps);
+        applyDelta(binding.scroll[1], steps * binding.scroll[1].step);
       }
     };
 

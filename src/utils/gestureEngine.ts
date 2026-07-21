@@ -114,9 +114,28 @@ export const SCROLL_AXIS_LOCK: AxisLockConfig = {
   bothFactor: 1,
 };
 
-export const MOUSE_MOVE_STEP = { stepX: 3, stepY: 3 };
+export const MOUSE_MOVE_STEP = { stepX: 6, stepY: 6 };
 export const MOUSE_SCROLL_STEP = 6;
 export const TRACKPAD_SCROLL_STEP = 2.5;
+
+// Accumulates sub-pixel movement and returns fractional parameter units.
+// pxPerUnit = how many pixels the cursor must travel to change the parameter by 1.
+export class ContinuousAccumulator {
+  private remainder = 0;
+
+  constructor(private pxPerUnit: number) {}
+
+  push(deltaPx: number): number {
+    const units = deltaPx / this.pxPerUnit + this.remainder;
+    const applied = Math.round(units * 100) / 100;
+    this.remainder = units - applied;
+    return applied;
+  }
+
+  reset(): void {
+    this.remainder = 0;
+  }
+}
 
 export function clamp(v: number, min: number, max: number): number {
   return Math.min(Math.max(v, min), max);
