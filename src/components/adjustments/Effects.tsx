@@ -57,6 +57,11 @@ export default function EffectsPanel({
     saveLutParams(adjustments.lutPath, { inputOffset: offset });
   };
 
+  const handleLutOffsetCompensationChange = (enabled: boolean) => {
+    setAdjustments((prev: Partial<Adjustments>) => ({ ...prev, lutOffsetCompensation: enabled }));
+    saveLutParams(adjustments.lutPath, { offsetCompensation: enabled });
+  };
+
   const handleLutClear = () => {
     setAdjustments((prev: Partial<Adjustments>) => ({
       ...prev,
@@ -69,6 +74,7 @@ export default function EffectsPanel({
       lutNormalizeMode: 'hdr',
       lutInputRange: 6,
       lutInputOffset: 0,
+      lutOffsetCompensation: false,
     }));
   };
 
@@ -127,12 +133,14 @@ export default function EffectsPanel({
               lutTiming={adjustments.lutTiming || 'before'}
               lutInputRange={adjustments.lutInputRange ?? 6}
               lutInputOffset={adjustments.lutInputOffset ?? 0}
+              lutOffsetCompensation={adjustments.lutOffsetCompensation ?? false}
               onLutSelect={handleLutSelect}
               onLutHover={onLutHover}
               onIntensityChange={handleLutIntensityChange}
               onTimingChange={handleLutTimingChange}
               onInputRangeChange={handleLutInputRangeChange}
               onInputOffsetChange={handleLutInputOffsetChange}
+              onOffsetCompensationChange={handleLutOffsetCompensationChange}
               onClear={handleLutClear}
               onDragStateChange={onDragStateChange}
             />

@@ -320,6 +320,7 @@ export interface Adjustments {
   lutNormalizeMode?: 'clamp' | 'linear' | 'log' | 'hdr';
   lutInputRange?: number;
   lutInputOffset?: number;
+  lutOffsetCompensation?: boolean;
   masks: Array<MaskContainer>;
   orientationSteps: number;
   rotation: number;
@@ -818,6 +819,7 @@ export const INITIAL_ADJUSTMENTS: Adjustments = {
   lutNormalizeMode: 'hdr',
   lutInputRange: 6,
   lutInputOffset: 0,
+  lutOffsetCompensation: false,
   masks: [],
   orientationSteps: 0,
   rotation: 0,

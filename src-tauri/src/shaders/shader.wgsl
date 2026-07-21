@@ -169,6 +169,7 @@ struct GlobalAdjustments {
     lut_input_range: f32,
     lut_input_offset: f32,
     lut_shoulder: f32,
+    lut_offset_compensation: u32,
 }
 
 struct MaskAdjustments {
@@ -1365,6 +1366,10 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
         } else {
             let lut_in = prepare_lut_input(composite_rgb_linear);
             lut_color = sample_lut_tetrahedral(lut_in);
+        }
+        if (adjustments.global.lut_offset_compensation == 1u
+            && adjustments.global.lut_normalize_mode != 0u) {
+            lut_color *= exp2(-adjustments.global.lut_input_offset);
         }
         composite_rgb_linear = mix(composite_rgb_linear, lut_color,
                                    adjustments.global.lut_intensity);

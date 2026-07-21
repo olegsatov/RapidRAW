@@ -1797,6 +1797,7 @@
       "selectImageFile": "Seleziona un file immagine"
     },
     "lut": {
+      "auto": "Auto",
       "clearLut": "Cancella LUT",
       "empty": "Nessuna LUT ancora — importane alcune",
       "filterLabel": "File LUT",
@@ -1804,6 +1805,7 @@
       "importFailed": "Impossibile importare le LUT",
       "intensity": "Intensità",
       "label": "LUT",
+      "offsetCompensation": "Compensa luminosità",
       "removeLut": "Rimuovi LUT",
       "select": "Seleziona",
       "selectLutFile": "Seleziona un file LUT",

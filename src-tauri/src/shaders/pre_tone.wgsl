@@ -169,6 +169,7 @@ struct GlobalAdjustments {
     lut_input_range: f32,
     lut_input_offset: f32,
     lut_shoulder: f32,
+    lut_offset_compensation: u32,
 }
 
 struct MaskAdjustments {

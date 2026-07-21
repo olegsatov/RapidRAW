@@ -1566,7 +1566,8 @@ pub struct GlobalAdjustments {
     pub lut_input_range: f32,
     pub lut_input_offset: f32,
     pub lut_shoulder: f32,
-    _pad_lut_end: [f32; 3],
+    pub lut_offset_compensation: u32,
+    _pad_lut_end: [f32; 2],
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, Pod, Zeroable, Default)]
@@ -2712,6 +2713,7 @@ fn get_global_adjustments_from_json(
     let lut_input_range = js_adjustments["lutInputRange"].as_f64().unwrap_or(6.0) as f32;
     let lut_input_offset = js_adjustments["lutInputOffset"].as_f64().unwrap_or(0.0) as f32;
     let lut_shoulder = js_adjustments["lutShoulder"].as_f64().unwrap_or(0.0) as f32 / 100.0;
+    let lut_offset_compensation = js_adjustments["lutOffsetCompensation"].as_bool().unwrap_or(false) as u32;
 
     GlobalAdjustments {
         exposure: get_val("basic", "exposure", SCALES.exposure, None),
@@ -2804,7 +2806,8 @@ fn get_global_adjustments_from_json(
         lut_input_range,
         lut_input_offset,
         lut_shoulder,
-        _pad_lut_end: [0.0; 3],
+        lut_offset_compensation,
+        _pad_lut_end: [0.0; 2],
 
         // An explicitly chosen flim tonemapper (Film tab) always wins over the
         // global "force default tonemapper" app setting.
@@ -3510,6 +3513,134 @@ pub fn calculate_histogram_from_image(image: &DynamicImage) -> Result<HistogramD
         blue,
         luma,
     })
+}
+
+#[derive(Serialize, Clone, Debug)]
+pub struct LutAutoParams {
+    pub input_offset: f32,
+    pub input_range: f32,
+}
+
+fn srgb_byte_to_linear_lut() -> &'static [f32; 256] {
+    static LUT: std::sync::OnceLock<[f32; 256]> = std::sync::OnceLock::new();
+    LUT.get_or_init(|| {
+        let mut lut = [0.0f32; 256];
+        for (i, v) in lut.iter_mut().enumerate() {
+            let x = i as f32 / 255.0;
+            *v = if x <= 0.04045 {
+                x / 12.92
+            } else {
+                ((x + 0.055) / 1.055).powf(2.4)
+            };
+        }
+        lut
+    })
+}
+
+/// Compute LUT input offset/range from the pristine loaded image. This avoids
+/// feedback loops where repeated "Auto" clicks drift because each click changes
+/// the histogram used for the next estimate.
+pub fn compute_lut_auto_params_from_image(image: &DynamicImage) -> Result<LutAutoParams, String> {
+    let (w, h) = image.dimensions();
+    let step = 4usize;
+    let estimated = ((w as usize / step).saturating_add(1))
+        .saturating_mul((h as usize / step).saturating_add(1))
+        .clamp(1024, 4_000_000);
+    let mut samples: Vec<f32> = Vec::with_capacity(estimated);
+
+    let push_luma = |samples: &mut Vec<f32>, r: f32, g: f32, b: f32| {
+        let luma = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+        if luma > 1e-6 {
+            samples.push(luma.log2());
+        }
+    };
+
+    match image {
+        DynamicImage::ImageRgb32F(img) => {
+            for pixel in img.as_raw().chunks_exact(3).step_by(step) {
+                push_luma(&mut samples, pixel[0], pixel[1], pixel[2]);
+            }
+        }
+        DynamicImage::ImageRgba32F(img) => {
+            for pixel in img.as_raw().chunks_exact(4).step_by(step) {
+                push_luma(&mut samples, pixel[0], pixel[1], pixel[2]);
+            }
+        }
+        DynamicImage::ImageRgb8(img) => {
+            let lut = srgb_byte_to_linear_lut();
+            for pixel in img.as_raw().chunks_exact(3).step_by(step) {
+                push_luma(
+                    &mut samples,
+                    lut[pixel[0] as usize],
+                    lut[pixel[1] as usize],
+                    lut[pixel[2] as usize],
+                );
+            }
+        }
+        DynamicImage::ImageRgba8(img) => {
+            let lut = srgb_byte_to_linear_lut();
+            for pixel in img.as_raw().chunks_exact(4).step_by(step) {
+                push_luma(
+                    &mut samples,
+                    lut[pixel[0] as usize],
+                    lut[pixel[1] as usize],
+                    lut[pixel[2] as usize],
+                );
+            }
+        }
+        _ => {
+            let rgb8 = image.to_rgb8();
+            let lut = srgb_byte_to_linear_lut();
+            for pixel in rgb8.as_raw().chunks_exact(3).step_by(step) {
+                push_luma(
+                    &mut samples,
+                    lut[pixel[0] as usize],
+                    lut[pixel[1] as usize],
+                    lut[pixel[2] as usize],
+                );
+            }
+        }
+    }
+
+    if samples.is_empty() {
+        return Ok(LutAutoParams {
+            input_offset: 0.0,
+            input_range: 12.0,
+        });
+    }
+
+    samples.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+
+    let percentile = |p: f32| -> f32 {
+        let idx = ((samples.len().saturating_sub(1)) as f32 * p.clamp(0.0, 1.0))
+            .clamp(0.0, (samples.len().saturating_sub(1)) as f32) as usize;
+        samples[idx]
+    };
+
+    let p05 = percentile(0.005);
+    let p95 = percentile(0.995);
+    let p50 = percentile(0.5);
+
+    // Empirical correction: the naive -median places the image too high in the
+    // LUT domain, blowing highlights; shift down by ~1.25 stops. Also stretch
+    // the range by +10 stops to avoid crushing the LUT transform.
+    let offset = -p50 - 1.25;
+    let span = (p95 - p05).max(0.5);
+    let range = (span * 1.15 + 10.0).clamp(4.0, 32.0);
+
+    Ok(LutAutoParams {
+        input_offset: (offset * 10.0).round() / 10.0,
+        input_range: (range * 10.0).round() / 10.0,
+    })
+}
+
+#[tauri::command]
+pub async fn compute_lut_auto_params(state: tauri::State<'_, AppState>) -> Result<LutAutoParams, String> {
+    let original = state.original_image.lock().unwrap();
+    match original.as_ref() {
+        Some(loaded) => compute_lut_auto_params_from_image(&loaded.image),
+        None => Err("No image loaded".to_string()),
+    }
 }
 
 fn apply_gaussian_smoothing(histogram: &mut [f32], sigma: f32) {

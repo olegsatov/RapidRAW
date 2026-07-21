@@ -1962,6 +1962,7 @@
       "selectImageFile": "Select an image file"
     },
     "lut": {
+      "auto": "Auto",
       "clearLut": "Clear LUT",
       "empty": "No LUTs yet — import some",
       "filterLabel": "LUT Files",
@@ -1979,6 +1980,7 @@
       "normalizeLog": "Log",
       "normalizeHdr": "HDR extrapolate",
       "normalizeMode": "Input normalization",
+      "offsetCompensation": "Compensate brightness",
       "removeLut": "Remove LUT",
       "select": "Select",
       "selectLutFile": "Select a LUT file",

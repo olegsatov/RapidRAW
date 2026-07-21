@@ -1797,6 +1797,7 @@
       "selectImageFile": "选择图像文件"
     },
     "lut": {
+      "auto": "自动",
       "clearLut": "清除 LUT",
       "empty": "暂无 LUT — 请导入一些",
       "filterLabel": "LUT 文件",
@@ -1804,6 +1805,7 @@
       "importFailed": "导入 LUT 失败",
       "intensity": "强度",
       "label": "LUT",
+      "offsetCompensation": "补偿亮度",
       "removeLut": "移除 LUT",
       "select": "选择",
       "selectLutFile": "选择 LUT 文件",

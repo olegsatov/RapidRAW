@@ -1,7 +1,7 @@
 import { open } from '@tauri-apps/plugin-dialog';
 import { invoke } from '@tauri-apps/api/core';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { ImageOff, Upload, Trash2 } from 'lucide-react';
+import { ImageOff, Upload, Trash2, Wand2 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { AnimatePresence, motion } from 'framer-motion';
 import clsx from 'clsx';
@@ -31,12 +31,14 @@ interface LUTControlProps {
   lutTiming?: 'after' | 'before';
   lutInputRange?: number;
   lutInputOffset?: number;
+  lutOffsetCompensation?: boolean;
   onLutSelect: (path: string) => void;
   onLutHover?: (path: string | null) => void;
   onIntensityChange: (intensity: number) => void;
   onTimingChange?: (timing: 'after' | 'before') => void;
   onInputRangeChange?: (range: number) => void;
   onInputOffsetChange?: (offset: number) => void;
+  onOffsetCompensationChange?: (enabled: boolean) => void;
   onClear: () => void;
   onDragStateChange?: (isDragging: boolean) => void;
 }
@@ -50,12 +52,14 @@ export default function LUTControl({
   lutTiming = 'before',
   lutInputRange = 6,
   lutInputOffset = 0,
+  lutOffsetCompensation = false,
   onLutSelect,
   onLutHover,
   onIntensityChange,
   onTimingChange,
   onInputRangeChange,
   onInputOffsetChange,
+  onOffsetCompensationChange,
   onClear,
   onDragStateChange,
 }: LUTControlProps) {
@@ -68,6 +72,7 @@ export default function LUTControl({
   const [entries, setEntries] = useState<LutEntry[]>([]);
   const [previews, setPreviews] = useState<Record<string, string | null>>({});
   const [isLoadingPreviews, setIsLoadingPreviews] = useState(false);
+  const [isAutoLoading, setIsAutoLoading] = useState(false);
   // Per-path staleness keys (image + saved per-LUT params): a swatch is
   // regenerated only when the image or that LUT's own params change.
   const previewCache = useRef<Map<string, { key: string; thumb: string | null }>>(new Map());
@@ -223,6 +228,20 @@ export default function LUTControl({
     }
   };
 
+  const handleAuto = async () => {
+    if (!isImageReady || isAutoLoading) return;
+    setIsAutoLoading(true);
+    try {
+      const params = await invoke<{ input_offset: number; input_range: number }>('compute_lut_auto_params');
+      onInputRangeChange?.(params.input_range);
+      onInputOffsetChange?.(params.input_offset);
+    } catch (err) {
+      console.error('Failed to compute LUT auto params:', err);
+    } finally {
+      setIsAutoLoading(false);
+    }
+  };
+
   return (
     <div className="space-y-3">
       <Text variant={TextVariants.heading} className="mb-1">
@@ -269,6 +288,15 @@ export default function LUTControl({
             transition={{ duration: 0.2, ease: 'easeInOut' }}
             className="overflow-hidden space-y-1"
           >
+            <button
+              className="w-full flex items-center justify-center gap-1.5 px-2 py-1.5 text-sm font-medium rounded-md bg-card-active text-text-secondary hover:bg-surface disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              onClick={handleAuto}
+              disabled={!isImageReady || isAutoLoading}
+              data-tooltip={t('ui.lut.auto')}
+            >
+              <Wand2 size={14} />
+              {t('ui.lut.auto')}
+            </button>
             <Slider
               label={t('ui.lut.inputRange')}
               min={0}
@@ -291,6 +319,15 @@ export default function LUTControl({
               onDragStateChange={onDragStateChange}
               fillOrigin="min"
             />
+            <label className="flex items-center gap-2 py-1 text-sm text-text-secondary cursor-pointer select-none">
+              <input
+                type="checkbox"
+                className="accent-accent"
+                checked={lutOffsetCompensation}
+                onChange={(e) => onOffsetCompensationChange?.(e.target.checked)}
+              />
+              {t('ui.lut.offsetCompensation')}
+            </label>
           </motion.div>
         )}
       </AnimatePresence>

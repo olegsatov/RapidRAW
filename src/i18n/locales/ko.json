@@ -1797,6 +1797,7 @@
       "selectImageFile": "이미지 파일 선택"
     },
     "lut": {
+      "auto": "자동",
       "clearLut": "LUT 지우기",
       "empty": "아직 LUT가 없습니다 — 가져오기를 수행하세요",
       "filterLabel": "LUT 파일",
@@ -1804,6 +1805,7 @@
       "importFailed": "LUT 가져오기 실패",
       "intensity": "강도",
       "label": "LUT",
+      "offsetCompensation": "밝기 보정",
       "removeLut": "LUT 제거",
       "select": "선택",
       "selectLutFile": "LUT 파일 선택",

@@ -1796,6 +1796,7 @@
       "selectImageFile": "画像ファイルを選択"
     },
     "lut": {
+      "auto": "自動",
       "clearLut": "LUTをクリア",
       "empty": "LUTはまだありません — インポートしてください",
       "filterLabel": "LUTファイル",
@@ -1803,6 +1804,7 @@
       "importFailed": "LUTのインポートに失敗しました",
       "intensity": "適用度",
       "label": "LUT",
+      "offsetCompensation": "輝度を補正",
       "removeLut": "LUTを削除",
       "select": "選択",
       "selectLutFile": "LUTファイルを選択",

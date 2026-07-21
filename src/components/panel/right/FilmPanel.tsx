@@ -534,6 +534,7 @@ export default function FilmPanel() {
               lutTiming={adjustments.lutTiming || 'before'}
               lutInputRange={adjustments.lutInputRange ?? 6}
               lutInputOffset={adjustments.lutInputOffset ?? 0}
+              lutOffsetCompensation={adjustments.lutOffsetCompensation ?? false}
               onLutSelect={handleLutSelect}
               onLutHover={setLutPreviewOverride}
               onIntensityChange={(intensity: number) => {
@@ -556,6 +557,10 @@ export default function FilmPanel() {
                 setAdjustments((prev: Partial<Adjustments>) => ({ ...prev, lutInputOffset: offset }));
                 saveLutParams(adjustments.lutPath, { inputOffset: offset });
               }}
+              onOffsetCompensationChange={(enabled: boolean) => {
+                setAdjustments((prev: Partial<Adjustments>) => ({ ...prev, lutOffsetCompensation: enabled }));
+                saveLutParams(adjustments.lutPath, { offsetCompensation: enabled });
+              }}
               onClear={() =>
                 setAdjustments((prev: Partial<Adjustments>) => ({
                   ...prev,
@@ -568,6 +573,7 @@ export default function FilmPanel() {
                   lutNormalizeMode: 'hdr',
                   lutInputRange: 6,
                   lutInputOffset: 0,
+                  lutOffsetCompensation: false,
                 }))
               }
               onDragStateChange={onDragStateChange}

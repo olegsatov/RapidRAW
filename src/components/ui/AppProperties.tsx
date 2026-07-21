@@ -188,6 +188,7 @@ export interface LutFileSettings {
   timing?: 'after' | 'before';
   inputRange?: number;
   inputOffset?: number;
+  offsetCompensation?: boolean;
 }
 
 export interface AppSettings {

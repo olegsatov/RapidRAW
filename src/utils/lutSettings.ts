@@ -9,6 +9,7 @@ export interface ResolvedLutParams {
   timing: 'after' | 'before';
   inputRange: number;
   inputOffset: number;
+  offsetCompensation: boolean;
 }
 
 export const DEFAULT_LUT_PARAMS: ResolvedLutParams = {
@@ -16,6 +17,7 @@ export const DEFAULT_LUT_PARAMS: ResolvedLutParams = {
   timing: INITIAL_ADJUSTMENTS.lutTiming ?? 'before',
   inputRange: INITIAL_ADJUSTMENTS.lutInputRange ?? 6,
   inputOffset: INITIAL_ADJUSTMENTS.lutInputOffset ?? 0,
+  offsetCompensation: INITIAL_ADJUSTMENTS.lutOffsetCompensation ?? false,
 };
 
 // Per-LUT params are global (keyed by LUT file path in AppSettings): selecting
@@ -28,6 +30,7 @@ export function resolveLutParams(appSettings: AppSettings | null, path: string):
     timing: stored?.timing ?? DEFAULT_LUT_PARAMS.timing,
     inputRange: stored?.inputRange ?? DEFAULT_LUT_PARAMS.inputRange,
     inputOffset: stored?.inputOffset ?? DEFAULT_LUT_PARAMS.inputOffset,
+    offsetCompensation: stored?.offsetCompensation ?? DEFAULT_LUT_PARAMS.offsetCompensation,
   };
 }
 
@@ -38,6 +41,7 @@ export function lutParamsToAdjustments(params: ResolvedLutParams): Partial<Adjus
     lutNormalizeMode: params.timing === 'before' ? 'hdr' : 'clamp',
     lutInputRange: params.inputRange,
     lutInputOffset: params.inputOffset,
+    lutOffsetCompensation: params.offsetCompensation,
   };
 }
 
