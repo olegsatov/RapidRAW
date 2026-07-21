@@ -1,4 +1,10 @@
 {
+  "gesture": {
+    "overlay": {
+      "colorBalance": "Color Balance",
+      "warmSat": "Warm / Sat"
+    }
+  },
   "adjustments": {
     "basic": {
       "blacks": "Noirs",

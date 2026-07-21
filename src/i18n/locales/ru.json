@@ -1,4 +1,10 @@
 {
+  "gesture": {
+    "overlay": {
+      "colorBalance": "Баланс белого",
+      "warmSat": "Тепло / Насыщ."
+    }
+  },
   "adjustments": {
     "basic": {
       "blacks": "Затемнение",
