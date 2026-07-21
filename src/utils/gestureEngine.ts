@@ -137,13 +137,7 @@ export class ContinuousAccumulator {
     private readonly smooth = 0.6, // EMA: smooth current, (1 - smooth) previous
     step = 0.01,
   ) {
-    let temp = step;
-    let decimalPlaces = 0;
-    while (temp < 1 && decimalPlaces < 10) {
-      temp *= 10;
-      decimalPlaces++;
-    }
-    this.snapFactor = 10 ** decimalPlaces;
+    this.snapFactor = 1 / step;
   }
 
   push(deltaPx: number): number {
