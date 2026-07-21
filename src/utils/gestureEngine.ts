@@ -129,11 +129,15 @@ export const TRACKPAD_SCROLL_STEP = 6.25; // trackpad deltas are much finer than
 // pxPerUnit = how many pixels the cursor must travel to change the parameter by 1.
 export class ContinuousAccumulator {
   private remainder = 0;
+  private prevDelta = 0;
+  private readonly smooth = 0.8; // light EMA: 80% current, 20% previous
 
   constructor(private pxPerUnit: number) {}
 
   push(deltaPx: number): number {
-    const units = deltaPx / this.pxPerUnit + this.remainder;
+    const smoothed = deltaPx * this.smooth + this.prevDelta * (1 - this.smooth);
+    this.prevDelta = smoothed;
+    const units = smoothed / this.pxPerUnit + this.remainder;
     const applied = Math.round(units * 100) / 100;
     this.remainder = units - applied;
     return applied;
@@ -141,6 +145,7 @@ export class ContinuousAccumulator {
 
   reset(): void {
     this.remainder = 0;
+    this.prevDelta = 0;
   }
 }
 
