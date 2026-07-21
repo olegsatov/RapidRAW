@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { useEditorStore } from '../store/useEditorStore';
 import { useUIStore } from '../store/useUIStore';
@@ -41,6 +42,7 @@ interface GestureSession {
 const GESTURE_HOLD_DELAY_MS = 150;
 
 export function useGestureAdjust() {
+  const { t } = useTranslation();
   const { setAdjustments } = useEditorActions();
   const setEditor = useEditorStore((s) => s.setEditor);
   const sessionRef = useRef<GestureSession | null>(null);
@@ -70,14 +72,14 @@ export function useGestureAdjust() {
         if (action === 'gesture_color_balance') {
           return [
             {
-              label: 'gesture.overlay.colorBalance',
+              label: t('gesture.overlay.colorBalance'),
               axisLabels: ['temperature', 'tint'],
               values: [adjustments.temperature, adjustments.tint],
               min: [binding.move[0].min, binding.move[1].min],
               max: [binding.move[0].max, binding.move[1].max],
             },
             {
-              label: 'gesture.overlay.warmSat',
+              label: t('gesture.overlay.warmSat'),
               axisLabels: ['flimWarmth', 'flimSaturation'],
               values: [adjustments.flimWarmth, adjustments.flimSaturation],
               min: [binding.scroll[0].min, binding.scroll[1].min],

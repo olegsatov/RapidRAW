@@ -1,11 +1,9 @@
 import clsx from 'clsx';
-import { useTranslation } from 'react-i18next';
 import { useGestureStore } from '../../store/useGestureStore';
 
 const PANEL_SIZE = 70;
 
 export default function GestureOverlay() {
-  const { t } = useTranslation();
   const { isActive, params } = useGestureStore();
 
   if (!isActive || params.length === 0) return null;
@@ -49,7 +47,7 @@ export default function GestureOverlay() {
                 style={{ left: `${left}%`, bottom: `${bottom}%` }}
               />
             </div>
-            <div className="text-text-primary text-[10px] font-medium text-center mt-2">{t(panel.label)}</div>
+            <div className="text-text-primary text-[10px] font-medium text-center mt-2">{panel.label}</div>
           </div>
         );
       })}
