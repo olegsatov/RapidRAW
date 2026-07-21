@@ -2,7 +2,7 @@ export interface KeybindDefinition {
   action: string;
   description: string;
   defaultCombo: string[];
-  section: 'library' | 'view' | 'rating' | 'panels' | 'editing';
+  section: 'library' | 'view' | 'rating' | 'panels' | 'editing' | 'gestures';
 }
 
 export interface KeybindSection {
@@ -13,6 +13,7 @@ export interface KeybindSection {
 export const KEYBIND_SECTIONS: KeybindSection[] = [
   { id: 'library', label: 'settings.keybinds.sections.library' },
   { id: 'editing', label: 'settings.keybinds.sections.editing' },
+  { id: 'gestures', label: 'settings.keybinds.sections.gestures' },
   { id: 'view', label: 'settings.keybinds.sections.view' },
   { id: 'rating', label: 'settings.keybinds.sections.rating' },
   { id: 'panels', label: 'settings.keybinds.sections.panels' },
@@ -271,19 +272,19 @@ export const KEYBIND_DEFINITIONS: KeybindDefinition[] = [
     action: 'gesture_color_balance',
     description: 'settings.keybinds.actions.gesture_color_balance',
     defaultCombo: ['KeyA'],
-    section: 'editing',
+    section: 'gestures',
   },
   {
     action: 'gesture_tone_basic',
     description: 'settings.keybinds.actions.gesture_tone_basic',
     defaultCombo: ['KeyS'],
-    section: 'editing',
+    section: 'gestures',
   },
   {
     action: 'gesture_lut',
     description: 'settings.keybinds.actions.gesture_lut',
     defaultCombo: ['KeyD'],
-    section: 'editing',
+    section: 'gestures',
   },
   {
     action: 'brush_size_up',

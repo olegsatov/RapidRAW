@@ -3,8 +3,8 @@
     "overlay": {
       "colorBalance": "Баланс белого",
       "warmSat": "Тепло / Насыщ.",
-      "exposureContrast": "Экспозиция / Контраст",
-      "lightsShadows": "Света / Тени",
+      "exposureContrast": "Exp / Cntr",
+      "lightsShadows": "Light / Shad",
       "lutIntensity": "Интенсивность LUT",
       "lutInput": "Вход LUT"
     }
@@ -1692,7 +1692,8 @@
         "library": "Библиотека",
         "panels": "Панели",
         "rating": "Оценки и метки",
-        "view": "Отображение"
+        "view": "Отображение",
+        "gestures": "Gestures"
       }
     },
     "language": "Язык",

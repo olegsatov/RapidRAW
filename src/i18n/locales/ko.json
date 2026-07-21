@@ -3,8 +3,8 @@
     "overlay": {
       "colorBalance": "Color Balance",
       "warmSat": "Warm / Sat",
-      "exposureContrast": "Exposure / Contrast",
-      "lightsShadows": "Lights / Shadows",
+      "exposureContrast": "Exp / Cntr",
+      "lightsShadows": "Light / Shad",
       "lutIntensity": "LUT Intensity",
       "lutInput": "LUT Input"
     }
@@ -1532,7 +1532,8 @@
         "library": "라이브러리",
         "panels": "패널",
         "rating": "평점 및 레이블",
-        "view": "보기"
+        "view": "보기",
+        "gestures": "Gestures"
       }
     },
     "language": "언어",

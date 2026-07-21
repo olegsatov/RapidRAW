@@ -3,8 +3,8 @@
     "overlay": {
       "colorBalance": "Color Balance",
       "warmSat": "Warm / Sat",
-      "exposureContrast": "Exposure / Contrast",
-      "lightsShadows": "Lights / Shadows",
+      "exposureContrast": "Exp / Cntr",
+      "lightsShadows": "Light / Shad",
       "lutIntensity": "LUT Intensity",
       "lutInput": "LUT Input"
     }
@@ -1531,7 +1531,8 @@
         "library": "ライブラリ",
         "panels": "パネル",
         "rating": "評価とラベル",
-        "view": "表示"
+        "view": "表示",
+        "gestures": "Gestures"
       }
     },
     "language": "言語",

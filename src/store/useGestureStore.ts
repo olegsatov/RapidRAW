@@ -6,6 +6,8 @@ export interface GestureOverlayParam {
   values: [number, number];
   min: [number, number];
   max: [number, number];
+  orientation?: 'both' | 'vertical';
+  invert?: [boolean, boolean];
 }
 
 interface GestureOverlayState {

@@ -3,8 +3,8 @@
     "overlay": {
       "colorBalance": "Color Balance",
       "warmSat": "Warm / Sat",
-      "exposureContrast": "Exposure / Contrast",
-      "lightsShadows": "Lights / Shadows",
+      "exposureContrast": "Exp / Cntr",
+      "lightsShadows": "Light / Shad",
       "lutIntensity": "LUT Intensity",
       "lutInput": "LUT Input"
     }
@@ -1532,7 +1532,8 @@
         "library": "图库",
         "panels": "面板",
         "rating": "评分与标签",
-        "view": "视图"
+        "view": "视图",
+        "gestures": "Gestures"
       }
     },
     "language": "语言",

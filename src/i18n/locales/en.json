@@ -3,8 +3,8 @@
     "overlay": {
       "colorBalance": "Color Balance",
       "warmSat": "Warm / Sat",
-      "exposureContrast": "Exposure / Contrast",
-      "lightsShadows": "Lights / Shadows",
+      "exposureContrast": "Exp / Cntr",
+      "lightsShadows": "Light / Shad",
       "lutIntensity": "LUT Intensity",
       "lutInput": "LUT Input"
     }
@@ -1694,7 +1694,8 @@
         "library": "Library",
         "panels": "Panels",
         "rating": "Rating & Labels",
-        "view": "View"
+        "view": "View",
+        "gestures": "Gestures"
       }
     },
     "language": "Language",
