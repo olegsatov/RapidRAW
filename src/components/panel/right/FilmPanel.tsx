@@ -308,7 +308,7 @@ export default function FilmPanel() {
               max={3}
               min={-3}
               onChange={(e: any) => handleAdjustmentChange(FilmAdjustment.FlimEv, e.target.value)}
-              step={0.1}
+              step={0.05}
               value={adjustments.flimEv ?? 0}
               onDragStateChange={onDragStateChange}
             />
