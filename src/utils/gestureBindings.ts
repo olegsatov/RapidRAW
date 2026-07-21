@@ -3,20 +3,20 @@
 // delta small); extract a shared range table when more bindings are added.
 
 export interface GestureParam {
-  key: 'temperature' | 'tint' | 'flimWarmth' | 'flimSaturation';
+  key: 'temperature' | 'tint' | 'flimWarmth' | 'flimSaturation' | 'exposure' | 'contrast' | 'highlights' | 'shadows';
   min: number;
   max: number;
   step: number; // param units per one engine step
 }
 
 export interface GestureBinding {
-  action: 'gesture_color_balance'; // phase-1 literal; expand the union as bindings are added
+  action: 'gesture_color_balance' | 'gesture_tone_basic'; // expand the union as bindings are added
   move: [GestureParam, GestureParam]; // [vertical, horizontal]
   scroll: [GestureParam, GestureParam]; // [vertical, horizontal]
 }
 
 // NOTE: every `action` id below must later have a matching entry in
-// KEYBIND_DEFINITIONS (Task 4) and a matching i18n key.
+// KEYBIND_DEFINITIONS and a matching i18n key.
 export const GESTURE_BINDINGS: GestureBinding[] = [
   {
     action: 'gesture_color_balance',
@@ -27,6 +27,17 @@ export const GESTURE_BINDINGS: GestureBinding[] = [
     scroll: [
       { key: 'flimWarmth', min: -100, max: 100, step: 1 },
       { key: 'flimSaturation', min: 0, max: 200, step: 1 },
+    ],
+  },
+  {
+    action: 'gesture_tone_basic',
+    move: [
+      { key: 'exposure', min: -5, max: 5, step: 0.1 },
+      { key: 'contrast', min: -100, max: 100, step: 1 },
+    ],
+    scroll: [
+      { key: 'highlights', min: -100, max: 100, step: 1 },
+      { key: 'shadows', min: -100, max: 100, step: 1 },
     ],
   },
 ];

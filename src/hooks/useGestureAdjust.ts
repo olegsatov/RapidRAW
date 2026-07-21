@@ -4,7 +4,7 @@ import { useEditorStore } from '../store/useEditorStore';
 import { useUIStore } from '../store/useUIStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useEditorActions } from './useEditorActions';
-import { getEffectiveKeybind, KEYBIND_DEFINITIONS, normalizeCombo } from '../utils/keyboardUtils';
+import { getEffectiveKeybind, KEYBIND_DEFINITIONS } from '../utils/keyboardUtils';
 import { GESTURE_BINDINGS, GestureBinding, GestureParam } from '../utils/gestureBindings';
 import {
   AxisLock,
@@ -44,17 +44,21 @@ export function useGestureAdjust() {
   const pendingRef = useRef<{ event: KeyboardEvent; timer: ReturnType<typeof setTimeout> } | null>(null);
 
   useEffect(() => {
-    const getGestureKey = (): string | null => {
+    const getGestureAction = (code: string): GestureBinding['action'] | null => {
       const keybinds = useSettingsStore.getState().appSettings?.keybinds;
-      const def = KEYBIND_DEFINITIONS.find((d) => d.action === 'gesture_color_balance');
-      if (!def) return null;
-      const effective = getEffectiveKeybind(keybinds?.[def.action], def.defaultCombo);
-      if (!effective || effective.length !== 1) return null;
-      return effective[0];
+      for (const binding of GESTURE_BINDINGS) {
+        const def = KEYBIND_DEFINITIONS.find((d) => d.action === binding.action);
+        if (!def) continue;
+        const effective = getEffectiveKeybind(keybinds?.[def.action], def.defaultCombo);
+        if (effective && effective.length === 1 && effective[0] === code) {
+          return binding.action;
+        }
+      }
+      return null;
     };
 
-    const startSession = (gestureKey: string) => {
-      const binding = GESTURE_BINDINGS.find((b) => b.action === 'gesture_color_balance');
+    const startSession = (action: GestureBinding['action'], gestureKey: string) => {
+      const binding = GESTURE_BINDINGS.find((b) => b.action === action);
       if (!binding) return;
 
       sessionRef.current = {
@@ -112,8 +116,6 @@ export function useGestureAdjust() {
         document.activeElement?.tagName === 'INPUT' || document.activeElement?.tagName === 'TEXTAREA';
       if (isInputFocused) return false;
 
-      if (editor.adjustments.toneMapper !== 'flim') return false;
-
       if (!editor.selectedImage) return false;
 
       return true;
@@ -144,27 +146,26 @@ export function useGestureAdjust() {
       if (event.repeat) return;
       if (!guardsPass()) return;
 
-      const gestureKey = getGestureKey();
-      if (!gestureKey) return;
+      const action = getGestureAction(event.code);
+      if (!action) return;
 
-      const osPlatform = useSettingsStore.getState().osPlatform;
-      if (normalizeCombo(event, osPlatform).join('+') === gestureKey) {
-        event.preventDefault();
-        event.stopImmediatePropagation();
+      // Color balance only makes sense while the flim tonemapper is active.
+      const editor = useEditorStore.getState();
+      if (action === 'gesture_color_balance' && editor.adjustments.toneMapper !== 'flim') return;
 
-        const timer = setTimeout(() => {
-          pendingRef.current = null;
-          startSession(gestureKey);
-        }, GESTURE_HOLD_DELAY_MS);
+      event.preventDefault();
+      event.stopImmediatePropagation();
 
-        pendingRef.current = { event, timer };
-      }
+      const timer = setTimeout(() => {
+        pendingRef.current = null;
+        startSession(action, event.code);
+      }, GESTURE_HOLD_DELAY_MS);
+
+      pendingRef.current = { event, timer };
     };
 
     const handleKeyUp = (event: KeyboardEvent) => {
-      const gestureKey = getGestureKey();
-
-      if (pendingRef.current && gestureKey && event.code === gestureKey) {
+      if (pendingRef.current && event.code === pendingRef.current.event.code) {
         event.preventDefault();
         event.stopImmediatePropagation();
         clearTimeout(pendingRef.current.timer);

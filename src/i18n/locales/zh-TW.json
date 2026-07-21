@@ -1497,6 +1497,7 @@
         "toggle_ai": "切換 AI 面板",
         "toggle_analytics": "切換分析顯示",
         "gesture_color_balance": "Gesture: color balance (hold + mouse/scroll)",
+        "gesture_tone_basic": "Gesture: tone basic (hold + mouse/scroll)",
         "toggle_crop": "切換裁剪/拉直",
         "toggle_crop_panel": "切換裁剪面板",
         "toggle_export": "切換匯出面板",

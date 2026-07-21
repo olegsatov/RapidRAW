@@ -1497,6 +1497,7 @@
         "toggle_ai": "Alternar panel de IA",
         "toggle_analytics": "Alternar vista de análisis",
         "gesture_color_balance": "Gesture: color balance (hold + mouse/scroll)",
+        "gesture_tone_basic": "Gesture: tone basic (hold + mouse/scroll)",
         "toggle_crop": "Alternar Recortar / Enderezar",
         "toggle_crop_panel": "Alternar panel de Recorte",
         "toggle_export": "Alternar panel de Exportación",

@@ -274,6 +274,12 @@ export const KEYBIND_DEFINITIONS: KeybindDefinition[] = [
     section: 'editing',
   },
   {
+    action: 'gesture_tone_basic',
+    description: 'settings.keybinds.actions.gesture_tone_basic',
+    defaultCombo: ['KeyS'],
+    section: 'editing',
+  },
+  {
     action: 'brush_size_up',
     description: 'settings.keybinds.actions.brush_size_up',
     defaultCombo: ['ctrl', 'ArrowUp'],
