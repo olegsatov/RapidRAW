@@ -17,6 +17,7 @@ import {
   quantizeMouseWheel,
   SCROLL_AXIS_LOCK,
   StepAccumulator,
+  TRACKPAD_SCROLL_AXIS_LOCK,
   TRACKPAD_SCROLL_STEP,
 } from '../utils/gestureEngine';
 
@@ -26,6 +27,7 @@ interface GestureSession {
   moveAccX: ContinuousAccumulator;
   moveAccY: ContinuousAccumulator;
   scrollLock: AxisLock;
+  trackpadScrollLock: AxisLock;
   scrollStepAccX: StepAccumulator;
   scrollStepAccY: StepAccumulator;
   scrollContAccX: ContinuousAccumulator;
@@ -61,6 +63,7 @@ export function useGestureAdjust() {
         moveAccX: new ContinuousAccumulator(MOUSE_MOVE_STEP.stepX / binding.move[1].step),
         moveAccY: new ContinuousAccumulator(MOUSE_MOVE_STEP.stepY / binding.move[0].step),
         scrollLock: new AxisLock(SCROLL_AXIS_LOCK, true),
+        trackpadScrollLock: new AxisLock(TRACKPAD_SCROLL_AXIS_LOCK),
         scrollStepAccX: new StepAccumulator(MOUSE_SCROLL_STEP),
         scrollStepAccY: new StepAccumulator(MOUSE_SCROLL_STEP),
         scrollContAccX: new ContinuousAccumulator(TRACKPAD_SCROLL_STEP / binding.scroll[1].step),
@@ -217,8 +220,15 @@ export function useGestureAdjust() {
       event.preventDefault();
       event.stopImmediatePropagation();
 
-      const { binding, scrollLock, scrollStepAccX, scrollStepAccY, scrollContAccX, scrollContAccY } =
-        sessionRef.current;
+      const {
+        binding,
+        scrollLock,
+        trackpadScrollLock,
+        scrollStepAccX,
+        scrollStepAccY,
+        scrollContAccX,
+        scrollContAccY,
+      } = sessionRef.current;
       const device = detectWheelDevice(event);
 
       if (device === 'mouse') {
@@ -249,12 +259,17 @@ export function useGestureAdjust() {
         return;
       }
 
-      // Trackpad: continuous fractional scrolling, both axes independently.
+      // Trackpad: continuous fractional scrolling with axis lock.
       const dx = event.deltaX;
       const dy = event.deltaY;
+      const locked = trackpadScrollLock.push(dx, dy);
 
-      applyDelta(binding.scroll[0], scrollContAccY.push(dy));
-      applyDelta(binding.scroll[1], -scrollContAccX.push(dx));
+      if (locked === 'vertical' || locked === 'both') {
+        applyDelta(binding.scroll[0], scrollContAccY.push(dy));
+      }
+      if (locked === 'horizontal' || locked === 'both') {
+        applyDelta(binding.scroll[1], -scrollContAccX.push(dx));
+      }
     };
 
     window.addEventListener('keydown', handleKeyDown, true);

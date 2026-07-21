@@ -114,6 +114,13 @@ export const SCROLL_AXIS_LOCK: AxisLockConfig = {
   bothFactor: 1,
 };
 
+export const TRACKPAD_SCROLL_AXIS_LOCK: AxisLockConfig = {
+  windowSize: 3,
+  axisThreshold: 1.5,
+  diagRatio: 0.45,
+  bothFactor: 100, // treat two-finger scroll as either vertical or horizontal
+};
+
 export const MOUSE_MOVE_STEP = { stepX: 6, stepY: 6 };
 export const MOUSE_SCROLL_STEP = 3;
 export const TRACKPAD_SCROLL_STEP = 6.25; // trackpad deltas are much finer than mouse notches
