@@ -26,8 +26,10 @@ interface GestureSession {
   moveAccX: ContinuousAccumulator;
   moveAccY: ContinuousAccumulator;
   scrollLock: AxisLock;
-  scrollAccX: StepAccumulator;
-  scrollAccY: StepAccumulator;
+  scrollStepAccX: StepAccumulator;
+  scrollStepAccY: StepAccumulator;
+  scrollContAccX: ContinuousAccumulator;
+  scrollContAccY: ContinuousAccumulator;
   gestureKey: string;
 }
 
@@ -38,7 +40,6 @@ export function useGestureAdjust() {
   const setEditor = useEditorStore((s) => s.setEditor);
   const sessionRef = useRef<GestureSession | null>(null);
   const pendingRef = useRef<{ event: KeyboardEvent; timer: ReturnType<typeof setTimeout> } | null>(null);
-  const scrollMomentumRef = useRef<{ lastAbs: number; decelCount: number }>({ lastAbs: 0, decelCount: 0 });
 
   useEffect(() => {
     const getGestureKey = (): string | null => {
@@ -60,12 +61,12 @@ export function useGestureAdjust() {
         moveAccX: new ContinuousAccumulator(MOUSE_MOVE_STEP.stepX / binding.move[1].step),
         moveAccY: new ContinuousAccumulator(MOUSE_MOVE_STEP.stepY / binding.move[0].step),
         scrollLock: new AxisLock(SCROLL_AXIS_LOCK, true),
-        scrollAccX: new StepAccumulator(MOUSE_SCROLL_STEP),
-        scrollAccY: new StepAccumulator(MOUSE_SCROLL_STEP),
+        scrollStepAccX: new StepAccumulator(MOUSE_SCROLL_STEP),
+        scrollStepAccY: new StepAccumulator(MOUSE_SCROLL_STEP),
+        scrollContAccX: new ContinuousAccumulator(TRACKPAD_SCROLL_STEP / binding.scroll[1].step),
+        scrollContAccY: new ContinuousAccumulator(TRACKPAD_SCROLL_STEP / binding.scroll[0].step),
         gestureKey,
       };
-
-      scrollMomentumRef.current = { lastAbs: 0, decelCount: 0 };
 
       setEditor({ isSliderDragging: true });
       const appWindow = getCurrentWindow();
@@ -76,7 +77,6 @@ export function useGestureAdjust() {
     const endSession = () => {
       const hadSession = sessionRef.current !== null;
       sessionRef.current = null;
-      scrollMomentumRef.current = { lastAbs: 0, decelCount: 0 };
       const appWindow = getCurrentWindow();
       appWindow.setCursorGrab(false).catch(() => {});
       appWindow.setCursorVisible(true).catch(() => {});
@@ -217,17 +217,17 @@ export function useGestureAdjust() {
       event.preventDefault();
       event.stopImmediatePropagation();
 
-      const { binding, scrollLock, scrollAccX, scrollAccY } = sessionRef.current;
+      const { binding, scrollLock, scrollStepAccX, scrollStepAccY, scrollContAccX, scrollContAccY } =
+        sessionRef.current;
       const device = detectWheelDevice(event);
 
-      let dx: number;
-      let dy: number;
-      let locked: 'none' | 'horizontal' | 'vertical' | 'both';
       if (device === 'mouse') {
         const qx = quantizeMouseWheel(event.deltaX);
         const qy = quantizeMouseWheel(event.deltaY);
-        dx = qx * MOUSE_SCROLL_STEP;
-        dy = qy * MOUSE_SCROLL_STEP;
+        const dx = qx * MOUSE_SCROLL_STEP;
+        const dy = qy * MOUSE_SCROLL_STEP;
+
+        let locked: 'none' | 'horizontal' | 'vertical' | 'both';
         if (qx !== 0 && qy !== 0) {
           locked = 'both';
         } else if (qx !== 0) {
@@ -237,39 +237,24 @@ export function useGestureAdjust() {
         } else {
           locked = 'none';
         }
-      } else {
-        scrollAccX.step = TRACKPAD_SCROLL_STEP;
-        scrollAccY.step = TRACKPAD_SCROLL_STEP;
-        dx = event.deltaX;
-        dy = event.deltaY;
 
-        // Ignore trackpad momentum (inertial scrolling after fingers lift).
-        // During active scrolling deltas fluctuate; after lift they decay monotonically.
-        const absDelta = Math.hypot(dx, dy);
-        const { lastAbs } = scrollMomentumRef.current;
-        if (lastAbs > 0) {
-          if (absDelta > lastAbs * 1.3) {
-            scrollMomentumRef.current.decelCount = 0;
-          } else if (absDelta < lastAbs * 0.7) {
-            scrollMomentumRef.current.decelCount++;
-          }
+        if (locked === 'vertical' || locked === 'both') {
+          const steps = scrollStepAccY.push(dy);
+          applyDelta(binding.scroll[0], steps * binding.scroll[0].step);
         }
-        scrollMomentumRef.current.lastAbs = absDelta;
-        if (scrollMomentumRef.current.decelCount >= 2) {
-          return;
+        if (locked === 'horizontal' || locked === 'both') {
+          const steps = scrollStepAccX.push(-dx);
+          applyDelta(binding.scroll[1], steps * binding.scroll[1].step);
         }
-
-        locked = scrollLock.push(dx, dy);
+        return;
       }
 
-      if (locked === 'vertical' || locked === 'both') {
-        const steps = scrollAccY.push(dy);
-        applyDelta(binding.scroll[0], steps * binding.scroll[0].step);
-      }
-      if (locked === 'horizontal' || locked === 'both') {
-        const steps = scrollAccX.push(-dx);
-        applyDelta(binding.scroll[1], steps * binding.scroll[1].step);
-      }
+      // Trackpad: continuous fractional scrolling, both axes independently.
+      const dx = event.deltaX;
+      const dy = event.deltaY;
+
+      applyDelta(binding.scroll[0], scrollContAccY.push(dy));
+      applyDelta(binding.scroll[1], -scrollContAccX.push(dx));
     };
 
     window.addEventListener('keydown', handleKeyDown, true);
