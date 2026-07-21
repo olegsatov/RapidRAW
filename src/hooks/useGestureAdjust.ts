@@ -38,6 +38,7 @@ export function useGestureAdjust() {
   const setEditor = useEditorStore((s) => s.setEditor);
   const sessionRef = useRef<GestureSession | null>(null);
   const pendingRef = useRef<{ event: KeyboardEvent; timer: ReturnType<typeof setTimeout> } | null>(null);
+  const scrollMomentumRef = useRef<{ lastAbs: number; decelCount: number }>({ lastAbs: 0, decelCount: 0 });
 
   useEffect(() => {
     const getGestureKey = (): string | null => {
@@ -64,6 +65,8 @@ export function useGestureAdjust() {
         gestureKey,
       };
 
+      scrollMomentumRef.current = { lastAbs: 0, decelCount: 0 };
+
       setEditor({ isSliderDragging: true });
       const appWindow = getCurrentWindow();
       appWindow.setCursorGrab(true).catch(() => {});
@@ -73,6 +76,7 @@ export function useGestureAdjust() {
     const endSession = () => {
       const hadSession = sessionRef.current !== null;
       sessionRef.current = null;
+      scrollMomentumRef.current = { lastAbs: 0, decelCount: 0 };
       const appWindow = getCurrentWindow();
       appWindow.setCursorGrab(false).catch(() => {});
       appWindow.setCursorVisible(true).catch(() => {});
@@ -238,6 +242,23 @@ export function useGestureAdjust() {
         scrollAccY.step = TRACKPAD_SCROLL_STEP;
         dx = event.deltaX;
         dy = event.deltaY;
+
+        // Ignore trackpad momentum (inertial scrolling after fingers lift).
+        // During active scrolling deltas fluctuate; after lift they decay monotonically.
+        const absDelta = Math.hypot(dx, dy);
+        const { lastAbs } = scrollMomentumRef.current;
+        if (lastAbs > 0) {
+          if (absDelta > lastAbs * 1.3) {
+            scrollMomentumRef.current.decelCount = 0;
+          } else if (absDelta < lastAbs * 0.7) {
+            scrollMomentumRef.current.decelCount++;
+          }
+        }
+        scrollMomentumRef.current.lastAbs = absDelta;
+        if (scrollMomentumRef.current.decelCount >= 2) {
+          return;
+        }
+
         locked = scrollLock.push(dx, dy);
       }
 
