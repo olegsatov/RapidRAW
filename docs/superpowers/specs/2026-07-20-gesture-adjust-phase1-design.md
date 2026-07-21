@@ -25,6 +25,8 @@ LMB/RMB-наборы параметров, hue-wrap, конфиг-движок �
   2 параметра на скролл» взята из BetterSpeedEdit (`parametersMain` + `parametersScroll`).
 - Каналы ввода: движение мыши (Pointer Lock) **и** скролл (колесо/трекпад).
 - Биндинг фазы 1: move → `temperature`, `tint`; scroll → `flimWarmth`, `flimSaturation`.
+  Action id в `KEYBIND_DEFINITIONS`: `gesture_color_balance` (не `gesture_white_balance`,
+  потому что scroll-оси управляют film color, а не балансом белого).
 - Если flim-тонмаппер выключен (`toneMapper !== 'flim'`) — жест игнорируется
   (warmth/saturation — flim-only параметры).
 
@@ -43,13 +45,13 @@ LMB/RMB-наборы параметров, hue-wrap, конфиг-движок �
     проверки фаз (`EventEngine.swift:712-732`);
   - константы чувствительности из shipped-конфига BSE: mouse move `{stepX:6, stepY:6}`,
     mouse scroll `6`, trackpad scroll `2.5`; axis `{windowSize:5, axisThreshold:1.5,
-    diagRatio:0.5}`; scrollAxis `{windowSize:5, axisThreshold:8, diagRatio:0.5}`.
+diagRatio:0.5}`; scrollAxis `{windowSize:5, axisThreshold:8, diagRatio:0.5}`.
 - `src/hooks/useGestureAdjust.ts` — хук сессии: трекинг зажатой клавиши, жизненный
   цикл жеста, Pointer Lock на контейнере превью, применение шагов к adjustments
   с clamp, `isSliderDragging` на время сессии.
 - `src/utils/gestureBindings.ts` — декларативная таблица биндингов (одна запись):
   id команды, дефолтная клавиша, move → `[{key:'temperature', min:-100, max:100, step:1},
-  {key:'tint', ...}]`, scroll → `[flimWarmth, flimSaturation]`. Диапазоны/шаги
+{key:'tint', ...}]`, scroll → `[flimWarmth, flimSaturation]`. Диапазоны/шаги
   дублируют значения из FilmPanel (4 параметра) — FilmPanel в фазе 1 не трогаем,
   чтобы не раздувать дельту с upstream; вынос в общий модуль — отдельной задачей,
   когда биндингов станет больше.
@@ -58,11 +60,10 @@ LMB/RMB-наборы параметров, hue-wrap, конфиг-движок �
 ### Хирургические правки shared-файлов (минимальные)
 
 - `KEYBIND_DEFINITIONS` / `src/utils/keyboardUtils.ts` — новая команда хоткея
-  (`gestureWhiteBalance`, дефолт «A»), переназначаемая через существующую панель.
+  (`gesture_color_balance`, дефолт «A»), переназначаемая через существующую панель.
 - `src/hooks/useKeyboardShortcuts.ts` — guard: на время активной жест-сессии
   остальные хоткеи заблокированы (одна проверка флага).
-- `src/components/views/EditorView.tsx` (или `Editor.tsx`) — подключение хука;
-  существующий wheel-обработчик превью пропускает события при активной сессии.
+- `src/components/views/EditorView.tsx` — подключение хука.
 - `src/i18n/locales/*.json` — строка имени команды.
 
 Изменений в Rust нет: клавиша и настройки живут в существующем `appSettings`
@@ -72,11 +73,15 @@ LMB/RMB-наборы параметров, hue-wrap, конфиг-движок �
 
 **Старт:** keydown клавиши жеста. Guard'ы как в `useKeyboardShortcuts.ts:593-611`
 (редактор активен, нет модалки, фокус не в input) + `toneMapper === 'flim'`.
-`preventDefault()` на keydown/keyup (аналог swallow из BSE; swallowDelay не нужен —
-нет OS-уровневого перехвата). Запрос Pointer Lock на контейнере превью → курсор
-замирает и прячется (нативный аналог freeze/warp из BSE). `isSliderDragging: true`.
+Портирован `swallowDelay` из BSE: реальный keydown проглатывается в capture-фазе,
+но на 150 мс откладывается решение — если keyup пришёл раньше, синтетическая пара
+keydown/keyup отправляется на `window`, и клавиша работает как обычная (например,
+`A` продолжает переключать analytics); если таймер сработал — стартует жест.
+Запрос Pointer Lock на `document.body` → курсор замирает и прячется (нативный
+аналог freeze/warp курсора из BSE). `isSliderDragging: true`.
 
 **Во время сессии:**
+
 - `pointermove` → `movementX/Y` (сырые дельты без OS-ускорения — аналог HID-дельт
   BSE) → AxisLock → StepAccumulator → целые шаги: up `+temperature`, down `−temperature`,
   left `−tint`, right `+tint`.

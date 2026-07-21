@@ -13,7 +13,7 @@
 **Key facts established during research (do not re-verify):**
 
 - No test runner in `package.json`; verification gate is `npm run build`.
-- `KeyA` is already the default for `toggle_analytics` (`src/utils/keyboardUtils.ts:220`). Gesture handler uses **capture-phase** window listeners + `stopImmediatePropagation()` so it wins over `useKeyboardShortcuts` (bubble phase) whenever the gesture session can start; when flim is off the key falls through to `toggle_analytics` untouched.
+- `KeyA` is already the default for `toggle_analytics` (`src/utils/keyboardUtils.ts:220`). The gesture hook uses **capture-phase** window listeners + a 150 ms tap-vs-hold delay (ported from BetterSpeedEdit's `swallowDelay`): a short tap of `A` is re-dispatched as a synthetic keydown/keyup so `toggle_analytics` still fires; holding `A` starts the gesture session. When `toneMapper !== 'flim'` the gesture session cannot start, so the synthetic tap still toggles analytics.
 - `setAdjustments` signature: `setAdjustments(value: Partial<Adjustments> | ((prev: Adjustments) => Adjustments))` from `useEditorActions()` (`src/hooks/useEditorActions.ts:41`).
 - `setEditor` from `useEditorStore` accepts `Partial<EditorState>`; `isSliderDragging: boolean` exists (`src/store/useEditorStore.ts:48,87,158`).
 - Keybind lookup: `KEYBIND_DEFINITIONS` + `getEffectiveKeybind(userCombo, defaultCombo)` + `normalizeCombo(event, osPlatform)` in `src/utils/keyboardUtils.ts:329-349,381-386`. Single-key combos normalize to `'KeyA'`-style codes.
@@ -260,7 +260,7 @@ export interface GestureBinding {
 
 export const GESTURE_BINDINGS: GestureBinding[] = [
   {
-    action: 'gesture_white_balance',
+    action: 'gesture_color_balance',
     move: [
       { key: 'temperature', min: -100, max: 100, step: 1 },
       { key: 'tint', min: -100, max: 100, step: 1 },
@@ -523,21 +523,21 @@ In `src/utils/keyboardUtils.ts`, add to `KEYBIND_DEFINITIONS` (next to `toggle_a
 
 ```ts
   {
-    action: 'gesture_white_balance',
-    description: 'settings.keybinds.actions.gesture_white_balance',
+    action: 'gesture_color_balance',
+    description: 'settings.keybinds.actions.gesture_color_balance',
     defaultCombo: ['KeyA'],
     section: 'editing',
   },
 ```
 
-Note: this intentionally shares the `KeyA` default with `toggle_analytics` — the gesture hook intercepts in capture phase whenever a session can start (flim on, editor focused); otherwise `toggle_analytics` fires as before. SettingsPanel will flag the conflict in UI; acceptable for phase 1, do not "fix" by remapping toggle_analytics.
+Note: this intentionally shares the `KeyA` default with `toggle_analytics`. The tap-vs-hold logic in `useGestureAdjust.ts` ensures short taps still toggle analytics, while holds start the gesture. SettingsPanel will flag the duplicate default in UI; users can remap either action. Do not change `toggle_analytics`.
 
 - [ ] **Step 2: Add i18n strings**
 
 In `src/i18n/locales/en.json` under `settings.keybinds.actions` add:
 
 ```json
-        "gesture_white_balance": "Gesture: white balance (hold + mouse/scroll)",
+        "gesture_color_balance": "Gesture: white balance (hold + mouse/scroll)",
 ```
 
 Run `grep -l '"toggle_analytics"' src/i18n/locales/*.json` and add the same key (translated where obvious, English otherwise) to each matching locale's `settings.keybinds.actions`.
