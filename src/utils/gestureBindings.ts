@@ -13,6 +13,8 @@ export interface GestureBinding {
   action: 'gesture_color_balance' | 'gesture_tone_basic'; // expand the union as bindings are added
   move: [GestureParam, GestureParam]; // [vertical, horizontal]
   scroll: [GestureParam, GestureParam]; // [vertical, horizontal]
+  moveSign?: [number, number]; // per-axis sign multipliers; default [1, 1]
+  scrollSign?: [number, number];
 }
 
 // NOTE: every `action` id below must later have a matching entry in
@@ -39,5 +41,6 @@ export const GESTURE_BINDINGS: GestureBinding[] = [
       { key: 'highlights', min: -100, max: 100, step: 1 },
       { key: 'shadows', min: -100, max: 100, step: 1 },
     ],
+    moveSign: [1, -1],
   },
 ];

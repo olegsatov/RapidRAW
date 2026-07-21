@@ -115,8 +115,8 @@ export const SCROLL_AXIS_LOCK: AxisLockConfig = {
 };
 
 export const TRACKPAD_SCROLL_AXIS_LOCK: AxisLockConfig = {
-  windowSize: 5,
-  axisThreshold: 1,
+  windowSize: 3,
+  axisThreshold: 0.5,
   diagRatio: 0.5,
   bothFactor: 1.5,
 };

@@ -206,13 +206,14 @@ export function useGestureAdjust() {
       if (!sessionRef.current) return;
 
       const { binding, moveLock, moveAccX, moveAccY } = sessionRef.current;
+      const moveSign = binding.moveSign ?? [1, 1];
       const locked = moveLock.push(event.movementX, event.movementY);
 
       if (locked === 'vertical' || locked === 'both') {
-        applyDelta(binding.move[0], moveAccY.push(-event.movementY));
+        applyDelta(binding.move[0], moveAccY.push(-event.movementY * moveSign[0]));
       }
       if (locked === 'horizontal' || locked === 'both') {
-        applyDelta(binding.move[1], moveAccX.push(event.movementX));
+        applyDelta(binding.move[1], moveAccX.push(event.movementX * moveSign[1]));
       }
     };
 
@@ -230,6 +231,7 @@ export function useGestureAdjust() {
         scrollContAccX,
         scrollContAccY,
       } = sessionRef.current;
+      const scrollSign = binding.scrollSign ?? [1, 1];
       const device = detectWheelDevice(event);
 
       if (device === 'mouse') {
@@ -250,11 +252,11 @@ export function useGestureAdjust() {
         }
 
         if (locked === 'vertical' || locked === 'both') {
-          const steps = scrollStepAccY.push(dy);
+          const steps = scrollStepAccY.push(dy * scrollSign[0]);
           applyDelta(binding.scroll[0], steps * binding.scroll[0].step);
         }
         if (locked === 'horizontal' || locked === 'both') {
-          const steps = scrollStepAccX.push(-dx);
+          const steps = scrollStepAccX.push(-dx * scrollSign[1]);
           applyDelta(binding.scroll[1], steps * binding.scroll[1].step);
         }
         return;
@@ -266,10 +268,10 @@ export function useGestureAdjust() {
       const locked = trackpadScrollLock.push(dx, dy);
 
       if (locked === 'vertical' || locked === 'both') {
-        applyDelta(binding.scroll[0], scrollContAccY.push(dy));
+        applyDelta(binding.scroll[0], scrollContAccY.push(dy * scrollSign[0]));
       }
       if (locked === 'horizontal' || locked === 'both') {
-        applyDelta(binding.scroll[1], -scrollContAccX.push(dx));
+        applyDelta(binding.scroll[1], -scrollContAccX.push(dx * scrollSign[1]));
       }
     };
 
