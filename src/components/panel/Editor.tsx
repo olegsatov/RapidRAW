@@ -19,6 +19,7 @@ import { useEditorStore } from '../../store/useEditorStore';
 import { useSettingsStore } from '../../store/useSettingsStore';
 import { useUIStore } from '../../store/useUIStore';
 import { useLibraryStore } from '../../store/useLibraryStore';
+import { useGestureStore } from '../../store/useGestureStore';
 import { useAiMasking } from '../../hooks/useAiMasking';
 import { debouncedSetHistory } from '../../hooks/useEditorActions';
 import { getDefaultEditorBackground } from '../../utils/editorBackground';
@@ -97,6 +98,7 @@ export default function Editor({ onBackToLibrary, onContextMenu, transformWrappe
   const interactivePatch = useEditorStore((s) => s.interactivePatch);
   const showOriginal = useEditorStore((s) => s.showOriginal);
   const isSliderDragging = useEditorStore((s) => s.isSliderDragging);
+  const isGestureActive = useGestureStore((s) => s.isActive);
   const targetZoom = useEditorStore((s) => s.zoom);
   const originalSize = useEditorStore((s) => s.originalSize);
   const isRotationActive = useEditorStore((s) => s.isRotationActive);
@@ -871,6 +873,7 @@ export default function Editor({ onBackToLibrary, onContextMenu, transformWrappe
 
   const handleClick = useCallback(
     (e: React.MouseEvent) => {
+      if (isGestureActive) return;
       if (e.button !== 0) return;
       if (isPanningDisabled || wasPanningDisabledOnDown.current) return;
 
@@ -907,7 +910,16 @@ export default function Editor({ onBackToLibrary, onContextMenu, transformWrappe
         applyTransform(bounded.x, bounded.y, bounded.scale);
       }
     },
-    [isPanningDisabled, isCropping, isMasking, isAiEditing, isWbPickerActive, applyTransform, clampToBounds],
+    [
+      isPanningDisabled,
+      isCropping,
+      isMasking,
+      isAiEditing,
+      isWbPickerActive,
+      applyTransform,
+      clampToBounds,
+      isGestureActive,
+    ],
   );
 
   useEffect(() => {
