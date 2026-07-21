@@ -130,17 +130,27 @@ export const TRACKPAD_SCROLL_STEP = 6.25; // trackpad deltas are much finer than
 export class ContinuousAccumulator {
   private remainder = 0;
   private prevDelta = 0;
+  private readonly snapFactor: number;
 
   constructor(
     private pxPerUnit: number,
     private readonly smooth = 0.6, // EMA: smooth current, (1 - smooth) previous
-  ) {}
+    step = 0.01,
+  ) {
+    let temp = step;
+    let decimalPlaces = 0;
+    while (temp < 1 && decimalPlaces < 10) {
+      temp *= 10;
+      decimalPlaces++;
+    }
+    this.snapFactor = 10 ** decimalPlaces;
+  }
 
   push(deltaPx: number): number {
     const smoothed = deltaPx * this.smooth + this.prevDelta * (1 - this.smooth);
     this.prevDelta = smoothed;
     const units = smoothed / this.pxPerUnit + this.remainder;
-    const applied = Math.round(units * 100) / 100;
+    const applied = Math.round(units * this.snapFactor) / this.snapFactor;
     this.remainder = units - applied;
     return applied;
   }

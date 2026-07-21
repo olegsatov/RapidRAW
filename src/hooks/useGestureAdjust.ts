@@ -64,14 +64,22 @@ export function useGestureAdjust() {
       sessionRef.current = {
         binding,
         moveLock: new AxisLock(MOVE_AXIS_LOCK),
-        moveAccX: new ContinuousAccumulator(MOUSE_MOVE_STEP.stepX / binding.move[1].step, 0.4),
-        moveAccY: new ContinuousAccumulator(MOUSE_MOVE_STEP.stepY / binding.move[0].step, 0.4),
+        moveAccX: new ContinuousAccumulator(MOUSE_MOVE_STEP.stepX / binding.move[1].step, 0.4, binding.move[1].step),
+        moveAccY: new ContinuousAccumulator(MOUSE_MOVE_STEP.stepY / binding.move[0].step, 0.4, binding.move[0].step),
         scrollLock: new AxisLock(SCROLL_AXIS_LOCK, true),
         trackpadScrollLock: new AxisLock(TRACKPAD_SCROLL_AXIS_LOCK),
         scrollStepAccX: new StepAccumulator(MOUSE_SCROLL_STEP),
         scrollStepAccY: new StepAccumulator(MOUSE_SCROLL_STEP),
-        scrollContAccX: new ContinuousAccumulator(TRACKPAD_SCROLL_STEP / binding.scroll[1].step),
-        scrollContAccY: new ContinuousAccumulator(TRACKPAD_SCROLL_STEP / binding.scroll[0].step),
+        scrollContAccX: new ContinuousAccumulator(
+          TRACKPAD_SCROLL_STEP / binding.scroll[1].step,
+          0.6,
+          binding.scroll[1].step,
+        ),
+        scrollContAccY: new ContinuousAccumulator(
+          TRACKPAD_SCROLL_STEP / binding.scroll[0].step,
+          0.6,
+          binding.scroll[0].step,
+        ),
         gestureKey,
       };
 
