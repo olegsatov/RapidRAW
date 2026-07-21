@@ -259,13 +259,24 @@ export function useGestureAdjust() {
           locked = 'none';
         }
 
-        if (locked === 'vertical' || locked === 'both') {
-          const steps = scrollStepAccY.push(dy * scrollSign[0]);
-          applyDelta(binding.scroll[0], steps * binding.scroll[0].step);
-        }
-        if (locked === 'horizontal' || locked === 'both') {
-          const steps = scrollStepAccX.push(-dx * scrollSign[1]);
-          applyDelta(binding.scroll[1], steps * binding.scroll[1].step);
+        if (binding.scrollSingleParam !== undefined) {
+          const param = binding.scroll[binding.scrollSingleParam];
+          if (locked === 'vertical' || (locked === 'both' && Math.abs(dy) >= Math.abs(dx))) {
+            const steps = scrollStepAccY.push(dy * scrollSign[0]);
+            applyDelta(param, steps * param.step);
+          } else if (locked === 'horizontal' || locked === 'both') {
+            const steps = scrollStepAccX.push(-dx * scrollSign[1]);
+            applyDelta(param, steps * param.step);
+          }
+        } else {
+          if (locked === 'vertical' || locked === 'both') {
+            const steps = scrollStepAccY.push(dy * scrollSign[0]);
+            applyDelta(binding.scroll[0], steps * binding.scroll[0].step);
+          }
+          if (locked === 'horizontal' || locked === 'both') {
+            const steps = scrollStepAccX.push(-dx * scrollSign[1]);
+            applyDelta(binding.scroll[1], steps * binding.scroll[1].step);
+          }
         }
         return;
       }
@@ -275,11 +286,20 @@ export function useGestureAdjust() {
       const dy = event.deltaY;
       const locked = trackpadScrollLock.push(dx, dy);
 
-      if (locked === 'vertical' || locked === 'both') {
-        applyDelta(binding.scroll[0], scrollContAccY.push(dy * scrollSign[0]));
-      }
-      if (locked === 'horizontal' || locked === 'both') {
-        applyDelta(binding.scroll[1], -scrollContAccX.push(dx * scrollSign[1]));
+      if (binding.scrollSingleParam !== undefined) {
+        const param = binding.scroll[binding.scrollSingleParam];
+        if (locked === 'vertical' || (locked === 'both' && Math.abs(dy) >= Math.abs(dx))) {
+          applyDelta(param, scrollContAccY.push(dy * scrollSign[0]));
+        } else if (locked === 'horizontal' || locked === 'both') {
+          applyDelta(param, -scrollContAccX.push(dx * scrollSign[1]));
+        }
+      } else {
+        if (locked === 'vertical' || locked === 'both') {
+          applyDelta(binding.scroll[0], scrollContAccY.push(dy * scrollSign[0]));
+        }
+        if (locked === 'horizontal' || locked === 'both') {
+          applyDelta(binding.scroll[1], -scrollContAccX.push(dx * scrollSign[1]));
+        }
       }
     };
 

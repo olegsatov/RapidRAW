@@ -1498,6 +1498,7 @@
         "toggle_analytics": "切换分析显示",
         "gesture_color_balance": "Gesture: color balance (hold + mouse/scroll)",
         "gesture_tone_basic": "Gesture: tone basic (hold + mouse/scroll)",
+        "gesture_lut": "Gesture: LUT (hold + mouse/scroll)",
         "toggle_crop": "切换裁剪/拉直",
         "toggle_crop_panel": "切换裁剪面板",
         "toggle_export": "切换导出面板",

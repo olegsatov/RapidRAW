@@ -1498,6 +1498,7 @@
         "toggle_analytics": "Attiva/Disattiva visualizzazione Analitiche",
         "gesture_color_balance": "Gesture: color balance (hold + mouse/scroll)",
         "gesture_tone_basic": "Gesture: tone basic (hold + mouse/scroll)",
+        "gesture_lut": "Gesture: LUT (hold + mouse/scroll)",
         "toggle_crop": "Attiva/Disattiva Ritaglio / Raddrizza",
         "toggle_crop_panel": "Attiva/Disattiva pannello Ritaglio",
         "toggle_export": "Attiva/Disattiva pannello Esportazione",

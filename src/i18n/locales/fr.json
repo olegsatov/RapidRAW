@@ -1498,6 +1498,7 @@
         "toggle_analytics": "Basculer l'affichage des analyses",
         "gesture_color_balance": "Gesture: color balance (hold + mouse/scroll)",
         "gesture_tone_basic": "Gesture: tone basic (hold + mouse/scroll)",
+        "gesture_lut": "Gesture: LUT (hold + mouse/scroll)",
         "toggle_crop": "Basculer Recadrer / Redresser",
         "toggle_crop_panel": "Basculer le panneau de recadrage",
         "toggle_export": "Basculer le panneau d'exportation",

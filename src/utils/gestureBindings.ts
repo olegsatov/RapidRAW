@@ -4,18 +4,31 @@
 
 export interface GestureParam {
   key:
-    'temperature' | 'tint' | 'flimWarmth' | 'flimSaturation' | 'flimEv' | 'flimContrast' | 'flimShoulder' | 'flimToe';
+    | 'temperature'
+    | 'tint'
+    | 'flimWarmth'
+    | 'flimSaturation'
+    | 'flimEv'
+    | 'flimContrast'
+    | 'flimShoulder'
+    | 'flimToe'
+    | 'lutInputOffset'
+    | 'lutInputRange'
+    | 'lutIntensity';
   min: number;
   max: number;
   step: number; // param units per one engine step
 }
 
 export interface GestureBinding {
-  action: 'gesture_color_balance' | 'gesture_tone_basic'; // expand the union as bindings are added
+  action: 'gesture_color_balance' | 'gesture_tone_basic' | 'gesture_lut'; // expand the union as bindings are added
   move: [GestureParam, GestureParam]; // [vertical, horizontal]
   scroll: [GestureParam, GestureParam]; // [vertical, horizontal]
   moveSign?: [number, number]; // per-axis sign multipliers; default [1, 1]
   scrollSign?: [number, number];
+  // If set, both scroll axes drive the same parameter at the given index.
+  // Useful when scrolling in any direction should control one value (e.g. LUT intensity).
+  scrollSingleParam?: 0 | 1;
 }
 
 // NOTE: every `action` id below must later have a matching entry in
@@ -44,5 +57,17 @@ export const GESTURE_BINDINGS: GestureBinding[] = [
     ],
     moveSign: [1, 1],
     scrollSign: [-1, -1],
+  },
+  {
+    action: 'gesture_lut',
+    move: [
+      { key: 'lutInputOffset', min: -16, max: 16, step: 0.1 },
+      { key: 'lutInputRange', min: 0, max: 32, step: 0.1 },
+    ],
+    scroll: [
+      { key: 'lutIntensity', min: 0, max: 100, step: 1 },
+      { key: 'lutIntensity', min: 0, max: 100, step: 1 },
+    ],
+    scrollSingleParam: 0,
   },
 ];
