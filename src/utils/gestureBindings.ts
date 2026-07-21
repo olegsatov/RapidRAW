@@ -3,7 +3,8 @@
 // delta small); extract a shared range table when more bindings are added.
 
 export interface GestureParam {
-  key: 'temperature' | 'tint' | 'flimWarmth' | 'flimSaturation' | 'exposure' | 'contrast' | 'highlights' | 'shadows';
+  key:
+    'temperature' | 'tint' | 'flimWarmth' | 'flimSaturation' | 'flimEv' | 'flimContrast' | 'flimShoulder' | 'flimToe';
   min: number;
   max: number;
   step: number; // param units per one engine step
@@ -34,12 +35,12 @@ export const GESTURE_BINDINGS: GestureBinding[] = [
   {
     action: 'gesture_tone_basic',
     move: [
-      { key: 'exposure', min: -5, max: 5, step: 0.1 },
-      { key: 'contrast', min: -100, max: 100, step: 1 },
+      { key: 'flimEv', min: -3, max: 3, step: 0.1 },
+      { key: 'flimContrast', min: 50, max: 150, step: 1 },
     ],
     scroll: [
-      { key: 'highlights', min: -100, max: 100, step: 1 },
-      { key: 'shadows', min: -100, max: 100, step: 1 },
+      { key: 'flimShoulder', min: -100, max: 100, step: 1 },
+      { key: 'flimToe', min: -100, max: 100, step: 1 },
     ],
     moveSign: [1, -1],
   },
