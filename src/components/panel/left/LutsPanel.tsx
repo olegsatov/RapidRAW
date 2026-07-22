@@ -38,7 +38,7 @@ const PREVIEW_SIZE = 160;
 
 export default function LutsPanel({ isVisible, panelWidth }: LutsPanelProps) {
   const { t } = useTranslation();
-  const isWide = panelWidth > 250;
+  const isWide = panelWidth > 350;
   const { handleLutSelect, setAdjustments, setLutPreviewOverride } = useEditorActions();
   const { showContextMenu } = useContextMenu();
   const selectedImagePath = useEditorStore((state) => state.selectedImage?.path ?? null);
