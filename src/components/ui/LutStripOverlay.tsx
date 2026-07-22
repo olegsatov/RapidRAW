@@ -2,6 +2,7 @@ import clsx from 'clsx';
 import { Loader2, ImageOff } from 'lucide-react';
 import { useEffect, useRef } from 'react';
 import { useGestureStore } from '../../store/useGestureStore';
+import { useUIStore } from '../../store/useUIStore';
 
 const THUMB_SIZE = 150;
 
@@ -13,6 +14,7 @@ function easeInOutCubic(t: number): number {
 
 export default function LutStripOverlay() {
   const { lutStrip } = useGestureStore();
+  const lutsPanelVisible = useUIStore((s) => s.uiVisibility.folderTree && s.activeEditorToolsTab === 'luts');
   const containerRef = useRef<HTMLDivElement>(null);
   const rafRef = useRef<number | null>(null);
   const lastSelectedIndexRef = useRef<number | null>(null);
@@ -76,7 +78,7 @@ export default function LutStripOverlay() {
     };
   }, [lutStrip?.selectedIndex]);
 
-  if (!lutStrip || lutStrip.entries.length === 0) return null;
+  if (!lutStrip || lutStrip.entries.length === 0 || lutsPanelVisible) return null;
 
   return (
     <div

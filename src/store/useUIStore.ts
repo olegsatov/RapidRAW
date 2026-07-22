@@ -121,6 +121,9 @@ interface UIState {
   // Left Bottom Panel
   activeLeftBottomTab: LeftPanelTab;
 
+  // Left Editor Tools Panel (presets / luts)
+  activeEditorToolsTab: 'presets' | 'luts';
+
   // Modals & Dialogs
   isCreateFolderModalOpen: boolean;
   isRenameFolderModalOpen: boolean;
@@ -197,6 +200,7 @@ export const useUIStore = create<UIState>((set, get) => ({
     lut: false,
   },
   activeLeftBottomTab: LeftPanelTab.Presets,
+  activeEditorToolsTab: 'presets',
 
   isCreateFolderModalOpen: false,
   isRenameFolderModalOpen: false,

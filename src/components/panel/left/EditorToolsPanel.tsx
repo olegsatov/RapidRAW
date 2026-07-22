@@ -1,4 +1,3 @@
-import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import clsx from 'clsx';
 
@@ -6,6 +5,7 @@ import PresetsBrowser from '../../presets/PresetsBrowser';
 import LutsPanel from './LutsPanel';
 import Text from '../../ui/Text';
 import { TextColors, TextVariants, TextWeights } from '../../../types/typography';
+import { useUIStore } from '../../../store/useUIStore';
 
 interface EditorToolsPanelProps {
   isVisible: boolean;
@@ -23,7 +23,12 @@ const LUTS_PANEL_ID = 'editor-tools-luts-panel';
 
 export default function EditorToolsPanel({ isVisible, isInstantTransition, panelWidth }: EditorToolsPanelProps) {
   const { t } = useTranslation();
-  const [activeTab, setActiveTab] = useState<ToolsTab>('presets');
+  const activeTab = useUIStore((s) => s.activeEditorToolsTab);
+  const setUI = useUIStore((s) => s.setUI);
+
+  const handleTabSelect = (tab: ToolsTab) => {
+    setUI({ activeEditorToolsTab: tab });
+  };
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
@@ -43,7 +48,7 @@ export default function EditorToolsPanel({ isVisible, isInstantTransition, panel
               role="tab"
               aria-selected={isActive}
               aria-controls={id === 'presets' ? PRESETS_PANEL_ID : LUTS_PANEL_ID}
-              onClick={() => setActiveTab(id)}
+              onClick={() => handleTabSelect(id)}
               className={clsx(
                 'flex items-center gap-1.5 px-2 py-1 rounded-md transition-colors',
                 isActive
