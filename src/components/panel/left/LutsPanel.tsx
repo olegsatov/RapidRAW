@@ -16,7 +16,12 @@ import { useSettingsStore } from '../../../store/useSettingsStore';
 import { useUIStore } from '../../../store/useUIStore';
 import ConfigureLutHotkeyModal from '../../modals/ConfigureLutHotkeyModal';
 import { Adjustments, INITIAL_ADJUSTMENTS } from '../../../utils/adjustments';
-import { DEFAULT_LUT_PARAMS, lutParamsToAdjustments, saveLutParams } from '../../../utils/lutSettings';
+import {
+  DEFAULT_LUT_PARAMS,
+  lutParamsToAdjustments,
+  resolveLutParams,
+  saveLutParams,
+} from '../../../utils/lutSettings';
 import { TextColors, TextVariants, TextWeights } from '../../../types/typography';
 
 interface LutEntry {
