@@ -70,6 +70,7 @@ export function useGestureAdjust() {
         if (entries.length === 0) return;
 
         const adjustments = useEditorStore.getState().adjustments;
+        const appSettings = useSettingsStore.getState().appSettings;
         const currentPath = adjustments.lutPath ?? null;
         const selectedIndex = Math.max(
           0,
@@ -94,6 +95,23 @@ export function useGestureAdjust() {
             previewAdjustments[key] = value;
           }
         });
+        previewAdjustments.sectionVisibility = {
+          ...(adjustments.sectionVisibility ?? {}),
+          effects: true,
+          lut: true,
+        };
+
+        const lutParams: Record<string, { intensity?: number; inputRange?: number; inputOffset?: number }> = {};
+        entries.forEach((entry) => {
+          const stored = appSettings?.lutSettings?.[entry.path];
+          if (stored) {
+            lutParams[entry.path] = {
+              intensity: stored.intensity,
+              inputRange: stored.inputRange,
+              inputOffset: stored.inputOffset,
+            };
+          }
+        });
 
         useGestureStore.getState().startLutStrip(
           entries.map((e) => ({ path: e.path, name: e.name, thumb: null })),
@@ -104,6 +122,7 @@ export function useGestureAdjust() {
           lutPaths: entries.map((e) => e.path),
           size: 200,
           adjustments: previewAdjustments,
+          lutParams,
         });
         results.forEach((result) => {
           useGestureStore.getState().setLutStripThumb(result.path, result.thumb);
@@ -408,7 +427,7 @@ export function useGestureAdjust() {
         const qy = quantizeMouseWheel(event.deltaY);
 
         if (isLutSession && qy !== 0 && (qx === 0 || Math.abs(qy) >= Math.abs(qx))) {
-          cycleLut(qy);
+          cycleLut(-qy);
           return;
         }
 
@@ -454,7 +473,7 @@ export function useGestureAdjust() {
       const locked = trackpadScrollLock.push(dx, dy);
 
       if (isLutSession && (locked === 'vertical' || (locked === 'both' && Math.abs(dy) >= Math.abs(dx)))) {
-        const steps = sessionRef.current.lutCycleAccY.push(dy);
+        const steps = sessionRef.current.lutCycleAccY.push(-dy);
         if (steps !== 0) {
           cycleLut(Math.sign(steps));
         }
