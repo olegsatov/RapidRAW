@@ -1,22 +1,46 @@
 import clsx from 'clsx';
 import { Loader2, ImageOff } from 'lucide-react';
+import { useEffect, useRef } from 'react';
 import { useGestureStore } from '../../store/useGestureStore';
 
-const THUMB_SIZE = 200;
+const THUMB_SIZE = 150;
 
 export default function LutStripOverlay() {
   const { lutStrip } = useGestureStore();
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!containerRef.current || !lutStrip) return;
+    const container = containerRef.current;
+    const thumbTotal = THUMB_SIZE + 8; // thumb + gap
+    const selectedTop = lutStrip.selectedIndex * thumbTotal;
+    const selectedBottom = selectedTop + THUMB_SIZE;
+    const padding = 20;
+
+    let target = container.scrollTop;
+    if (selectedTop < target + padding) {
+      target = selectedTop - padding;
+    } else if (selectedBottom > target + container.clientHeight - padding) {
+      target = selectedBottom - container.clientHeight + padding;
+    }
+
+    const maxScroll = container.scrollHeight - container.clientHeight;
+    container.scrollTop = Math.max(0, Math.min(target, maxScroll));
+  }, [lutStrip?.selectedIndex, lutStrip?.entries.length]);
 
   if (!lutStrip || lutStrip.entries.length === 0) return null;
 
   return (
-    <div className="absolute left-4 top-1/2 -translate-y-1/2 z-40 pointer-events-none max-h-[calc(100%-48px)] overflow-y-hidden">
-      <div className="flex flex-col gap-2">
+    <div className="absolute left-4 top-1/2 -translate-y-1/2 z-40 pointer-events-none max-h-[calc(100%-48px)]">
+      <div
+        ref={containerRef}
+        className="flex flex-col gap-2 p-2 overflow-y-hidden bg-bg-secondary/25 backdrop-blur-sm rounded-lg shadow-lg border border-surface/40"
+      >
         {lutStrip.entries.map((entry, index) => {
           const isSelected = index === lutStrip.selectedIndex;
           return (
             <div
-              key={entry.path}
+              key={entry.path || '__no_lut__'}
               className={clsx(
                 'relative shrink-0 rounded-md overflow-hidden bg-bg-tertiary border-2 transition-colors',
                 isSelected ? 'border-accent' : 'border-transparent opacity-60',

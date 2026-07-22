@@ -1812,6 +1812,7 @@
       "importFailed": "Échec de l'importation des LUT",
       "intensity": "Intensité",
       "label": "LUT",
+      "noLut": "Aucune LUT",
       "offsetCompensation": "Compenser la luminosité",
       "removeLut": "Supprimer la LUT",
       "select": "Sélectionner",

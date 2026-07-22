@@ -1876,6 +1876,7 @@
       "importFailed": "Nie udało się zaimportować LUT",
       "intensity": "Intensywność",
       "label": "LUT",
+      "noLut": "Brak LUT",
       "offsetCompensation": "Kompensuj jasność",
       "removeLut": "Usuń LUT",
       "select": "Wybierz",

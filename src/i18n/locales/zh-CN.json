@@ -1812,6 +1812,7 @@
       "importFailed": "导入 LUT 失败",
       "intensity": "强度",
       "label": "LUT",
+      "noLut": "无 LUT",
       "offsetCompensation": "补偿亮度",
       "removeLut": "移除 LUT",
       "select": "选择",

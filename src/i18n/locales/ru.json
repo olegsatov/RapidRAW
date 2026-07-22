@@ -1977,6 +1977,7 @@
       "inputRange": "Диапазон входа",
       "intensity": "Интенсивность",
       "label": "LUT",
+      "noLut": "Без LUT",
       "luts": "LUT-ы",
       "mode": "Режим",
       "parameters": "Параметры",

@@ -1812,6 +1812,7 @@
       "importFailed": "LUT 가져오기 실패",
       "intensity": "강도",
       "label": "LUT",
+      "noLut": "LUT 없음",
       "offsetCompensation": "밝기 보정",
       "removeLut": "LUT 제거",
       "select": "선택",

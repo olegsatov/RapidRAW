@@ -1985,6 +1985,7 @@
       "inputRange": "Input range",
       "intensity": "Intensity",
       "label": "LUT",
+      "noLut": "No LUT",
       "loading": "Loading LUTs...",
       "luts": "LUTs",
       "mode": "Mode",

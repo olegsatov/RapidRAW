@@ -10,6 +10,7 @@ import { useEditorActions } from './useEditorActions';
 import { getEffectiveKeybind, KEYBIND_DEFINITIONS } from '../utils/keyboardUtils';
 import { GESTURE_BINDINGS, GestureBinding, GestureParam } from '../utils/gestureBindings';
 import { Adjustments, INITIAL_ADJUSTMENTS } from '../utils/adjustments';
+import { DEFAULT_LUT_PARAMS, lutParamsToAdjustments } from '../utils/lutSettings';
 import {
   AxisLock,
   clamp,
@@ -42,6 +43,7 @@ interface GestureSession {
 }
 
 const GESTURE_HOLD_DELAY_MS = 150;
+const NO_LUT_PATH = '';
 
 export function useGestureAdjust() {
   const { t } = useTranslation();
@@ -72,10 +74,10 @@ export function useGestureAdjust() {
         const adjustments = useEditorStore.getState().adjustments;
         const appSettings = useSettingsStore.getState().appSettings;
         const currentPath = adjustments.lutPath ?? null;
-        const selectedIndex = Math.max(
-          0,
-          entries.findIndex((e) => e.path === currentPath),
-        );
+
+        const noLutEntry = { path: NO_LUT_PATH, name: t('ui.lut.noLut'), thumb: null };
+        const stripEntries = [noLutEntry, ...entries.map((e) => ({ path: e.path, name: e.name, thumb: null }))];
+        const selectedIndex = currentPath ? Math.max(1, 1 + entries.findIndex((e) => e.path === currentPath)) : 0;
 
         const lutFieldSet = new Set([
           'lutPath',
@@ -113,13 +115,10 @@ export function useGestureAdjust() {
           }
         });
 
-        useGestureStore.getState().startLutStrip(
-          entries.map((e) => ({ path: e.path, name: e.name, thumb: null })),
-          selectedIndex,
-        );
+        useGestureStore.getState().startLutStrip(stripEntries, selectedIndex);
 
         const results = await invoke<Array<{ path: string; thumb: string | null }>>('generate_lut_previews', {
-          lutPaths: entries.map((e) => e.path),
+          lutPaths: stripEntries.map((e) => e.path),
           size: 200,
           adjustments: previewAdjustments,
           lutParams,
@@ -226,7 +225,7 @@ export function useGestureAdjust() {
         ),
         gestureKey,
         overlayParams,
-        lutCycleAccY: new StepAccumulator(50),
+        lutCycleAccY: new StepAccumulator(100),
       };
 
       if (action === 'gesture_lut') {
@@ -297,7 +296,20 @@ export function useGestureAdjust() {
       const nextIndex = clamp(strip.selectedIndex + delta, 0, strip.entries.length - 1);
       if (nextIndex === strip.selectedIndex) return;
       useGestureStore.getState().setLutStripSelectedIndex(nextIndex);
-      handleLutSelect(strip.entries[nextIndex].path);
+
+      const path = strip.entries[nextIndex].path;
+      if (path === NO_LUT_PATH) {
+        setAdjustments((prev) => ({
+          ...prev,
+          ...lutParamsToAdjustments(DEFAULT_LUT_PARAMS),
+          lutPath: null,
+          lutName: null,
+          lutData: null,
+          lutSize: 0,
+        }));
+      } else {
+        handleLutSelect(path);
+      }
     };
 
     const updateOverlayValues = (adjustments: Adjustments) => {
@@ -427,7 +439,10 @@ export function useGestureAdjust() {
         const qy = quantizeMouseWheel(event.deltaY);
 
         if (isLutSession && qy !== 0 && (qx === 0 || Math.abs(qy) >= Math.abs(qx))) {
-          cycleLut(-qy);
+          const steps = sessionRef.current.lutCycleAccY.push(-qy * 50);
+          if (steps !== 0) {
+            cycleLut(Math.sign(steps));
+          }
           return;
         }
 

@@ -672,9 +672,9 @@ fn render_lut_swatch(
     base_image: &DynamicImage,
     transform_hash: u64,
     adjustments: crate::image_processing::AllAdjustments,
-    lut_path: &str,
+    lut_path: Option<&str>,
 ) -> Option<String> {
-    let lut = get_or_load_lut(state, lut_path).ok()?;
+    let lut = lut_path.and_then(|p| get_or_load_lut(state, p).ok());
     let processed = process_and_get_dynamic_image(
         context,
         state,
@@ -683,7 +683,7 @@ fn render_lut_swatch(
         RenderRequest {
             adjustments,
             mask_bitmaps: &[],
-            lut: Some(lut),
+            lut,
             roi: None,
             grain_mip_level: 0.0,
             grain_coord_scale: 1.0,
@@ -739,6 +739,40 @@ pub fn generate_lut_previews(
     let previews = lut_paths
         .into_iter()
         .map(|path| {
+            // The empty path is a sentinel for the "no LUT" preview used by the
+            // gesture strip: it shows the current grade without any LUT applied.
+            if path.is_empty() {
+                let mut merged_json = base_json.clone();
+                if let Some(obj) = merged_json.as_object_mut() {
+                    obj.remove("lutPath");
+                    obj.remove("lutName");
+                    obj.remove("lutData");
+                    obj.remove("lutSize");
+                    obj.insert("lutIntensity".to_string(), serde_json::json!(100));
+                    obj.insert("lutTiming".to_string(), serde_json::json!("before"));
+                    obj.insert("lutNormalizeMode".to_string(), serde_json::json!("hdr"));
+                    obj.insert("lutInputRange".to_string(), serde_json::json!(6.0));
+                    obj.insert("lutInputOffset".to_string(), serde_json::json!(0.0));
+                    obj.insert(
+                        "lutOffsetCompensation".to_string(),
+                        serde_json::json!(false),
+                    );
+                    let section_visibility = obj
+                        .entry("sectionVisibility")
+                        .or_insert_with(|| serde_json::json!({}));
+                    if let Some(sec) = section_visibility.as_object_mut() {
+                        sec.insert("effects".to_string(), serde_json::json!(true));
+                        sec.insert("lut".to_string(), serde_json::json!(true));
+                    } else {
+                        *section_visibility = serde_json::json!({ "effects": true, "lut": true });
+                    }
+                }
+                let adjustments = get_all_adjustments_from_json(&merged_json, is_raw, tm_override);
+                let thumb =
+                    render_lut_swatch(&context, &state, &base_image, transform_hash, adjustments, None);
+                return LutPreview { path, thumb };
+            }
+
             let params = lut_params.as_ref().and_then(|map| map.get(&path));
             let lut_name = Path::new(&path)
                 .file_stem()
@@ -788,7 +822,7 @@ pub fn generate_lut_previews(
                 &base_image,
                 transform_hash,
                 adjustments,
-                &path,
+                Some(&path),
             );
             LutPreview { path, thumb }
         })

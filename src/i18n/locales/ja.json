@@ -1811,6 +1811,7 @@
       "importFailed": "LUTのインポートに失敗しました",
       "intensity": "適用度",
       "label": "LUT",
+      "noLut": "LUTなし",
       "offsetCompensation": "輝度を補正",
       "removeLut": "LUTを削除",
       "select": "選択",
