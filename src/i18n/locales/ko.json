@@ -1818,7 +1818,8 @@
       "selectLutFile": "LUT 파일 선택",
       "unsupportedFormat": "지원되지 않는 파일 형식이 감지되었습니다: .{{ext}}",
       "loading": "Loading LUTs...",
-      "configureHotkey": "Configure hotkey"
+      "configureHotkey": "Configure hotkey",
+      "saveAsDefault": "기본값으로 저장"
     },
     "slider": {
       "clickToEdit": "클릭하여 편집",

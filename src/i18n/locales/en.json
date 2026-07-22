@@ -2001,7 +2001,8 @@
       "timing": "LUT timing",
       "timingAfter": "After tone mapper",
       "timingBefore": "Before tone mapper",
-      "unsupportedFormat": "Unsupported file format(s) detected: .{{ext}}"
+      "unsupportedFormat": "Unsupported file format(s) detected: .{{ext}}",
+      "saveAsDefault": "Save as default"
     },
     "slider": {
       "clickToEdit": "Click to edit",

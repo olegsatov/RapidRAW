@@ -20,9 +20,10 @@ export const DEFAULT_LUT_PARAMS: ResolvedLutParams = {
   offsetCompensation: INITIAL_ADJUSTMENTS.lutOffsetCompensation ?? false,
 };
 
-// Per-LUT params are global (keyed by LUT file path in AppSettings): selecting
-// a LUT restores them, tweaking a slider saves them, and LUT thumbnails render
-// with them. The image sidecar still keeps the concrete per-image values.
+// Per-LUT params are global defaults (keyed by LUT file path in AppSettings):
+// selecting a LUT restores them, and LUT thumbnails render with them. The image
+// sidecar keeps the concrete per-image values; "Save as default" copies them
+// back to AppSettings.
 export function resolveLutParams(appSettings: AppSettings | null, path: string): ResolvedLutParams {
   const stored = appSettings?.lutSettings?.[path];
   return {

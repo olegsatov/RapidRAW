@@ -1817,7 +1817,8 @@
       "selectLutFile": "LUTファイルを選択",
       "unsupportedFormat": "未対応のファイル形式が検出されました: .{{ext}}",
       "loading": "Loading LUTs...",
-      "configureHotkey": "Configure hotkey"
+      "configureHotkey": "Configure hotkey",
+      "saveAsDefault": "デフォルトとして保存"
     },
     "slider": {
       "clickToEdit": "クリックして編集",

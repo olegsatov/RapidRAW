@@ -1994,7 +1994,8 @@
       "timingBefore": "До тонмаппера",
       "unsupportedFormat": "Обнаружены неподдерживаемые форматы файлов: .{{ext}}",
       "loading": "Loading LUTs...",
-      "configureHotkey": "Configure hotkey"
+      "configureHotkey": "Configure hotkey",
+      "saveAsDefault": "Сохранить как стандартные"
     },
     "slider": {
       "clickToEdit": "Нажмите для точного ввода",

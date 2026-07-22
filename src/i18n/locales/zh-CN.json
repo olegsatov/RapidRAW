@@ -1818,7 +1818,8 @@
       "selectLutFile": "选择 LUT 文件",
       "unsupportedFormat": "检测到不支持的文件格式：.{{ext}}",
       "loading": "Loading LUTs...",
-      "configureHotkey": "Configure hotkey"
+      "configureHotkey": "Configure hotkey",
+      "saveAsDefault": "保存为默认"
     },
     "slider": {
       "clickToEdit": "点击编辑",

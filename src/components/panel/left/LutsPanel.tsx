@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { invoke } from '@tauri-apps/api/core';
 import { open } from '@tauri-apps/plugin-dialog';
 import clsx from 'clsx';
-import { ImageOff, Keyboard, Loader2, Trash2, Upload, Wand2, X } from 'lucide-react';
+import { ImageOff, Keyboard, Loader2, Save, Trash2, Upload, X } from 'lucide-react';
 import { toast } from 'react-toastify';
 
 import Slider from '../../ui/Slider';
@@ -47,9 +47,6 @@ export default function LutsPanel({ isVisible }: LutsPanelProps) {
   const lutIntensity = useEditorStore((state) => state.adjustments.lutIntensity ?? DEFAULT_LUT_PARAMS.intensity);
   const lutInputOffset = useEditorStore((state) => state.adjustments.lutInputOffset ?? DEFAULT_LUT_PARAMS.inputOffset);
   const lutInputRange = useEditorStore((state) => state.adjustments.lutInputRange ?? DEFAULT_LUT_PARAMS.inputRange);
-  const lutOffsetCompensation = useEditorStore(
-    (state) => state.adjustments.lutOffsetCompensation ?? DEFAULT_LUT_PARAMS.offsetCompensation,
-  );
   const appSettings = useSettingsStore((state) => state.appSettings);
   const osPlatform = useSettingsStore((state) => state.osPlatform);
 
@@ -57,7 +54,6 @@ export default function LutsPanel({ isVisible }: LutsPanelProps) {
   const [previews, setPreviews] = useState<Record<string, string | null>>({});
   const [isLoadingEntries, setIsLoadingEntries] = useState(false);
   const [isLoadingPreviews, setIsLoadingPreviews] = useState(false);
-  const [isAutoLoading, setIsAutoLoading] = useState(false);
   const [hotkeyModalState, setHotkeyModalState] = useState<{ isOpen: boolean; entry: LutEntry | null }>({
     isOpen: false,
     entry: null,
@@ -290,41 +286,26 @@ export default function LutsPanel({ isVisible }: LutsPanelProps) {
     [showContextMenu, t],
   );
 
-  const updateLutParam = useCallback(
-    (path: string, patch: LutFileSettings, adjustmentPatch: Partial<Adjustments>) => {
-      saveLutParams(path, patch);
-      if (selectedLutPath === path) {
-        setAdjustments((prev) => ({
-          ...prev,
-          ...adjustmentPatch,
-        }));
-      }
+  const updateLutAdjustment = useCallback(
+    (adjustmentPatch: Partial<Adjustments>) => {
+      setAdjustments((prev) => ({
+        ...prev,
+        ...adjustmentPatch,
+      }));
     },
-    [selectedLutPath, setAdjustments],
+    [setAdjustments],
   );
 
-  const handleAuto = useCallback(
-    async (path: string) => {
-      if (!isImageReady || isAutoLoading) return;
-      setIsAutoLoading(true);
-      try {
-        const params = await invoke<{ input_offset: number; input_range: number }>('compute_lut_auto_params');
-        updateLutParam(
-          path,
-          { inputRange: params.input_range, inputOffset: params.input_offset },
-          {
-            lutInputRange: params.input_range,
-            lutInputOffset: params.input_offset,
-          },
-        );
-      } catch (err) {
-        toast.error(`Failed to compute LUT auto params: ${err}`);
-      } finally {
-        setIsAutoLoading(false);
-      }
-    },
-    [isImageReady, isAutoLoading, updateLutParam],
-  );
+  const handleSaveAsDefault = useCallback(() => {
+    if (!selectedLutPath) return;
+    saveLutParams(selectedLutPath, {
+      intensity: lutIntensity,
+      inputOffset: lutInputOffset,
+      inputRange: lutInputRange,
+      timing: 'before',
+    });
+    toast.success(t('ui.lut.savedAsDefault'));
+  }, [selectedLutPath, lutIntensity, lutInputOffset, lutInputRange, t]);
 
   const selectedEntry = useMemo(
     () => entries.find((entry) => entry.path === selectedLutPath) || null,
@@ -442,13 +423,10 @@ export default function LutsPanel({ isVisible }: LutsPanelProps) {
                       lutIntensity={lutIntensity}
                       lutInputOffset={lutInputOffset}
                       lutInputRange={lutInputRange}
-                      lutOffsetCompensation={lutOffsetCompensation}
-                      isImageReady={isImageReady}
-                      isAutoLoading={isAutoLoading}
                       onDragStateChange={handleDragStateChange}
-                      onUpdate={updateLutParam}
+                      onUpdate={updateLutAdjustment}
                       onClear={handleClear}
-                      onAuto={() => handleAuto(selectedEntry.path)}
+                      onSaveAsDefault={handleSaveAsDefault}
                     />
                   )}
                 </Fragment>
@@ -487,13 +465,10 @@ interface LutDetailPanelProps {
   lutIntensity: number;
   lutInputOffset: number;
   lutInputRange: number;
-  lutOffsetCompensation: boolean;
-  isImageReady: boolean;
-  isAutoLoading: boolean;
   onDragStateChange: (isDragging: boolean) => void;
-  onUpdate: (path: string, patch: LutFileSettings, adjustmentPatch: Partial<Adjustments>) => void;
+  onUpdate: (adjustmentPatch: Partial<Adjustments>) => void;
   onClear: () => void;
-  onAuto: () => void;
+  onSaveAsDefault: () => void;
 }
 
 const LutDetailPanel = memo(function LutDetailPanel({
@@ -501,42 +476,32 @@ const LutDetailPanel = memo(function LutDetailPanel({
   lutIntensity,
   lutInputOffset,
   lutInputRange,
-  lutOffsetCompensation,
-  isImageReady,
-  isAutoLoading,
   onDragStateChange,
   onUpdate,
   onClear,
-  onAuto,
+  onSaveAsDefault,
 }: LutDetailPanelProps) {
   const { t } = useTranslation();
 
   const handleIntensityChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
-      onUpdate(entry.path, { intensity: Number(e.target.value) }, { lutIntensity: Number(e.target.value) });
+      onUpdate({ lutIntensity: Number(e.target.value) });
     },
-    [entry.path, onUpdate],
+    [onUpdate],
   );
 
   const handleInputOffsetChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
-      onUpdate(entry.path, { inputOffset: Number(e.target.value) }, { lutInputOffset: Number(e.target.value) });
+      onUpdate({ lutInputOffset: Number(e.target.value) });
     },
-    [entry.path, onUpdate],
+    [onUpdate],
   );
 
   const handleInputRangeChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
-      onUpdate(entry.path, { inputRange: Number(e.target.value) }, { lutInputRange: Number(e.target.value) });
+      onUpdate({ lutInputRange: Number(e.target.value) });
     },
-    [entry.path, onUpdate],
-  );
-
-  const handleOffsetCompensationChange = useCallback(
-    (e: React.ChangeEvent<HTMLInputElement>) => {
-      onUpdate(entry.path, { offsetCompensation: e.target.checked }, { lutOffsetCompensation: e.target.checked });
-    },
-    [entry.path, onUpdate],
+    [onUpdate],
   );
 
   return (
@@ -560,16 +525,6 @@ const LutDetailPanel = memo(function LutDetailPanel({
       </div>
 
       <div className="space-y-1 px-0.5">
-        <button
-          className="w-full flex items-center justify-center gap-1.5 px-2 py-1.5 text-sm font-medium rounded-md bg-card-active text-text-secondary hover:bg-surface disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-          onClick={onAuto}
-          disabled={!isImageReady || isAutoLoading}
-          data-tooltip={t('ui.lut.auto')}
-        >
-          <Wand2 size={14} />
-          {t('ui.lut.auto')}
-        </button>
-
         <Slider
           label={t('ui.lut.intensity')}
           min={0}
@@ -603,18 +558,18 @@ const LutDetailPanel = memo(function LutDetailPanel({
           onDragStateChange={onDragStateChange}
           fillOrigin="min"
         />
-        <label className="flex items-center gap-2 py-1 text-sm text-text-secondary cursor-pointer select-none">
-          <input
-            type="checkbox"
-            className="accent-accent"
-            checked={lutOffsetCompensation}
-            onChange={handleOffsetCompensationChange}
-          />
-          {t('ui.lut.offsetCompensation')}
-        </label>
 
         <button
           className="w-full flex items-center justify-center gap-1.5 px-2 py-1.5 text-sm font-medium rounded-md bg-card-active text-text-secondary hover:bg-surface transition-colors mt-2"
+          onClick={onSaveAsDefault}
+          data-tooltip={t('ui.lut.saveAsDefault')}
+        >
+          <Save size={14} />
+          {t('ui.lut.saveAsDefault')}
+        </button>
+
+        <button
+          className="w-full flex items-center justify-center gap-1.5 px-2 py-1.5 text-sm font-medium rounded-md bg-card-active text-text-secondary hover:bg-surface transition-colors"
           onClick={onClear}
         >
           <Trash2 size={14} />

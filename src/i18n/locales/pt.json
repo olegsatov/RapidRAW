@@ -1818,7 +1818,8 @@
       "selectLutFile": "Selecione um arquivo LUT",
       "unsupportedFormat": "Formato(s) de arquivo não suportado(s) detectado(s): .{{ext}}",
       "loading": "Loading LUTs...",
-      "configureHotkey": "Configure hotkey"
+      "configureHotkey": "Configure hotkey",
+      "saveAsDefault": "Salvar como padrão"
     },
     "slider": {
       "clickToEdit": "Clique para editar",
