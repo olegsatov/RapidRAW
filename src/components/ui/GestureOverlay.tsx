@@ -17,9 +17,9 @@ export default function GestureOverlay() {
         const [invertV, invertH] = panel.invert ?? [false, false];
 
         const leftRaw = maxH === minH ? 50 : ((horizontal - minH) / (maxH - minH)) * 100;
-        const bottomRaw = maxV === minV ? 50 : ((vertical - minV) / (maxV - minV)) * 100;
+        const topRaw = maxV === minV ? 50 : 100 - ((vertical - minV) / (maxV - minV)) * 100;
         const left = invertH ? 100 - leftRaw : leftRaw;
-        const bottom = invertV ? 100 - bottomRaw : bottomRaw;
+        const top = invertV ? 100 - topRaw : topRaw;
 
         return (
           <div
@@ -45,7 +45,7 @@ export default function GestureOverlay() {
               {/* knob */}
               <div
                 className="absolute w-3 h-3 rounded-full bg-accent border-2 border-white shadow-md"
-                style={{ left: `${left}%`, bottom: `${bottom}%`, transform: 'translate(-50%, -50%)' }}
+                style={{ left: `${left}%`, top: `${top}%`, transform: 'translate(-50%, -50%)' }}
               />
             </div>
             <div className="text-text-primary/40 text-[10px] font-medium text-center mt-2">{panel.label}</div>
