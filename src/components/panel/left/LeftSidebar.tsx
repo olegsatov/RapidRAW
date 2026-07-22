@@ -63,7 +63,11 @@ export default function LeftSidebar({
         <div className="flex-1 min-h-0 overflow-hidden">
           <MotionConfig reducedMotion={isInstantTransition ? 'always' : 'user'}>
             {isEditor ? (
-              <EditorToolsPanel isVisible={folderTreeVisible} isInstantTransition={isInstantTransition} />
+              <EditorToolsPanel
+                isVisible={folderTreeVisible}
+                isInstantTransition={isInstantTransition}
+                panelWidth={leftPanelWidth}
+              />
             ) : (
               <FolderTree
                 isResizing={isResizing}

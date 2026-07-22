@@ -31,12 +31,14 @@ interface LutPreview {
 
 interface LutsPanelProps {
   isVisible: boolean;
+  panelWidth: number;
 }
 
 const PREVIEW_SIZE = 160;
 
-export default function LutsPanel({ isVisible }: LutsPanelProps) {
+export default function LutsPanel({ isVisible, panelWidth }: LutsPanelProps) {
   const { t } = useTranslation();
+  const isWide = panelWidth > 250;
   const { handleLutSelect, setAdjustments, setLutPreviewOverride } = useEditorActions();
   const { showContextMenu } = useContextMenu();
   const selectedImagePath = useEditorStore((state) => state.selectedImage?.path ?? null);
@@ -351,14 +353,18 @@ export default function LutsPanel({ isVisible }: LutsPanelProps) {
           </button>
         ) : (
           <>
-            {Array.from({ length: Math.ceil(entries.length / 2) }).map((_, rowIndex) => {
-              const start = rowIndex * 2;
-              const rowEntries = entries.slice(start, start + 2);
-              const isSelectedRow = selectedIndex >= start && selectedIndex < start + 2;
-              const isLastRow = rowIndex === Math.ceil(entries.length / 2) - 1;
+            {Array.from({ length: Math.ceil(entries.length / (isWide ? 2 : 1)) }).map((_, rowIndex) => {
+              const columns = isWide ? 2 : 1;
+              const start = rowIndex * columns;
+              const rowEntries = entries.slice(start, start + columns);
+              const isSelectedRow = selectedIndex >= start && selectedIndex < start + columns;
+              const isLastRow = rowIndex === Math.ceil(entries.length / columns) - 1;
               return (
                 <Fragment key={rowIndex}>
-                  <div className={clsx('grid grid-cols-2 gap-3', !isLastRow && 'mb-2.5')} role="row">
+                  <div
+                    className={clsx('grid gap-3', isWide ? 'grid-cols-2' : 'grid-cols-1', !isLastRow && 'mb-2.5')}
+                    role="row"
+                  >
                     {rowEntries.map((entry) => {
                       const thumb = previews[entry.path];
                       const isSelected = entry.path === selectedLutPath;
@@ -404,7 +410,7 @@ export default function LutsPanel({ isVisible }: LutsPanelProps) {
                         </div>
                       );
                     })}
-                    {isLastRow && rowEntries.length < 2 && (
+                    {isLastRow && isWide && rowEntries.length < 2 && (
                       <button
                         onClick={handleImport}
                         className="aspect-square rounded-md bg-bg-tertiary border-2 border-text-secondary/25 hover:border-accent flex items-center justify-center text-text-secondary hover:text-text-primary transition-all duration-150"
@@ -432,7 +438,7 @@ export default function LutsPanel({ isVisible }: LutsPanelProps) {
                 </Fragment>
               );
             })}
-            {(entries.length === 0 || entries.length % 2 === 0) && (
+            {(entries.length === 0 || !isWide || entries.length % 2 === 0) && (
               <button
                 onClick={handleImport}
                 className="w-full aspect-square rounded-md bg-bg-tertiary border-2 border-text-secondary/25 hover:border-accent flex items-center justify-center text-text-secondary hover:text-text-primary transition-all duration-150 mt-3"

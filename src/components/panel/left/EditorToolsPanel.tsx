@@ -10,6 +10,7 @@ import { TextColors, TextVariants, TextWeights } from '../../../types/typography
 interface EditorToolsPanelProps {
   isVisible: boolean;
   isInstantTransition?: boolean;
+  panelWidth: number;
 }
 
 type ToolsTab = 'presets' | 'luts';
@@ -20,7 +21,7 @@ const TABLIST_ID = 'editor-tools-tablist';
 const PRESETS_PANEL_ID = 'editor-tools-presets-panel';
 const LUTS_PANEL_ID = 'editor-tools-luts-panel';
 
-export default function EditorToolsPanel({ isVisible, isInstantTransition }: EditorToolsPanelProps) {
+export default function EditorToolsPanel({ isVisible, isInstantTransition, panelWidth }: EditorToolsPanelProps) {
   const { t } = useTranslation();
   const [activeTab, setActiveTab] = useState<ToolsTab>('presets');
 
@@ -69,7 +70,7 @@ export default function EditorToolsPanel({ isVisible, isInstantTransition }: Edi
           </div>
         ) : (
           <div id={LUTS_PANEL_ID} role="tabpanel" aria-labelledby={`${TABLIST_ID}-luts`} className="h-full">
-            <LutsPanel isVisible={isVisible} />
+            <LutsPanel isVisible={isVisible} panelWidth={panelWidth} />
           </div>
         )}
       </div>
