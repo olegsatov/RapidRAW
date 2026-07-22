@@ -22,6 +22,7 @@ import {
   resolveLutParams,
   saveLutParams,
 } from '../../../utils/lutSettings';
+import { formatKeyCode } from '../../../utils/keyboardUtils';
 import { TextColors, TextVariants, TextWeights } from '../../../types/typography';
 
 interface LutEntry {
@@ -452,6 +453,19 @@ export default function LutsPanel({ isVisible, panelWidth }: LutsPanelProps) {
                                 <ImageOff size={18} />
                               </div>
                             )}
+                            {appSettings?.lutSettings?.[entry.path]?.hotkey &&
+                              appSettings.lutSettings[entry.path].hotkey.length > 0 && (
+                                <Text
+                                  as="kbd"
+                                  variant={TextVariants.small}
+                                  color={TextColors.secondary}
+                                  className="absolute top-1.5 right-1.5 px-1 py-0.5 bg-bg-primary/90 backdrop-blur-sm border border-border-color/50 rounded text-[10px] leading-none"
+                                >
+                                  {appSettings.lutSettings[entry.path].hotkey
+                                    .map((k) => formatKeyCode(k, osPlatform))
+                                    .join('')}
+                                </Text>
+                              )}
                           </button>
                           <Text
                             variant={TextVariants.small}
