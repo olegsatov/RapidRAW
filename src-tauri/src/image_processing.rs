@@ -1421,7 +1421,7 @@ impl Default for GpuMat3 {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, Copy, Pod, Zeroable, Default)]
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, Pod, Zeroable)]
 #[repr(C)]
 pub struct GlobalAdjustments {
     pub exposure: f32,
@@ -1567,7 +1567,16 @@ pub struct GlobalAdjustments {
     pub lut_input_offset: f32,
     pub lut_shoulder: f32,
     pub lut_offset_compensation: u32,
-    _pad_lut_end: [f32; 2],
+    pub lut_input_norm_factor: f32,
+    _pad_lut_end: [f32; 1],
+}
+
+impl Default for GlobalAdjustments {
+    fn default() -> Self {
+        let mut s: Self = Zeroable::zeroed();
+        s.lut_input_norm_factor = 1.0;
+        s
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, Pod, Zeroable, Default)]
@@ -2714,6 +2723,7 @@ fn get_global_adjustments_from_json(
     let lut_input_offset = js_adjustments["lutInputOffset"].as_f64().unwrap_or(0.0) as f32;
     let lut_shoulder = js_adjustments["lutShoulder"].as_f64().unwrap_or(0.0) as f32 / 100.0;
     let lut_offset_compensation = js_adjustments["lutOffsetCompensation"].as_bool().unwrap_or(false) as u32;
+    let lut_input_norm_factor = js_adjustments["lutInputNormFactor"].as_f64().unwrap_or(1.0) as f32;
 
     GlobalAdjustments {
         exposure: get_val("basic", "exposure", SCALES.exposure, None),
@@ -2807,7 +2817,8 @@ fn get_global_adjustments_from_json(
         lut_input_offset,
         lut_shoulder,
         lut_offset_compensation,
-        _pad_lut_end: [0.0; 2],
+        lut_input_norm_factor,
+        _pad_lut_end: [0.0; 1],
 
         // An explicitly chosen flim tonemapper (Film tab) always wins over the
         // global "force default tonemapper" app setting.

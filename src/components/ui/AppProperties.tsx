@@ -189,6 +189,7 @@ export interface LutFileSettings {
   inputRange?: number;
   inputOffset?: number;
   offsetCompensation?: boolean;
+  hotkey?: string[] | null;
 }
 
 export interface AppSettings {

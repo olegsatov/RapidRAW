@@ -186,6 +186,7 @@ export function useGestureAdjust() {
         ui.isImportModalOpen ||
         ui.isCopyPasteSettingsModalOpen ||
         ui.isConfigurePresetModalOpen ||
+        ui.isConfigureLutHotkeyModalOpen ||
         ui.confirmModalState.isOpen ||
         ui.panoramaModalState.isOpen ||
         ui.cullingModalState.isOpen ||

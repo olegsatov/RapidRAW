@@ -129,6 +129,7 @@ interface UIState {
   isImportModalOpen: boolean;
   isCopyPasteSettingsModalOpen: boolean;
   isConfigurePresetModalOpen: boolean;
+  isConfigureLutHotkeyModalOpen: boolean;
   importTargetFolder: string | null;
   importSourcePaths: Array<string>;
   folderActionTarget: string | null;
@@ -204,6 +205,7 @@ export const useUIStore = create<UIState>((set, get) => ({
   isImportModalOpen: false,
   isCopyPasteSettingsModalOpen: false,
   isConfigurePresetModalOpen: false,
+  isConfigureLutHotkeyModalOpen: false,
   importTargetFolder: null,
   importSourcePaths: [],
   folderActionTarget: null,

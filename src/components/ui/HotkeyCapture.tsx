@@ -6,7 +6,7 @@ import Text from './Text';
 import { TextColors, TextVariants, TextWeights } from '../../types/typography';
 
 export interface HotkeyCaptureConflict {
-  type: 'app' | 'preset';
+  type: 'app' | 'preset' | 'lut';
   label: string;
 }
 
@@ -131,7 +131,9 @@ export default function HotkeyCapture({ combo, onChange, osPlatform, conflict, o
           <Text variant={TextVariants.small} color={TextColors.error}>
             {conflict.type === 'app'
               ? t('modals.configurePreset.hotkeyUsedByApp', { action: conflict.label })
-              : t('modals.configurePreset.hotkeyUsedByPreset', { name: conflict.label })}
+              : conflict.type === 'preset'
+                ? t('modals.configurePreset.hotkeyUsedByPreset', { name: conflict.label })
+                : t('modals.configurePreset.hotkeyUsedByLut', { name: conflict.label })}
           </Text>
           {onOverwrite && (
             <button onClick={onOverwrite} className="text-xs text-accent hover:underline" type="button">

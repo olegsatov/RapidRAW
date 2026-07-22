@@ -343,6 +343,8 @@ pub struct LutFileSettings {
     pub input_range: Option<f32>,
     #[serde(default)]
     pub input_offset: Option<f32>,
+    #[serde(default)]
+    pub offset_compensation: Option<bool>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]

@@ -1097,7 +1097,8 @@
       "typeStyleDesc": "전체적인 모습을 적용합니다. 현재 모든 설정을 프리셋과 정확히 일치하도록 덮어씁니다.",
       "typeStyleLabel": "스타일",
       "typeToolDesc": "다른 설정을 건드리지 않고 특정 변경 사항만 적용합니다.",
-      "typeToolLabel": "도구"
+      "typeToolLabel": "도구",
+      "hotkeyUsedByLut": "Used by LUT: {{name}}"
     },
     "confirm": {
       "cancel": "취소",
@@ -1364,6 +1365,12 @@
       "yAxis": "Y축",
       "zoomInTooltip": "확대",
       "zoomOutTooltip": "축소"
+    },
+    "configureLutHotkey": {
+      "cancel": "Cancel",
+      "hotkeyLabel": "Hotkey",
+      "save": "Save",
+      "title": "Configure LUT hotkey"
     }
   },
   "settings": {
@@ -1801,7 +1808,7 @@
       "clearLut": "LUT 지우기",
       "empty": "아직 LUT가 없습니다 — 가져오기를 수행하세요",
       "filterLabel": "LUT 파일",
-      "import": "프로필 가져오기",
+      "import": "Import LUTs",
       "importFailed": "LUT 가져오기 실패",
       "intensity": "강도",
       "label": "LUT",
@@ -1809,7 +1816,9 @@
       "removeLut": "LUT 제거",
       "select": "선택",
       "selectLutFile": "LUT 파일 선택",
-      "unsupportedFormat": "지원되지 않는 파일 형식이 감지되었습니다: .{{ext}}"
+      "unsupportedFormat": "지원되지 않는 파일 형식이 감지되었습니다: .{{ext}}",
+      "loading": "Loading LUTs...",
+      "configureHotkey": "Configure hotkey"
     },
     "slider": {
       "clickToEdit": "클릭하여 편집",
@@ -1825,6 +1834,11 @@
         "showClipping": "클리핑 경고 표시",
         "vectorscope": "벡터스코프"
       }
+    },
+    "editorTools": {
+      "luts": "LUTs",
+      "presets": "Presets",
+      "title": "Editor tools"
     }
   },
   "importJobs": {

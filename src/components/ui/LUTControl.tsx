@@ -1,6 +1,6 @@
 import { open } from '@tauri-apps/plugin-dialog';
 import { invoke } from '@tauri-apps/api/core';
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ImageOff, Upload, Trash2, Wand2 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { AnimatePresence, motion } from 'framer-motion';
@@ -12,6 +12,7 @@ import Text from './Text';
 import { useEditorStore } from '../../store/useEditorStore';
 import { useSettingsStore } from '../../store/useSettingsStore';
 import type { LutFileSettings } from './AppProperties';
+import type { Adjustments } from '../../utils/adjustments';
 import { TextVariants } from '../../types/typography';
 
 interface LutEntry {
@@ -67,6 +68,7 @@ export default function LUTControl({
   const { showContextMenu } = useContextMenu();
   const selectedImagePath = useEditorStore((state) => state.selectedImage?.path ?? null);
   const isImageReady = useEditorStore((state) => state.selectedImage?.isReady ?? false);
+  const adjustments = useEditorStore((state) => state.adjustments);
   const lutSettings = useSettingsStore((state) => state.appSettings?.lutSettings);
 
   const [entries, setEntries] = useState<LutEntry[]>([]);
@@ -76,6 +78,37 @@ export default function LUTControl({
   // Per-path staleness keys (image + saved per-LUT params): a swatch is
   // regenerated only when the image or that LUT's own params change.
   const previewCache = useRef<Map<string, { key: string; thumb: string | null }>>(new Map());
+
+  // Swatches reflect the current non-LUT adjustments plus each LUT's saved
+  // parameters.
+  const lutFieldSet = useMemo(
+    () =>
+      new Set([
+        'lutPath',
+        'lutName',
+        'lutData',
+        'lutSize',
+        'lutIntensity',
+        'lutTiming',
+        'lutNormalizeMode',
+        'lutInputRange',
+        'lutInputOffset',
+        'lutOffsetCompensation',
+      ]),
+    [],
+  );
+
+  const previewAdjustments = useMemo(() => {
+    const filtered: Record<string, unknown> = {};
+    Object.entries(adjustments).forEach(([key, value]) => {
+      if (!lutFieldSet.has(key)) {
+        filtered[key] = value;
+      }
+    });
+    return filtered as Adjustments;
+  }, [adjustments, lutFieldSet]);
+
+  const adjustmentsKey = useMemo(() => JSON.stringify(previewAdjustments), [previewAdjustments]);
 
   const handleContextMenu = (event: React.MouseEvent, entry: LutEntry) => {
     event.preventDefault();
@@ -124,7 +157,8 @@ export default function LUTControl({
     if (!selectedImagePath || !isImageReady || entries.length === 0) {
       return;
     }
-    const keyFor = (path: string) => `${selectedImagePath}|${JSON.stringify(lutSettings?.[path] ?? null)}`;
+    const keyFor = (path: string) =>
+      `${selectedImagePath}|${adjustmentsKey}|${JSON.stringify(lutSettings?.[path] ?? null)}`;
     const stalePaths = entries
       .map((entry) => entry.path)
       .filter((path) => previewCache.current.get(path)?.key !== keyFor(path));
@@ -148,6 +182,7 @@ export default function LUTControl({
         lutPaths: stalePaths,
         size: PREVIEW_SIZE,
         lutParams,
+        adjustments: previewAdjustments,
       })
         .then((results) => {
           if (!isActive) return;
@@ -167,7 +202,7 @@ export default function LUTControl({
       isActive = false;
       clearTimeout(timer);
     };
-  }, [selectedImagePath, isImageReady, entries, lutSettings]);
+  }, [selectedImagePath, isImageReady, entries, lutSettings, adjustmentsKey]);
 
   const handleImport = async () => {
     try {

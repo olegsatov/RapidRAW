@@ -1241,12 +1241,19 @@
       "hotkeyOverwrite": "Overwrite",
       "hotkeyReserved": "This combination is reserved by the application.",
       "hotkeyUsedByApp": "Used by: {{action}}",
+      "hotkeyUsedByLut": "Used by LUT: {{name}}",
       "hotkeyUsedByPreset": "Used by preset: {{name}}",
       "pasteMode": "Apply Mode",
       "placeholder": "Enter preset name...",
       "save": "Save",
       "titleConfigure": "Configure Preset",
       "titleSave": "Save New Preset"
+    },
+    "configureLutHotkey": {
+      "cancel": "Cancel",
+      "hotkeyLabel": "Hotkey",
+      "save": "Save",
+      "title": "Configure LUT hotkey"
     },
     "confirm": {
       "cancel": "Cancel",
@@ -1961,17 +1968,24 @@
       "select": "Select",
       "selectImageFile": "Select an image file"
     },
+    "editorTools": {
+      "luts": "LUTs",
+      "presets": "Presets",
+      "title": "Editor tools"
+    },
     "lut": {
       "auto": "Auto",
       "clearLut": "Clear LUT",
+      "configureHotkey": "Configure hotkey",
       "empty": "No LUTs yet — import some",
       "filterLabel": "LUT Files",
-      "import": "Import profiles",
+      "import": "Import LUTs",
       "importFailed": "Failed to import LUTs",
       "inputOffset": "Input offset",
       "inputRange": "Input range",
       "intensity": "Intensity",
       "label": "LUT",
+      "loading": "Loading LUTs...",
       "luts": "LUTs",
       "mode": "Mode",
       "parameters": "Parameters",

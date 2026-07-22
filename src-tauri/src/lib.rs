@@ -335,7 +335,7 @@ fn process_preview_job(
     let fn_start = std::time::Instant::now();
     let context = get_or_init_gpu_context(&state, app_handle)?;
     hydrate_adjustments(&state, &mut adjustments_json);
-    let adjustments_clone = adjustments_json;
+    let mut adjustments_clone = adjustments_json;
 
     let loaded_image_guard = state.original_image.lock().unwrap();
     let loaded_image = loaded_image_guard
@@ -343,6 +343,9 @@ fn process_preview_job(
         .ok_or("No original image loaded")?
         .clone();
     drop(loaded_image_guard);
+
+    let norm_factor = state.get_lut_input_norm_factor(&loaded_image);
+    adjustments_clone["lutInputNormFactor"] = serde_json::json!(norm_factor);
 
     let new_transform_hash = calculate_transform_hash(&adjustments_clone);
     let settings = load_settings(app_handle.clone()).unwrap_or_default();
@@ -2477,6 +2480,7 @@ pub fn run() {
             load_image_generation: Arc::new(AtomicUsize::new(0)),
             full_warped_cache: Mutex::new(None),
             full_transformed_cache: Mutex::new(None),
+            lut_input_norm_cache: Mutex::new(None),
             grain_bake_cache: Mutex::new(None),
             grain_render_lock: Mutex::new(()),
             grain_cancel: AtomicBool::new(false),

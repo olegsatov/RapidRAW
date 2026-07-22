@@ -711,6 +711,7 @@ pub fn generate_lut_previews(
     lut_paths: Vec<String>,
     size: u32,
     lut_params: Option<HashMap<String, LutFileSettings>>,
+    adjustments: Option<serde_json::Value>,
     state: State<AppState>,
     app_handle: AppHandle,
 ) -> Result<Vec<LutPreview>, String> {
@@ -723,29 +724,64 @@ pub fn generate_lut_previews(
         .ok_or("No original image loaded for LUT previews")?;
     let is_raw = loaded_image.is_raw;
 
-    let base_json = serde_json::json!({});
+    let mut base_json = adjustments.unwrap_or_else(|| serde_json::json!({}));
+    let norm_factor = state.get_lut_input_norm_factor(&loaded_image);
+    base_json["lutInputNormFactor"] = serde_json::json!(norm_factor);
     let (base_image, _scale, _offset) =
         crate::generate_transformed_preview(&state, &loaded_image, &base_json, size)?;
 
     let tm_override = resolve_tonemapper_override_from_handle(&app_handle, is_raw);
     let transform_hash = calculate_transform_hash(&base_json);
 
-    // Swatches render with the per-LUT saved parameters (falling back to the
-    // stock 100%/after defaults) so the list matches what selecting the LUT
-    // will actually apply.
+    // Swatches render with the user's current adjustments as a base, then each
+    // LUT's saved parameters override the LUT-specific fields so the thumbnail
+    // matches what selecting that LUT will apply.
     let previews = lut_paths
         .into_iter()
         .map(|path| {
             let params = lut_params.as_ref().and_then(|map| map.get(&path));
-            let lut_json = serde_json::json!({
-                "lutPath": "preview",
-                "lutIntensity": params.and_then(|p| p.intensity).unwrap_or(100),
-                "lutTiming": params.and_then(|p| p.timing.as_deref()).unwrap_or("before"),
-                "lutInputRange": params.and_then(|p| p.input_range).unwrap_or(6.0),
-                "lutInputOffset": params.and_then(|p| p.input_offset).unwrap_or(0.0),
-                "sectionVisibility": { "effects": true }
-            });
-            let adjustments = get_all_adjustments_from_json(&lut_json, is_raw, tm_override);
+            let lut_name = Path::new(&path)
+                .file_stem()
+                .map(|s| s.to_string_lossy().into_owned())
+                .unwrap_or_else(|| "LUT".to_string());
+            let intensity = params.and_then(|p| p.intensity).unwrap_or(100);
+            let timing = params.and_then(|p| p.timing.as_deref()).unwrap_or("before");
+            let normalize_mode = if timing == "after" { "clamp" } else { "hdr" };
+            let input_range = params.and_then(|p| p.input_range).unwrap_or(6.0);
+            let input_offset = params.and_then(|p| p.input_offset).unwrap_or(0.0);
+            let offset_compensation = params.and_then(|p| p.offset_compensation).unwrap_or(false);
+
+            let mut merged_json = base_json.clone();
+            if let Some(obj) = merged_json.as_object_mut() {
+                obj.insert("lutPath".to_string(), serde_json::json!(path));
+                obj.insert("lutName".to_string(), serde_json::json!(lut_name));
+                obj.insert("lutIntensity".to_string(), serde_json::json!(intensity));
+                obj.insert("lutTiming".to_string(), serde_json::json!(timing));
+                obj.insert(
+                    "lutNormalizeMode".to_string(),
+                    serde_json::json!(normalize_mode),
+                );
+                obj.insert("lutInputRange".to_string(), serde_json::json!(input_range));
+                obj.insert(
+                    "lutInputOffset".to_string(),
+                    serde_json::json!(input_offset),
+                );
+                obj.insert(
+                    "lutOffsetCompensation".to_string(),
+                    serde_json::json!(offset_compensation),
+                );
+                let section_visibility = obj
+                    .entry("sectionVisibility")
+                    .or_insert_with(|| serde_json::json!({}));
+                if let Some(sec) = section_visibility.as_object_mut() {
+                    sec.insert("effects".to_string(), serde_json::json!(true));
+                    sec.insert("lut".to_string(), serde_json::json!(true));
+                } else {
+                    *section_visibility = serde_json::json!({ "effects": true, "lut": true });
+                }
+            }
+
+            let adjustments = get_all_adjustments_from_json(&merged_json, is_raw, tm_override);
             let thumb = render_lut_swatch(
                 &context,
                 &state,

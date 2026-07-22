@@ -4,7 +4,7 @@ use std::sync::atomic::{AtomicBool, AtomicUsize};
 use std::sync::mpsc::Sender;
 use std::sync::{Arc, Condvar, Mutex};
 
-use image::{DynamicImage, GrayImage};
+use image::{DynamicImage, GenericImageView, GrayImage};
 use serde::{Deserialize, Serialize};
 use tauri::async_runtime::JoinHandle as AsyncJoinHandle;
 use tokio::sync::Mutex as TokioMutex;
@@ -180,6 +180,9 @@ pub struct AppState {
     pub load_image_generation: Arc<AtomicUsize>,
     pub full_warped_cache: Mutex<Option<(u64, Arc<DynamicImage>)>>,
     pub full_transformed_cache: Mutex<Option<TransformedImageCache>>,
+    /// Cached mean-luminance normalization factor for the currently loaded
+    /// image, keyed by `load_image_generation` so it is recomputed on reload.
+    pub lut_input_norm_cache: Mutex<Option<(usize, f32)>>,
     /// Cache of the last grain field baked for export, keyed by
     /// `crystal_grain::bake_cache_key`. Parallel export jobs with identical
     /// grain parameters share the texture; each job creates its own view.
@@ -194,4 +197,62 @@ pub struct AppState {
     pub decoded_image_cache: Mutex<DecodedImageCache>,
     pub thumbnail_manager: Arc<ThumbnailManager>,
     pub metadata_manager: Arc<MetadataManager>,
+}
+
+impl AppState {
+    /// Return the cached LUT input normalization factor for the loaded image,
+    /// computing it on first access for each `load_image_generation`.
+    pub fn get_lut_input_norm_factor(&self, loaded_image: &LoadedImage) -> f32 {
+        let current_gen = self
+            .load_image_generation
+            .load(std::sync::atomic::Ordering::SeqCst);
+        {
+            let cache = self.lut_input_norm_cache.lock().unwrap();
+            if let Some((cached_gen, factor)) = *cache {
+                if cached_gen == current_gen {
+                    return factor;
+                }
+            }
+        }
+
+        let factor = compute_lut_input_norm_factor(&loaded_image.image);
+        let mut cache = self.lut_input_norm_cache.lock().unwrap();
+        *cache = Some((current_gen, factor));
+        factor
+    }
+}
+
+/// Compute a scene-linear mean-luminance normalization factor for LUT input.
+///
+/// The image is downscaled to at most 256 px on the long side, then the
+/// arithmetic mean of Rec. 709 linear luminance is returned, clamped to a
+/// sane range so near-black or extremely bright images do not destabilize
+/// the LUT math.
+pub fn compute_lut_input_norm_factor(image: &DynamicImage) -> f32 {
+    let (width, height) = image.dimensions();
+    let max_dim = width.max(height);
+    let ratio = if max_dim > 256 {
+        256.0 / max_dim as f32
+    } else {
+        1.0
+    };
+    let new_w = (width as f32 * ratio).round() as u32;
+    let new_h = (height as f32 * ratio).round() as u32;
+
+    let downscaled = crate::image_processing::downscale_f32_image(image, new_w, new_h);
+    let rgb = downscaled.to_rgb32f();
+    let raw = rgb.as_raw();
+    if raw.len() < 3 {
+        return 1.0;
+    }
+
+    let mut sum = 0.0f64;
+    for chunk in raw.chunks_exact(3) {
+        let luma = 0.2126 * chunk[0].max(0.0) as f64
+            + 0.7152 * chunk[1].max(0.0) as f64
+            + 0.0722 * chunk[2].max(0.0) as f64;
+        sum += luma;
+    }
+    let mean = sum / (raw.len() / 3) as f64;
+    (mean as f32).clamp(1e-4, 1e4)
 }

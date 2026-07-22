@@ -3,7 +3,7 @@ import { MotionConfig } from 'framer-motion';
 import clsx from 'clsx';
 
 import FolderTree from '../FolderTree';
-import PresetsBrowser from '../../presets/PresetsBrowser';
+import EditorToolsPanel from './EditorToolsPanel';
 import HistoryPanel from './HistoryPanel';
 import Resizer from '../../ui/Resizer';
 
@@ -63,7 +63,7 @@ export default function LeftSidebar({
         <div className="flex-1 min-h-0 overflow-hidden">
           <MotionConfig reducedMotion={isInstantTransition ? 'always' : 'user'}>
             {isEditor ? (
-              <PresetsBrowser isVisible={folderTreeVisible} isInstantTransition={isInstantTransition} />
+              <EditorToolsPanel isVisible={folderTreeVisible} isInstantTransition={isInstantTransition} />
             ) : (
               <FolderTree
                 isResizing={isResizing}

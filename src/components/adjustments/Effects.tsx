@@ -1,8 +1,6 @@
 import { useTranslation } from 'react-i18next';
 import Slider from '../ui/Slider';
 import { Adjustments, Effect, CreativeAdjustment } from '../../utils/adjustments';
-import { saveLutParams } from '../../utils/lutSettings';
-import LUTControl from '../ui/LUTControl';
 import { AppSettings } from '../ui/AppProperties';
 import Text from '../ui/Text';
 import { TextVariants } from '../../types/typography';
@@ -11,8 +9,6 @@ interface EffectsPanelProps {
   adjustments: Adjustments;
   isForMask: boolean;
   setAdjustments(adjustments: Partial<Adjustments>): any;
-  handleLutSelect(path: string): void;
-  onLutHover?: (path: string | null) => void;
   appSettings: AppSettings | null;
   onDragStateChange?: (isDragging: boolean) => void;
 }
@@ -21,8 +17,6 @@ export default function EffectsPanel({
   adjustments,
   setAdjustments,
   isForMask = false,
-  handleLutSelect,
-  onLutHover,
   appSettings,
   onDragStateChange,
 }: EffectsPanelProps) {
@@ -31,51 +25,6 @@ export default function EffectsPanel({
   const handleAdjustmentChange = (key: string, value: string) => {
     const numericValue = parseInt(value, 10);
     setAdjustments((prev: Partial<Adjustments>) => ({ ...prev, [key]: numericValue }));
-  };
-
-  const handleLutIntensityChange = (intensity: number) => {
-    setAdjustments((prev: Partial<Adjustments>) => ({ ...prev, lutIntensity: intensity }));
-    saveLutParams(adjustments.lutPath, { intensity });
-  };
-
-  const handleLutTimingChange = (timing: 'after' | 'before') => {
-    setAdjustments((prev: Partial<Adjustments>) => ({
-      ...prev,
-      lutTiming: timing,
-      lutNormalizeMode: timing === 'before' ? 'hdr' : 'clamp',
-    }));
-    saveLutParams(adjustments.lutPath, { timing });
-  };
-
-  const handleLutInputRangeChange = (range: number) => {
-    setAdjustments((prev: Partial<Adjustments>) => ({ ...prev, lutInputRange: range }));
-    saveLutParams(adjustments.lutPath, { inputRange: range });
-  };
-
-  const handleLutInputOffsetChange = (offset: number) => {
-    setAdjustments((prev: Partial<Adjustments>) => ({ ...prev, lutInputOffset: offset }));
-    saveLutParams(adjustments.lutPath, { inputOffset: offset });
-  };
-
-  const handleLutOffsetCompensationChange = (enabled: boolean) => {
-    setAdjustments((prev: Partial<Adjustments>) => ({ ...prev, lutOffsetCompensation: enabled }));
-    saveLutParams(adjustments.lutPath, { offsetCompensation: enabled });
-  };
-
-  const handleLutClear = () => {
-    setAdjustments((prev: Partial<Adjustments>) => ({
-      ...prev,
-      lutPath: null,
-      lutName: null,
-      lutData: null,
-      lutSize: 0,
-      lutIntensity: 100,
-      lutTiming: 'before',
-      lutNormalizeMode: 'hdr',
-      lutInputRange: 6,
-      lutInputOffset: 0,
-      lutOffsetCompensation: false,
-    }));
   };
 
   const adjustmentVisibility = appSettings?.adjustmentVisibility || {};
@@ -122,30 +71,6 @@ export default function EffectsPanel({
 
       {!isForMask && (
         <div className="space-y-4">
-          <div className="p-2 bg-bg-tertiary rounded-md">
-            <Text variant={TextVariants.heading} className="mb-2">
-              {t('adjustments.effects.lut')}
-            </Text>
-            <LUTControl
-              lutPath={adjustments.lutPath || null}
-              lutName={adjustments.lutName || null}
-              lutIntensity={adjustments.lutIntensity || 100}
-              lutTiming={adjustments.lutTiming || 'before'}
-              lutInputRange={adjustments.lutInputRange ?? 6}
-              lutInputOffset={adjustments.lutInputOffset ?? 0}
-              lutOffsetCompensation={adjustments.lutOffsetCompensation ?? false}
-              onLutSelect={handleLutSelect}
-              onLutHover={onLutHover}
-              onIntensityChange={handleLutIntensityChange}
-              onTimingChange={handleLutTimingChange}
-              onInputRangeChange={handleLutInputRangeChange}
-              onInputOffsetChange={handleLutInputOffsetChange}
-              onOffsetCompensationChange={handleLutOffsetCompensationChange}
-              onClear={handleLutClear}
-              onDragStateChange={onDragStateChange}
-            />
-          </div>
-
           {adjustmentVisibility.vignette !== false && (
             <div className="p-2 bg-bg-tertiary rounded-md">
               <Text variant={TextVariants.heading} className="mb-2">

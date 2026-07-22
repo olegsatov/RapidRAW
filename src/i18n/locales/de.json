@@ -1097,7 +1097,8 @@
       "typeStyleDesc": "Wendet den kompletten Look an. Dies überschreibt alle aktuellen Einstellungen, um der Vorgabe exakt zu entsprechen.",
       "typeStyleLabel": "Stil",
       "typeToolDesc": "Wendet nur spezifische Änderungen an, ohne Ihre anderen Einstellungen zu berühren.",
-      "typeToolLabel": "Werkzeug"
+      "typeToolLabel": "Werkzeug",
+      "hotkeyUsedByLut": "Used by LUT: {{name}}"
     },
     "confirm": {
       "cancel": "Abbrechen",
@@ -1364,6 +1365,12 @@
       "yAxis": "Y-Achse",
       "zoomInTooltip": "Vergrößern",
       "zoomOutTooltip": "Verkleinern"
+    },
+    "configureLutHotkey": {
+      "cancel": "Cancel",
+      "hotkeyLabel": "Hotkey",
+      "save": "Save",
+      "title": "Configure LUT hotkey"
     }
   },
   "settings": {
@@ -1801,7 +1808,7 @@
       "clearLut": "LUT löschen",
       "empty": "Noch keine LUTs — importiere welche",
       "filterLabel": "LUT-Dateien",
-      "import": "Profile importieren",
+      "import": "Import LUTs",
       "importFailed": "LUTs konnten nicht importiert werden",
       "intensity": "Intensität",
       "label": "LUT",
@@ -1809,7 +1816,9 @@
       "removeLut": "LUT entfernen",
       "select": "Auswählen",
       "selectLutFile": "Eine LUT-Datei auswählen",
-      "unsupportedFormat": "Nicht unterstützte Dateiformate erkannt: .{{ext}}"
+      "unsupportedFormat": "Nicht unterstützte Dateiformate erkannt: .{{ext}}",
+      "loading": "Loading LUTs...",
+      "configureHotkey": "Configure hotkey"
     },
     "slider": {
       "clickToEdit": "Zum Bearbeiten klicken",
@@ -1825,6 +1834,11 @@
         "showClipping": "Clipping-Warnungen anzeigen",
         "vectorscope": "Vektorskop"
       }
+    },
+    "editorTools": {
+      "luts": "LUTs",
+      "presets": "Presets",
+      "title": "Editor tools"
     }
   },
   "importJobs": {

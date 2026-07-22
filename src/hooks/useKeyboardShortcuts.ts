@@ -30,7 +30,7 @@ export const useKeyboardShortcuts = ({
   handleToggleFullScreen,
   handleZoomChange,
 }: KeyboardShortcutsProps) => {
-  const { handleRotate, handleCopyAdjustments, handlePasteAdjustments } = useEditorActions();
+  const { handleRotate, handleCopyAdjustments, handlePasteAdjustments, handleLutSelect } = useEditorActions();
   const { handleRate, handleSetColorLabel, handleSetFlag } = useLibraryActions();
 
   const sortedListRef = useRef(sortedImageList);
@@ -597,6 +597,7 @@ export const useKeyboardShortcuts = ({
         state.ui.isImportModalOpen ||
         state.ui.isCopyPasteSettingsModalOpen ||
         state.ui.isConfigurePresetModalOpen ||
+        state.ui.isConfigureLutHotkeyModalOpen ||
         state.ui.confirmModalState.isOpen ||
         state.ui.panoramaModalState.isOpen ||
         state.ui.cullingModalState.isOpen ||
@@ -633,6 +634,13 @@ export const useKeyboardShortcuts = ({
         }
       }
 
+      const lutComboMap = new Map<string, string>();
+      for (const [lutPath, settings] of Object.entries(useSettingsStore.getState().appSettings?.lutSettings || {})) {
+        if (settings?.hotkey && settings.hotkey.length > 0) {
+          lutComboMap.set(settings.hotkey.join('+'), lutPath);
+        }
+      }
+
       const normalized = normalizeCombo(event, state.settings.osPlatform);
       const action = comboMap.get(normalized.join('+'));
 
@@ -660,6 +668,13 @@ export const useKeyboardShortcuts = ({
         debouncedSetHistory(newAdjustments, state.ui.activeRightPanel);
         return;
       }
+
+      const lutPath = lutComboMap.get(normalized.join('+'));
+      if (lutPath && state.editor.selectedImage) {
+        event.preventDefault();
+        handleLutSelect(lutPath);
+        return;
+      }
     };
 
     window.addEventListener('keydown', handleKeyDown);
@@ -679,5 +694,6 @@ export const useKeyboardShortcuts = ({
     handleRate,
     handleSetColorLabel,
     handleSetFlag,
+    handleLutSelect,
   ]);
 };

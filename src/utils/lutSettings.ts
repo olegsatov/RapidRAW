@@ -35,10 +35,12 @@ export function resolveLutParams(appSettings: AppSettings | null, path: string):
 }
 
 export function lutParamsToAdjustments(params: ResolvedLutParams): Partial<Adjustments> {
+  // LUTs are always applied before the tonemapper; coerce any stored timing.
+  const timing = 'before' as const;
   return {
     lutIntensity: params.intensity,
-    lutTiming: params.timing,
-    lutNormalizeMode: params.timing === 'before' ? 'hdr' : 'clamp',
+    lutTiming: timing,
+    lutNormalizeMode: timing === 'before' ? 'hdr' : 'clamp',
     lutInputRange: params.inputRange,
     lutInputOffset: params.inputOffset,
     lutOffsetCompensation: params.offsetCompensation,

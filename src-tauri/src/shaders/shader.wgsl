@@ -170,6 +170,7 @@ struct GlobalAdjustments {
     lut_input_offset: f32,
     lut_shoulder: f32,
     lut_offset_compensation: u32,
+    lut_input_norm_factor: f32,
 }
 
 struct MaskAdjustments {
@@ -1248,9 +1249,11 @@ fn prepare_lut_input(hdr: vec3<f32>) -> vec3<f32> {
         return clamp(hdr, vec3(0.0), vec3(1.0));
     }
 
+    let norm_factor = max(adjustments.global.lut_input_norm_factor, 1e-6);
+    let normalized_hdr = hdr / norm_factor;
     let offset_lin = pow(2.0, adjustments.global.lut_input_offset);
     let range_lin  = pow(2.0, adjustments.global.lut_input_range);
-    var t = hdr * offset_lin / range_lin;
+    var t = normalized_hdr * offset_lin / range_lin;
 
     if (adjustments.global.lut_shoulder > 0.0) {
         let s = adjustments.global.lut_shoulder;
@@ -1275,7 +1278,9 @@ fn sample_hdr_lut_tetrahedral(hdr: vec3<f32>) -> vec3<f32> {
     let range = max(adjustments.global.lut_input_range, 0.5);
     let scale = HDR_LUT_TOTAL_RANGE / range;
 
-    var log_rgb = log2(max(hdr, vec3(1e-6)));
+    let norm_factor = max(adjustments.global.lut_input_norm_factor, 1e-6);
+    let normalized_hdr = hdr / norm_factor;
+    var log_rgb = log2(max(normalized_hdr, vec3(1e-6)));
     log_rgb += vec3(adjustments.global.lut_input_offset);
     log_rgb *= vec3(scale);
 

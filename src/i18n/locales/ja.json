@@ -1096,7 +1096,8 @@
       "typeStyleDesc": "全体のルックを適用します。プリセットと完全に一致するように現在の設定がすべて上書きされます。",
       "typeStyleLabel": "スタイル",
       "typeToolDesc": "他の設定を変更せずに、特定の設定のみを適用します。",
-      "typeToolLabel": "ツール"
+      "typeToolLabel": "ツール",
+      "hotkeyUsedByLut": "Used by LUT: {{name}}"
     },
     "confirm": {
       "cancel": "キャンセル",
@@ -1363,6 +1364,12 @@
       "yAxis": "Y軸",
       "zoomInTooltip": "拡大",
       "zoomOutTooltip": "縮小"
+    },
+    "configureLutHotkey": {
+      "cancel": "Cancel",
+      "hotkeyLabel": "Hotkey",
+      "save": "Save",
+      "title": "Configure LUT hotkey"
     }
   },
   "settings": {
@@ -1800,7 +1807,7 @@
       "clearLut": "LUTをクリア",
       "empty": "LUTはまだありません — インポートしてください",
       "filterLabel": "LUTファイル",
-      "import": "プロファイルをインポート",
+      "import": "Import LUTs",
       "importFailed": "LUTのインポートに失敗しました",
       "intensity": "適用度",
       "label": "LUT",
@@ -1808,7 +1815,9 @@
       "removeLut": "LUTを削除",
       "select": "選択",
       "selectLutFile": "LUTファイルを選択",
-      "unsupportedFormat": "未対応のファイル形式が検出されました: .{{ext}}"
+      "unsupportedFormat": "未対応のファイル形式が検出されました: .{{ext}}",
+      "loading": "Loading LUTs...",
+      "configureHotkey": "Configure hotkey"
     },
     "slider": {
       "clickToEdit": "クリックして編集",
@@ -1824,6 +1833,11 @@
         "showClipping": "白とび・黒つぶれ警告を表示",
         "vectorscope": "ベクトルスコープ"
       }
+    },
+    "editorTools": {
+      "luts": "LUTs",
+      "presets": "Presets",
+      "title": "Editor tools"
     }
   },
   "importJobs": {

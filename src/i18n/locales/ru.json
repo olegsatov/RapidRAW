@@ -1244,7 +1244,8 @@
       "placeholder": "Введите название пресета...",
       "save": "Сохранить",
       "titleConfigure": "Настройка пресета",
-      "titleSave": "Сохранить новый пресет"
+      "titleSave": "Сохранить новый пресет",
+      "hotkeyUsedByLut": "Used by LUT: {{name}}"
     },
     "confirm": {
       "cancel": "Отмена",
@@ -1518,6 +1519,12 @@
       "yAxis": "Ось Y",
       "zoomInTooltip": "Увеличить",
       "zoomOutTooltip": "Уменьшить"
+    },
+    "configureLutHotkey": {
+      "cancel": "Cancel",
+      "hotkeyLabel": "Hotkey",
+      "save": "Save",
+      "title": "Configure LUT hotkey"
     }
   },
   "settings": {
@@ -1964,7 +1971,7 @@
       "clearLut": "Удалить LUT",
       "empty": "Пока нет LUT — импортируйте их",
       "filterLabel": "Файлы LUT",
-      "import": "Импорт профилей",
+      "import": "Import LUTs",
       "importFailed": "Не удалось импортировать LUT",
       "inputOffset": "Смещение входа",
       "inputRange": "Диапазон входа",
@@ -1985,7 +1992,9 @@
       "timing": "Применение LUT",
       "timingAfter": "После тонмаппера",
       "timingBefore": "До тонмаппера",
-      "unsupportedFormat": "Обнаружены неподдерживаемые форматы файлов: .{{ext}}"
+      "unsupportedFormat": "Обнаружены неподдерживаемые форматы файлов: .{{ext}}",
+      "loading": "Loading LUTs...",
+      "configureHotkey": "Configure hotkey"
     },
     "slider": {
       "clickToEdit": "Нажмите для точного ввода",
@@ -2001,6 +2010,11 @@
         "showClipping": "Показать предупреждения о переэкспозиции",
         "vectorscope": "Вектороскоп"
       }
+    },
+    "editorTools": {
+      "luts": "LUTs",
+      "presets": "Presets",
+      "title": "Editor tools"
     }
   },
   "importJobs": {

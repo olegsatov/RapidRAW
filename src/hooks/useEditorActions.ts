@@ -123,7 +123,11 @@ export function useEditorActions() {
   const setLutPreviewOverride = useCallback(
     (path: string | null) => {
       setEditor((state) => {
-        if (!path) return { previewOverride: null };
+        if (!path) {
+          if (state.previewOverride == null) return state;
+          return { previewOverride: null };
+        }
+        if (state.previewOverride?.lutPath === path) return state;
         const name = path.split(/[\\/]/).pop() || 'LUT';
         const lutParams = lutParamsToAdjustments(resolveLutParams(useSettingsStore.getState().appSettings, path));
         return {

@@ -12,7 +12,6 @@ import BlackAndWhitePanel from '../../adjustments/BlackAndWhite';
 import GrainPanel from '../../adjustments/Grain';
 import CurveGraph from '../../adjustments/Curves';
 import FilmDetailsPanel from '../../adjustments/FilmDetails';
-import LUTControl from '../../ui/LUTControl';
 import { TextVariants } from '../../../types/typography';
 import {
   Adjustments,
@@ -31,7 +30,6 @@ import { useEditorStore } from '../../../store/useEditorStore';
 import { useSettingsStore } from '../../../store/useSettingsStore';
 import { useUIStore } from '../../../store/useUIStore';
 import { useEditorActions } from '../../../hooks/useEditorActions';
-import { saveLutParams } from '../../../utils/lutSettings';
 import { Invokes } from '../../ui/AppProperties';
 
 // Film tab: drives the flim tonemapper mode (github.com/bean-mhm/flim,
@@ -115,7 +113,7 @@ export default function FilmPanel() {
   const histogram = useEditorStore((s) => s.histogram);
   const selectedImage = useEditorStore((s) => s.selectedImage);
   const setEditor = useEditorStore((s) => s.setEditor);
-  const { setAdjustments, handleLutSelect, setLutPreviewOverride } = useEditorActions();
+  const { setAdjustments } = useEditorActions();
   const theme = useSettingsStore((s) => s.theme);
   const appSettings = useSettingsStore((s) => s.appSettings);
   const collapsibleSectionsState = useUIStore((s) => s.collapsibleSectionsState);
@@ -517,68 +515,6 @@ export default function FilmPanel() {
             appSettings={appSettings}
             onDragStateChange={onDragStateChange}
           />
-        </CollapsibleSection>
-
-        <CollapsibleSection
-          isContentVisible={sectionVisibility.lut}
-          isOpen={!!collapsibleSectionsState.lut}
-          onToggle={() => handleToggleSection('lut')}
-          onToggleVisibility={() => handleToggleVisibility('lut')}
-          title={t('editor.film.lut')}
-        >
-          <div className="p-2 bg-bg-tertiary rounded-md">
-            <LUTControl
-              lutPath={adjustments.lutPath || null}
-              lutName={adjustments.lutName || null}
-              lutIntensity={adjustments.lutIntensity || 100}
-              lutTiming={adjustments.lutTiming || 'before'}
-              lutInputRange={adjustments.lutInputRange ?? 6}
-              lutInputOffset={adjustments.lutInputOffset ?? 0}
-              lutOffsetCompensation={adjustments.lutOffsetCompensation ?? false}
-              onLutSelect={handleLutSelect}
-              onLutHover={setLutPreviewOverride}
-              onIntensityChange={(intensity: number) => {
-                setAdjustments((prev: Partial<Adjustments>) => ({ ...prev, lutIntensity: intensity }));
-                saveLutParams(adjustments.lutPath, { intensity });
-              }}
-              onTimingChange={(timing: 'after' | 'before') => {
-                setAdjustments((prev: Partial<Adjustments>) => ({
-                  ...prev,
-                  lutTiming: timing,
-                  lutNormalizeMode: timing === 'before' ? 'hdr' : 'clamp',
-                }));
-                saveLutParams(adjustments.lutPath, { timing });
-              }}
-              onInputRangeChange={(range: number) => {
-                setAdjustments((prev: Partial<Adjustments>) => ({ ...prev, lutInputRange: range }));
-                saveLutParams(adjustments.lutPath, { inputRange: range });
-              }}
-              onInputOffsetChange={(offset: number) => {
-                setAdjustments((prev: Partial<Adjustments>) => ({ ...prev, lutInputOffset: offset }));
-                saveLutParams(adjustments.lutPath, { inputOffset: offset });
-              }}
-              onOffsetCompensationChange={(enabled: boolean) => {
-                setAdjustments((prev: Partial<Adjustments>) => ({ ...prev, lutOffsetCompensation: enabled }));
-                saveLutParams(adjustments.lutPath, { offsetCompensation: enabled });
-              }}
-              onClear={() =>
-                setAdjustments((prev: Partial<Adjustments>) => ({
-                  ...prev,
-                  lutPath: null,
-                  lutName: null,
-                  lutData: null,
-                  lutSize: 0,
-                  lutIntensity: 100,
-                  lutTiming: 'before',
-                  lutNormalizeMode: 'hdr',
-                  lutInputRange: 6,
-                  lutInputOffset: 0,
-                  lutOffsetCompensation: false,
-                }))
-              }
-              onDragStateChange={onDragStateChange}
-            />
-          </div>
         </CollapsibleSection>
 
         <CollapsibleSection

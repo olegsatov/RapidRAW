@@ -1097,7 +1097,8 @@
       "typeStyleDesc": "Applica l'aspetto completo. Questo sovrascriverà tutte le tue impostazioni attuali per corrispondere esattamente al predefinito.",
       "typeStyleLabel": "Stile",
       "typeToolDesc": "Applica solo modifiche specifiche senza toccare le altre tue impostazioni.",
-      "typeToolLabel": "Strumento"
+      "typeToolLabel": "Strumento",
+      "hotkeyUsedByLut": "Used by LUT: {{name}}"
     },
     "confirm": {
       "cancel": "Annulla",
@@ -1364,6 +1365,12 @@
       "yAxis": "Asse Y",
       "zoomInTooltip": "Ingrandisci",
       "zoomOutTooltip": "Riduci"
+    },
+    "configureLutHotkey": {
+      "cancel": "Cancel",
+      "hotkeyLabel": "Hotkey",
+      "save": "Save",
+      "title": "Configure LUT hotkey"
     }
   },
   "settings": {
@@ -1801,7 +1808,7 @@
       "clearLut": "Cancella LUT",
       "empty": "Nessuna LUT ancora — importane alcune",
       "filterLabel": "File LUT",
-      "import": "Importa profili",
+      "import": "Import LUTs",
       "importFailed": "Impossibile importare le LUT",
       "intensity": "Intensità",
       "label": "LUT",
@@ -1809,7 +1816,9 @@
       "removeLut": "Rimuovi LUT",
       "select": "Seleziona",
       "selectLutFile": "Seleziona un file LUT",
-      "unsupportedFormat": "Formato(i) di file non supportato rilevato: .{{ext}}"
+      "unsupportedFormat": "Formato(i) di file non supportato rilevato: .{{ext}}",
+      "loading": "Loading LUTs...",
+      "configureHotkey": "Configure hotkey"
     },
     "slider": {
       "clickToEdit": "Clicca per modificare",
@@ -1825,6 +1834,11 @@
         "showClipping": "Mostra Avvisi di Ritaglio",
         "vectorscope": "Vettorscopio"
       }
+    },
+    "editorTools": {
+      "luts": "LUTs",
+      "presets": "Presets",
+      "title": "Editor tools"
     }
   },
   "importJobs": {

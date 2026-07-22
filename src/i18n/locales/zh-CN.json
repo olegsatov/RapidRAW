@@ -1097,7 +1097,8 @@
       "typeStyleDesc": "应用完整外观。这将覆盖您当前的所有设置以完全匹配预设。",
       "typeStyleLabel": "风格",
       "typeToolDesc": "仅应用特定更改而不影响您的其他设置。",
-      "typeToolLabel": "工具"
+      "typeToolLabel": "工具",
+      "hotkeyUsedByLut": "Used by LUT: {{name}}"
     },
     "confirm": {
       "cancel": "取消",
@@ -1364,6 +1365,12 @@
       "yAxis": "Y 轴",
       "zoomInTooltip": "放大",
       "zoomOutTooltip": "缩小"
+    },
+    "configureLutHotkey": {
+      "cancel": "Cancel",
+      "hotkeyLabel": "Hotkey",
+      "save": "Save",
+      "title": "Configure LUT hotkey"
     }
   },
   "settings": {
@@ -1801,7 +1808,7 @@
       "clearLut": "清除 LUT",
       "empty": "暂无 LUT — 请导入一些",
       "filterLabel": "LUT 文件",
-      "import": "导入配置文件",
+      "import": "Import LUTs",
       "importFailed": "导入 LUT 失败",
       "intensity": "强度",
       "label": "LUT",
@@ -1809,7 +1816,9 @@
       "removeLut": "移除 LUT",
       "select": "选择",
       "selectLutFile": "选择 LUT 文件",
-      "unsupportedFormat": "检测到不支持的文件格式：.{{ext}}"
+      "unsupportedFormat": "检测到不支持的文件格式：.{{ext}}",
+      "loading": "Loading LUTs...",
+      "configureHotkey": "Configure hotkey"
     },
     "slider": {
       "clickToEdit": "点击编辑",
@@ -1825,6 +1834,11 @@
         "showClipping": "显示裁剪警告",
         "vectorscope": "矢量示波器"
       }
+    },
+    "editorTools": {
+      "luts": "LUTs",
+      "presets": "Presets",
+      "title": "Editor tools"
     }
   },
   "importJobs": {

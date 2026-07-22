@@ -28,7 +28,7 @@ export default function Controls() {
   const { showContextMenu } = useContextMenu();
   const { isResizingWaveform, onToggleWaveform, setActiveWaveformChannel, handleWaveformResize } =
     useWaveformControls();
-  const { setAdjustments, handleAutoAdjustments, handleLutSelect, setLutPreviewOverride } = useEditorActions();
+  const { setAdjustments, handleAutoAdjustments } = useEditorActions();
 
   const { appSettings, theme } = useSettingsStore(
     useShallow((state) => ({
@@ -277,43 +277,41 @@ export default function Controls() {
           // ADJUSTMENT_SECTIONS so reset/copy-paste keep covering their keys.
           .filter((sectionName) => sectionName !== 'film' && sectionName !== 'blackAndWhite')
           .map((sectionName: string) => {
-          const SectionComponent: any = {
-            basic: BasicAdjustments,
-            curves: CurveGraph,
-            color: ColorPanel,
-            details: DetailsPanel,
-            effects: EffectsPanel,
-          }[sectionName];
+            const SectionComponent: any = {
+              basic: BasicAdjustments,
+              curves: CurveGraph,
+              color: ColorPanel,
+              details: DetailsPanel,
+              effects: EffectsPanel,
+            }[sectionName];
 
-          const title = t(`editor.adjustments.sections.${sectionName}`);
-          const sectionVisibility = adjustments.sectionVisibility || INITIAL_ADJUSTMENTS.sectionVisibility;
+            const title = t(`editor.adjustments.sections.${sectionName}`);
+            const sectionVisibility = adjustments.sectionVisibility || INITIAL_ADJUSTMENTS.sectionVisibility;
 
-          return (
-            <div className="shrink-0 group" key={sectionName}>
-              <CollapsibleSection
-                isContentVisible={sectionVisibility[sectionName as keyof SectionVisibility]}
-                isOpen={collapsibleSectionsState[sectionName as keyof typeof collapsibleSectionsState]}
-                onContextMenu={(e: any) => handleSectionContextMenu(e, sectionName)}
-                onToggle={() => handleToggleSection(sectionName)}
-                onToggleVisibility={() => handleToggleVisibility(sectionName)}
-                title={title}
-              >
-                <SectionComponent
-                  adjustments={adjustments}
-                  setAdjustments={setAdjustments}
-                  histogram={histogram}
-                  theme={theme}
-                  handleLutSelect={handleLutSelect}
-                  onLutHover={setLutPreviewOverride}
-                  appSettings={appSettings}
-                  isWbPickerActive={isWbPickerActive}
-                  toggleWbPicker={toggleWbPicker}
-                  onDragStateChange={onDragStateChange}
-                />
-              </CollapsibleSection>
-            </div>
-          );
-        })}
+            return (
+              <div className="shrink-0 group" key={sectionName}>
+                <CollapsibleSection
+                  isContentVisible={sectionVisibility[sectionName as keyof SectionVisibility]}
+                  isOpen={collapsibleSectionsState[sectionName as keyof typeof collapsibleSectionsState]}
+                  onContextMenu={(e: any) => handleSectionContextMenu(e, sectionName)}
+                  onToggle={() => handleToggleSection(sectionName)}
+                  onToggleVisibility={() => handleToggleVisibility(sectionName)}
+                  title={title}
+                >
+                  <SectionComponent
+                    adjustments={adjustments}
+                    setAdjustments={setAdjustments}
+                    histogram={histogram}
+                    theme={theme}
+                    appSettings={appSettings}
+                    isWbPickerActive={isWbPickerActive}
+                    toggleWbPicker={toggleWbPicker}
+                    onDragStateChange={onDragStateChange}
+                  />
+                </CollapsibleSection>
+              </div>
+            );
+          })}
       </div>
     </div>
   );
