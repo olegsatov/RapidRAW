@@ -34,7 +34,7 @@ export default function LutStripOverlay() {
     <div
       ref={containerRef}
       className="absolute left-4 top-1/2 -translate-y-1/2 z-40 pointer-events-none flex flex-col gap-2 p-2 max-h-[calc(100%-48px)] overflow-y-auto bg-bg-secondary/25 backdrop-blur-sm rounded-lg shadow-lg border border-surface/40"
-      style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
+      style={{ scrollbarWidth: 'none', msOverflowStyle: 'none', scrollBehavior: 'smooth' }}
     >
       {lutStrip.entries.map((entry, index) => {
         const isSelected = index === lutStrip.selectedIndex;
