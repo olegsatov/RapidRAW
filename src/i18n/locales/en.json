@@ -2002,7 +2002,8 @@
       "timingAfter": "After tone mapper",
       "timingBefore": "Before tone mapper",
       "unsupportedFormat": "Unsupported file format(s) detected: .{{ext}}",
-      "saveAsDefault": "Save as default"
+      "saveAsDefault": "Save as default",
+      "resetToDefault": "Reset to default"
     },
     "slider": {
       "clickToEdit": "Click to edit",

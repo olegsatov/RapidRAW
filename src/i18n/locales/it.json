@@ -1819,7 +1819,8 @@
       "unsupportedFormat": "Formato(i) di file non supportato rilevato: .{{ext}}",
       "loading": "Loading LUTs...",
       "configureHotkey": "Configure hotkey",
-      "saveAsDefault": "Salva come predefinito"
+      "saveAsDefault": "Salva come predefinito",
+      "resetToDefault": "Ripristina predefinito"
     },
     "slider": {
       "clickToEdit": "Clicca per modificare",

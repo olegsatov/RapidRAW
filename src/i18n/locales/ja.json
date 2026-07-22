@@ -1818,7 +1818,8 @@
       "unsupportedFormat": "未対応のファイル形式が検出されました: .{{ext}}",
       "loading": "Loading LUTs...",
       "configureHotkey": "Configure hotkey",
-      "saveAsDefault": "デフォルトとして保存"
+      "saveAsDefault": "デフォルトとして保存",
+      "resetToDefault": "デフォルトに戻す"
     },
     "slider": {
       "clickToEdit": "クリックして編集",

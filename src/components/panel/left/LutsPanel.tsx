@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { invoke } from '@tauri-apps/api/core';
 import { open } from '@tauri-apps/plugin-dialog';
 import clsx from 'clsx';
-import { ImageOff, Keyboard, Loader2, Save, Trash2, Upload, X } from 'lucide-react';
+import { ImageOff, Keyboard, Loader2, RotateCcw, Save, Upload, X } from 'lucide-react';
 import { toast } from 'react-toastify';
 
 import Slider from '../../ui/Slider';
@@ -306,8 +306,21 @@ export default function LutsPanel({ isVisible, panelWidth }: LutsPanelProps) {
       inputRange: lutInputRange,
       timing: 'before',
     });
-    toast.success(t('ui.lut.savedAsDefault'));
-  }, [selectedLutPath, lutIntensity, lutInputOffset, lutInputRange, t]);
+  }, [selectedLutPath, lutIntensity, lutInputOffset, lutInputRange]);
+
+  const handleResetToDefault = useCallback(() => {
+    if (!selectedLutPath) return;
+    const defaultParams = resolveLutParams(appSettings, selectedLutPath);
+    setAdjustments((prev) => ({
+      ...prev,
+      ...lutParamsToAdjustments(defaultParams),
+    }));
+  }, [selectedLutPath, appSettings, setAdjustments]);
+
+  const defaultParams = useMemo(
+    () => (selectedLutPath ? resolveLutParams(appSettings, selectedLutPath) : DEFAULT_LUT_PARAMS),
+    [appSettings, selectedLutPath],
+  );
 
   const selectedEntry = useMemo(
     () => entries.find((entry) => entry.path === selectedLutPath) || null,
@@ -429,10 +442,14 @@ export default function LutsPanel({ isVisible, panelWidth }: LutsPanelProps) {
                       lutIntensity={lutIntensity}
                       lutInputOffset={lutInputOffset}
                       lutInputRange={lutInputRange}
+                      defaultIntensity={defaultParams.intensity}
+                      defaultInputOffset={defaultParams.inputOffset}
+                      defaultInputRange={defaultParams.inputRange}
                       onDragStateChange={handleDragStateChange}
                       onUpdate={updateLutAdjustment}
                       onClear={handleClear}
                       onSaveAsDefault={handleSaveAsDefault}
+                      onResetToDefault={handleResetToDefault}
                     />
                   )}
                 </Fragment>
@@ -471,10 +488,14 @@ interface LutDetailPanelProps {
   lutIntensity: number;
   lutInputOffset: number;
   lutInputRange: number;
+  defaultIntensity: number;
+  defaultInputOffset: number;
+  defaultInputRange: number;
   onDragStateChange: (isDragging: boolean) => void;
   onUpdate: (adjustmentPatch: Partial<Adjustments>) => void;
   onClear: () => void;
   onSaveAsDefault: () => void;
+  onResetToDefault: () => void;
 }
 
 const LutDetailPanel = memo(function LutDetailPanel({
@@ -482,12 +503,19 @@ const LutDetailPanel = memo(function LutDetailPanel({
   lutIntensity,
   lutInputOffset,
   lutInputRange,
+  defaultIntensity,
+  defaultInputOffset,
+  defaultInputRange,
   onDragStateChange,
   onUpdate,
   onClear,
   onSaveAsDefault,
+  onResetToDefault,
 }: LutDetailPanelProps) {
   const { t } = useTranslation();
+
+  const isAlreadyDefault =
+    lutIntensity === defaultIntensity && lutInputOffset === defaultInputOffset && lutInputRange === defaultInputRange;
 
   const handleIntensityChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -565,22 +593,26 @@ const LutDetailPanel = memo(function LutDetailPanel({
           fillOrigin="min"
         />
 
-        <button
-          className="w-full flex items-center justify-center gap-1.5 px-2 py-1.5 text-sm font-medium rounded-md bg-card-active text-text-secondary hover:bg-surface transition-colors mt-2"
-          onClick={onSaveAsDefault}
-          data-tooltip={t('ui.lut.saveAsDefault')}
-        >
-          <Save size={14} />
-          {t('ui.lut.saveAsDefault')}
-        </button>
-
-        <button
-          className="w-full flex items-center justify-center gap-1.5 px-2 py-1.5 text-sm font-medium rounded-md bg-card-active text-text-secondary hover:bg-surface transition-colors"
-          onClick={onClear}
-        >
-          <Trash2 size={14} />
-          {t('ui.lut.clearLut')}
-        </button>
+        <div className="flex gap-2 mt-2">
+          <button
+            className="flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 text-sm font-medium rounded-md bg-card-active text-text-secondary hover:bg-surface disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            onClick={onSaveAsDefault}
+            disabled={isAlreadyDefault}
+            data-tooltip={t('ui.lut.saveAsDefault')}
+          >
+            <Save size={14} />
+            {t('ui.lut.saveAsDefault')}
+          </button>
+          <button
+            className="flex items-center justify-center px-2 py-1.5 rounded-md bg-card-active text-text-secondary hover:bg-surface disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            onClick={onResetToDefault}
+            disabled={isAlreadyDefault}
+            data-tooltip={t('ui.lut.resetToDefault')}
+            aria-label={t('ui.lut.resetToDefault')}
+          >
+            <RotateCcw size={14} />
+          </button>
+        </div>
       </div>
     </div>
   );

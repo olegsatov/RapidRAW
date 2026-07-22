@@ -1995,7 +1995,8 @@
       "unsupportedFormat": "Обнаружены неподдерживаемые форматы файлов: .{{ext}}",
       "loading": "Loading LUTs...",
       "configureHotkey": "Configure hotkey",
-      "saveAsDefault": "Сохранить как стандартные"
+      "saveAsDefault": "Сохранить как стандартные",
+      "resetToDefault": "Сбросить к стандартным"
     },
     "slider": {
       "clickToEdit": "Нажмите для точного ввода",

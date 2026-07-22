@@ -1883,7 +1883,8 @@
       "unsupportedFormat": "Wykryto nieobsługiwany format pliku: .{{ext}}",
       "loading": "Loading LUTs...",
       "configureHotkey": "Configure hotkey",
-      "saveAsDefault": "Zapisz jako domyślne"
+      "saveAsDefault": "Zapisz jako domyślne",
+      "resetToDefault": "Przywróć domyślne"
     },
     "slider": {
       "clickToEdit": "Kliknij, aby edytować",

@@ -1819,7 +1819,8 @@
       "unsupportedFormat": "檢測到不支援的檔案格式：.{{ext}}",
       "loading": "Loading LUTs...",
       "configureHotkey": "Configure hotkey",
-      "saveAsDefault": "儲存為預設"
+      "saveAsDefault": "儲存為預設",
+      "resetToDefault": "重設為預設"
     },
     "slider": {
       "clickToEdit": "點選編輯",
