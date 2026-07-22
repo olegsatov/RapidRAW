@@ -21,7 +21,7 @@ import { Invokes, Panel } from '../components/ui/AppProperties';
 import { globalImageCache } from '../utils/ImageLRUCache';
 import { globalHistoryCache } from '../utils/historyCache';
 import { PRESET_SECTION_VISIBILITY_KEYS } from '../utils/presetUtils';
-import { lutParamsToAdjustments, resolveLutParams } from '../utils/lutSettings';
+import { getEffectiveLutParams, lutParamsToAdjustments } from '../utils/lutSettings';
 
 export const debouncedSetHistory = debounce((newAdj: Adjustments, source: Panel | null = null) => {
   useEditorStore.getState().pushHistory(newAdj, source);
@@ -98,21 +98,23 @@ export function useEditorActions() {
           isAndroid && path.startsWith('content://')
             ? await invoke<string>('resolve_android_content_uri_name', { uriStr: path })
             : path.split(/[\\/]/).pop() || 'LUT';
-        // Restore the per-LUT saved params (defaults for an unconfigured LUT)
-        // so the LUT always comes in the way it was dialed in.
-        const lutParams = lutParamsToAdjustments(resolveLutParams(settingsState.appSettings, path));
-        setAdjustments((prev: Adjustments) => ({
-          ...prev,
-          ...lutParams,
-          lutPath: path,
-          lutName: name,
-          lutSize: result.size,
-          sectionVisibility: {
-            ...(prev.sectionVisibility || INITIAL_ADJUSTMENTS.sectionVisibility),
-            effects: true,
-            lut: true,
-          },
-        }));
+        // Restore per-image LUT params if the current image has them, otherwise
+        // fall back to the global per-LUT defaults.
+        setAdjustments((prev: Adjustments) => {
+          const lutParams = lutParamsToAdjustments(getEffectiveLutParams(settingsState.appSettings, prev, path));
+          return {
+            ...prev,
+            ...lutParams,
+            lutPath: path,
+            lutName: name,
+            lutSize: result.size,
+            sectionVisibility: {
+              ...(prev.sectionVisibility || INITIAL_ADJUSTMENTS.sectionVisibility),
+              effects: true,
+              lut: true,
+            },
+          };
+        });
       } catch (err) {
         toast.error(`Failed to load LUT: ${err}`);
       }
@@ -129,7 +131,9 @@ export function useEditorActions() {
         }
         if (state.previewOverride?.lutPath === path) return state;
         const name = path.split(/[\\/]/).pop() || 'LUT';
-        const lutParams = lutParamsToAdjustments(resolveLutParams(useSettingsStore.getState().appSettings, path));
+        const lutParams = lutParamsToAdjustments(
+          getEffectiveLutParams(useSettingsStore.getState().appSettings, state.adjustments, path),
+        );
         return {
           previewOverride: {
             ...state.adjustments,

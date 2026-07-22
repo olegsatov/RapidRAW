@@ -41,6 +41,29 @@ export function resolveLutParams(appSettings: AppSettings | null, path: string):
   };
 }
 
+// Per-image LUT params override the global defaults for the current image.
+// They live in the image sidecar (Adjustments.lutPerImageParams) and take
+// precedence over AppSettings.lutSettings when a LUT is selected or previewed.
+export function getEffectiveLutParams(
+  appSettings: AppSettings | null,
+  adjustments: Adjustments,
+  path: string,
+): ResolvedLutParams {
+  return adjustments.lutPerImageParams?.[path] ?? resolveLutParams(appSettings, path);
+}
+
+export function resolvedLutParamsToLutFileSettings(params: ResolvedLutParams): LutFileSettings {
+  return {
+    intensity: params.intensity,
+    timing: params.timing,
+    inputRange: params.inputRange,
+    inputOffset: params.inputOffset,
+    offsetCompensation: params.offsetCompensation,
+    wbTemperatureShift: params.wbTemperatureShift,
+    wbTintShift: params.wbTintShift,
+  };
+}
+
 export function lutParamsToAdjustments(params: ResolvedLutParams): Partial<Adjustments> {
   // LUTs are always applied before the tonemapper; coerce any stored timing.
   const timing = 'before' as const;

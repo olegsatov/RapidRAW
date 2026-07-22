@@ -323,6 +323,18 @@ export interface Adjustments {
   lutOffsetCompensation?: boolean;
   lutWbTemperatureShift?: number;
   lutWbTintShift?: number;
+  lutPerImageParams?: Record<
+    string,
+    {
+      intensity: number;
+      timing: 'after' | 'before';
+      inputRange: number;
+      inputOffset: number;
+      offsetCompensation: boolean;
+      wbTemperatureShift: number;
+      wbTintShift: number;
+    }
+  >;
   masks: Array<MaskContainer>;
   orientationSteps: number;
   rotation: number;
@@ -824,6 +836,7 @@ export const INITIAL_ADJUSTMENTS: Adjustments = {
   lutOffsetCompensation: false,
   lutWbTemperatureShift: 0,
   lutWbTintShift: 0,
+  lutPerImageParams: {},
   masks: [],
   orientationSteps: 0,
   rotation: 0,

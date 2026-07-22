@@ -18,8 +18,11 @@ import ConfigureLutHotkeyModal from '../../modals/ConfigureLutHotkeyModal';
 import { Adjustments, INITIAL_ADJUSTMENTS } from '../../../utils/adjustments';
 import {
   DEFAULT_LUT_PARAMS,
+  ResolvedLutParams,
+  getEffectiveLutParams,
   lutParamsToAdjustments,
   resolveLutParams,
+  resolvedLutParamsToLutFileSettings,
   saveLutParams,
 } from '../../../utils/lutSettings';
 import { formatKeyCode } from '../../../utils/keyboardUtils';
@@ -90,6 +93,7 @@ export default function LutsPanel({ isVisible, panelWidth }: LutsPanelProps) {
         'lutOffsetCompensation',
         'lutWbTemperatureShift',
         'lutWbTintShift',
+        'lutPerImageParams',
       ]),
     [],
   );
@@ -141,8 +145,10 @@ export default function LutsPanel({ isVisible, panelWidth }: LutsPanelProps) {
       return;
     }
 
-    const keyFor = (path: string) =>
-      `${selectedImagePath}|${adjustmentsKey}|${JSON.stringify(appSettings?.lutSettings?.[path] ?? null)}`;
+    const keyFor = (path: string) => {
+      const perImage = adjustments.lutPerImageParams?.[path];
+      return `${selectedImagePath}|${adjustmentsKey}|${JSON.stringify(perImage ?? appSettings?.lutSettings?.[path] ?? null)}`;
+    };
     const stalePaths = entries
       .map((entry) => entry.path)
       .filter((path) => previewCache.current.get(path)?.key !== keyFor(path));
@@ -159,10 +165,8 @@ export default function LutsPanel({ isVisible, panelWidth }: LutsPanelProps) {
     previewTimer.current = setTimeout(() => {
       const lutParams: Record<string, LutFileSettings> = {};
       stalePaths.forEach((path) => {
-        const stored = appSettings?.lutSettings?.[path];
-        if (stored) {
-          lutParams[path] = stored;
-        }
+        const effective = getEffectiveLutParams(appSettings, adjustments, path);
+        lutParams[path] = resolvedLutParamsToLutFileSettings(effective);
       });
 
       setIsLoadingPreviews(true);
@@ -196,7 +200,7 @@ export default function LutsPanel({ isVisible, panelWidth }: LutsPanelProps) {
         clearTimeout(previewTimer.current);
       }
     };
-  }, [isVisible, selectedImagePath, isImageReady, entries, appSettings?.lutSettings, adjustmentsKey]);
+  }, [isVisible, selectedImagePath, isImageReady, entries, appSettings?.lutSettings, adjustmentsKey, adjustments.lutPerImageParams]);
 
   useEffect(() => {
     return () => {
@@ -338,12 +342,24 @@ export default function LutsPanel({ isVisible, panelWidth }: LutsPanelProps) {
 
   const updateLutAdjustment = useCallback(
     (adjustmentPatch: Partial<Adjustments>) => {
-      setAdjustments((prev) => ({
-        ...prev,
-        ...adjustmentPatch,
-      }));
+      setAdjustments((prev) => {
+        const next: Adjustments = { ...prev, ...adjustmentPatch };
+        if (selectedLutPath) {
+          const resolved: ResolvedLutParams = {
+            intensity: next.lutIntensity ?? DEFAULT_LUT_PARAMS.intensity,
+            timing: 'before',
+            inputRange: next.lutInputRange ?? DEFAULT_LUT_PARAMS.inputRange,
+            inputOffset: next.lutInputOffset ?? DEFAULT_LUT_PARAMS.inputOffset,
+            offsetCompensation: next.lutOffsetCompensation ?? DEFAULT_LUT_PARAMS.offsetCompensation,
+            wbTemperatureShift: next.lutWbTemperatureShift ?? DEFAULT_LUT_PARAMS.wbTemperatureShift,
+            wbTintShift: next.lutWbTintShift ?? DEFAULT_LUT_PARAMS.wbTintShift,
+          };
+          next.lutPerImageParams = { ...prev.lutPerImageParams, [selectedLutPath]: resolved };
+        }
+        return next;
+      });
     },
-    [setAdjustments],
+    [selectedLutPath, setAdjustments],
   );
 
   const handleSaveAsDefault = useCallback(() => {
@@ -361,10 +377,14 @@ export default function LutsPanel({ isVisible, panelWidth }: LutsPanelProps) {
   const handleResetToDefault = useCallback(() => {
     if (!selectedLutPath) return;
     const defaultParams = resolveLutParams(appSettings, selectedLutPath);
-    setAdjustments((prev) => ({
-      ...prev,
-      ...lutParamsToAdjustments(defaultParams),
-    }));
+    setAdjustments((prev) => {
+      const next: Adjustments = { ...prev, ...lutParamsToAdjustments(defaultParams) };
+      if (prev.lutPerImageParams?.[selectedLutPath]) {
+        const { [selectedLutPath]: _, ...rest } = prev.lutPerImageParams;
+        next.lutPerImageParams = rest;
+      }
+      return next;
+    });
   }, [selectedLutPath, appSettings, setAdjustments]);
 
   const defaultParams = useMemo(
