@@ -605,7 +605,9 @@
         "pasteSettings": "貼上設定",
         "resetSectionSettings": "重置 {{section}} 設定",
         "select": "選擇",
-        "selectPresetTooltip": "選擇一個預設以應用"
+        "selectPresetTooltip": "選擇一個預設以應用",
+        "showOverlay": "Show mask overlay",
+        "liveMode": "Live mode"
       },
       "toggleAnalyticsTooltip": "切換分析顯示",
       "tooltips": {

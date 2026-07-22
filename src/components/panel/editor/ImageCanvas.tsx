@@ -1769,12 +1769,12 @@ const ImageCanvas = memo(
     const isToolActive = isBrushActive || isAiSubjectActive || isInitialDrawing || isParametricActive;
 
     useEffect(() => {
-      if (maskOverlayUrl && (isMasking || isAiEditing)) {
+      if (maskOverlayUrl && (isMasking || isAiEditing) && activeSubMask?.showOverlay) {
         setDisplayedMaskUrl(maskOverlayUrl);
       } else {
         setDisplayedMaskUrl(null);
       }
-    }, [maskOverlayUrl, isMasking, isAiEditing]);
+    }, [maskOverlayUrl, isMasking, isAiEditing, activeSubMask?.showOverlay]);
 
     useEffect(() => {
       if (isToolActive) {
@@ -2158,6 +2158,10 @@ const ImageCanvas = memo(
           activeStrokeIndex.current = null;
           drawingStageRef.current = stage;
 
+          if (activeSubMask?.type === Mask.Flow && activeSubMask?.liveMode) {
+            activeStrokeIndex.current = activeSubMask.parameters?.lines?.length ?? 0;
+          }
+
           if (isManualCleanupActive) {
             setIsMaskInteractionActive(true);
           }
@@ -2369,6 +2373,32 @@ const ImageCanvas = memo(
             if (sourceX !== undefined && sourceY !== undefined) {
               triggerManualCleanup(activeId, sourceX, sourceY);
             }
+          } else if (activeSubMask?.type === Mask.Flow && activeSubMask?.liveMode && activeId) {
+            const { scale } = imageRenderSize;
+
+            const imageSpaceLine: DrawnLine = {
+              brushSize: brushImageSpaceSize,
+              feather: brushSettings?.feather ? brushSettings?.feather / 100 : 0,
+              flow: activeLineFlow,
+              points: updatedLine.points.map((p: Coord) => ({
+                x: p.x / scale + cropX,
+                y: p.y / scale + cropY,
+              })),
+              tool: updatedLine.tool,
+            };
+
+            const existingLines = activeSubMask?.parameters?.lines ? [...activeSubMask.parameters.lines] : [];
+
+            if (activeStrokeIndex.current !== null) {
+              existingLines[activeStrokeIndex.current] = imageSpaceLine;
+            }
+
+            updateSubMask(activeId, {
+              parameters: {
+                ...activeSubMask?.parameters,
+                lines: existingLines,
+              },
+            });
           } else if (onLiveMaskPreview && activeContainer && activeSubMask && isBrushActive) {
             const { scale } = imageRenderSize;
 
@@ -2989,7 +3019,7 @@ const ImageCanvas = memo(
                   }
                 />
               )}
-              {displayedMaskUrl && (
+              {displayedMaskUrl && activeSubMask?.showOverlay && (
                 <img
                   alt="Mask Overlay"
                   className="absolute object-contain pointer-events-none"
@@ -3174,22 +3204,38 @@ const ImageCanvas = memo(
                         cursorPreview.visible &&
                         (!isManualCleanupActive ||
                           (activeSubMask?.parameters?.sourceX !== undefined && !isCtrlPressed)) && (
-                          <Circle
-                            {...(brushCursorPreview.colorStops
-                              ? {
-                                  fillRadialGradientColorStops: brushCursorPreview.colorStops,
-                                  fillRadialGradientEndPoint: { x: 0, y: 0 },
-                                  fillRadialGradientEndRadius: brushCursorPreview.radius,
-                                  fillRadialGradientStartPoint: { x: 0, y: 0 },
-                                  fillRadialGradientStartRadius: 0,
-                                }
-                              : { fill: brushCursorPreview.fill })}
-                            listening={false}
-                            perfectDrawEnabled={false}
-                            radius={brushCursorPreview.radius}
-                            x={cursorPreview.x}
-                            y={cursorPreview.y}
-                          />
+                          <>
+                            {activeSubMask?.type !== Mask.Flow && (
+                              <Circle
+                                {...(brushCursorPreview.colorStops
+                                  ? {
+                                      fillRadialGradientColorStops: brushCursorPreview.colorStops,
+                                      fillRadialGradientEndPoint: { x: 0, y: 0 },
+                                      fillRadialGradientEndRadius: brushCursorPreview.radius,
+                                      fillRadialGradientStartPoint: { x: 0, y: 0 },
+                                      fillRadialGradientStartRadius: 0,
+                                    }
+                                  : { fill: brushCursorPreview.fill })}
+                                listening={false}
+                                perfectDrawEnabled={false}
+                                radius={brushCursorPreview.radius}
+                                x={cursorPreview.x}
+                                y={cursorPreview.y}
+                              />
+                            )}
+                            {activeSubMask?.type === Mask.Flow && (
+                              <Circle
+                                listening={false}
+                                perfectDrawEnabled={false}
+                                radius={brushCursorPreview.radius}
+                                stroke="rgba(255, 255, 255, 0.5)"
+                                strokeWidth={1}
+                                dash={[4, 4]}
+                                x={cursorPreview.x}
+                                y={cursorPreview.y}
+                              />
+                            )}
+                          </>
                         )}
                     </Group>
                   </Group>

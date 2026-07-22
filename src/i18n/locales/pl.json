@@ -643,7 +643,9 @@
         "pasteSettings": "Wklej ustawienia",
         "resetSectionSettings": "Resetuj ustawienia sekcji {{section}}",
         "select": "Wybierz",
-        "selectPresetTooltip": "Wybierz preset do zastosowania"
+        "selectPresetTooltip": "Wybierz preset do zastosowania",
+        "showOverlay": "Show mask overlay",
+        "liveMode": "Live mode"
       },
       "toggleAnalyticsTooltip": "Przełącz widok analityki",
       "tooltips": {

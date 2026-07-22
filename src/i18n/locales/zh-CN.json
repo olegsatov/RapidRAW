@@ -605,7 +605,9 @@
         "pasteSettings": "粘贴设置",
         "resetSectionSettings": "重置 {{section}} 设置",
         "select": "选择",
-        "selectPresetTooltip": "选择一个预设以应用"
+        "selectPresetTooltip": "选择一个预设以应用",
+        "showOverlay": "Show mask overlay",
+        "liveMode": "Live mode"
       },
       "toggleAnalyticsTooltip": "切换分析显示",
       "tooltips": {

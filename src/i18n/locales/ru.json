@@ -728,7 +728,9 @@
         "pasteSettings": "Вставить настройки",
         "resetSectionSettings": "Сбросить настройки раздела {{section}}",
         "select": "Выбрать",
-        "selectPresetTooltip": "Выберите пресет для применения"
+        "selectPresetTooltip": "Выберите пресет для применения",
+        "showOverlay": "Show mask overlay",
+        "liveMode": "Live mode"
       },
       "toggleAnalyticsTooltip": "Показать/скрыть панель гистограммы",
       "tooltips": {

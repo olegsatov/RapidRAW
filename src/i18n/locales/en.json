@@ -729,7 +729,9 @@
         "pasteSettings": "Paste Settings",
         "resetSectionSettings": "Reset {{section}} Settings",
         "select": "Select",
-        "selectPresetTooltip": "Select a preset to apply"
+        "selectPresetTooltip": "Select a preset to apply",
+        "showOverlay": "Show mask overlay",
+        "liveMode": "Live mode"
       },
       "toggleAnalyticsTooltip": "Toggle Analytics Display",
       "tooltips": {

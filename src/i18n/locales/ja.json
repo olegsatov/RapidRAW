@@ -605,7 +605,9 @@
         "pasteSettings": "設定を貼り付け",
         "resetSectionSettings": "{{section}}設定をリセット",
         "select": "選択",
-        "selectPresetTooltip": "適用するプリセットを選択"
+        "selectPresetTooltip": "適用するプリセットを選択",
+        "showOverlay": "Show mask overlay",
+        "liveMode": "Live mode"
       },
       "toggleAnalyticsTooltip": "アナリティクス表示の切り替え",
       "tooltips": {

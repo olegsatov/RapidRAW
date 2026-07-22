@@ -605,7 +605,9 @@
         "pasteSettings": "설정 붙여넣기",
         "resetSectionSettings": "{{section}} 설정 초기화",
         "select": "선택",
-        "selectPresetTooltip": "적용할 프리셋 선택"
+        "selectPresetTooltip": "적용할 프리셋 선택",
+        "showOverlay": "Show mask overlay",
+        "liveMode": "Live mode"
       },
       "toggleAnalyticsTooltip": "분석 표시 전환",
       "tooltips": {

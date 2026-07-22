@@ -605,7 +605,9 @@
         "pasteSettings": "Einstellungen einfügen",
         "resetSectionSettings": "{{section}}-Einstellungen zurücksetzen",
         "select": "Auswählen",
-        "selectPresetTooltip": "Eine Vorgabe zum Anwenden auswählen"
+        "selectPresetTooltip": "Eine Vorgabe zum Anwenden auswählen",
+        "showOverlay": "Show mask overlay",
+        "liveMode": "Live mode"
       },
       "toggleAnalyticsTooltip": "Analyseanzeige umschalten",
       "tooltips": {

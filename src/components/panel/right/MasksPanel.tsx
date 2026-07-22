@@ -2407,6 +2407,22 @@ function SettingsPanel({
         isContentVisible={true}
       >
         <div className="space-y-4 pt-2">
+          {isComponentMode && (
+            <>
+              <Switch
+                checked={!!activeSubMask.showOverlay}
+                label={t('editor.masks.settings.showOverlay')}
+                onChange={(v) => updateSubMask(activeSubMask.id, { showOverlay: v })}
+              />
+              {activeSubMask?.type === Mask.Flow && (
+                <Switch
+                  checked={!!activeSubMask.liveMode}
+                  label={t('editor.masks.settings.liveMode')}
+                  onChange={(v) => updateSubMask(activeSubMask.id, { liveMode: v })}
+                />
+              )}
+            </>
+          )}
           <Switch
             checked={!!(isComponentMode ? activeSubMask.invert : displayContainer.invert)}
             label={isComponentMode ? t('editor.masks.settings.invertComponent') : t('editor.masks.settings.invertMask')}

@@ -605,7 +605,9 @@
         "pasteSettings": "Pegar ajustes",
         "resetSectionSettings": "Restablecer ajustes de {{section}}",
         "select": "Seleccionar",
-        "selectPresetTooltip": "Selecciona un ajuste preestablecido para aplicar"
+        "selectPresetTooltip": "Selecciona un ajuste preestablecido para aplicar",
+        "showOverlay": "Show mask overlay",
+        "liveMode": "Live mode"
       },
       "toggleAnalyticsTooltip": "Alternar vista de análisis",
       "tooltips": {

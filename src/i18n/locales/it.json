@@ -605,7 +605,9 @@
         "pasteSettings": "Incolla Impostazioni",
         "resetSectionSettings": "Ripristina Impostazioni {{section}}",
         "select": "Seleziona",
-        "selectPresetTooltip": "Seleziona un predefinito da applicare"
+        "selectPresetTooltip": "Seleziona un predefinito da applicare",
+        "showOverlay": "Show mask overlay",
+        "liveMode": "Live mode"
       },
       "toggleAnalyticsTooltip": "Attiva/Disattiva Visualizzazione Analitiche",
       "tooltips": {

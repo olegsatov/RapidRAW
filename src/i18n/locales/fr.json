@@ -605,7 +605,9 @@
         "pasteSettings": "Coller les paramètres",
         "resetSectionSettings": "Réinitialiser les paramètres de la section {{section}}",
         "select": "Sélectionner",
-        "selectPresetTooltip": "Sélectionner un paramètre prédéfini à appliquer"
+        "selectPresetTooltip": "Sélectionner un paramètre prédéfini à appliquer",
+        "showOverlay": "Show mask overlay",
+        "liveMode": "Live mode"
       },
       "toggleAnalyticsTooltip": "Basculer l'affichage des analyses",
       "tooltips": {

@@ -605,7 +605,9 @@
         "pasteSettings": "Colar Configurações",
         "resetSectionSettings": "Redefinir Configurações de {{section}}",
         "select": "Selecionar",
-        "selectPresetTooltip": "Selecione uma predefinição para aplicar"
+        "selectPresetTooltip": "Selecione uma predefinição para aplicar",
+        "showOverlay": "Show mask overlay",
+        "liveMode": "Live mode"
       },
       "toggleAnalyticsTooltip": "Alternar Exibição de Análises",
       "tooltips": {

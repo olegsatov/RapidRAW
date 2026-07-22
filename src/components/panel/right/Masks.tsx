@@ -59,10 +59,12 @@ export interface MaskType {
 export interface SubMask {
   id: string;
   invert: boolean;
+  liveMode?: boolean;
   mode: SubMaskMode;
   name?: string;
   opacity: number;
   parameters?: any;
+  showOverlay?: boolean;
   type: Mask;
   visible: boolean;
 }
