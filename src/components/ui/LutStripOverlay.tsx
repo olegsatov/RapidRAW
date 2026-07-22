@@ -15,9 +15,14 @@ export default function LutStripOverlay() {
   const { lutStrip } = useGestureStore();
   const containerRef = useRef<HTMLDivElement>(null);
   const rafRef = useRef<number | null>(null);
+  const lastSelectedIndexRef = useRef<number | null>(null);
 
   useEffect(() => {
-    if (!containerRef.current || !lutStrip) return;
+    if (!lutStrip) {
+      lastSelectedIndexRef.current = null;
+      return;
+    }
+    if (!containerRef.current) return;
     const container = containerRef.current;
     const thumbTotal = THUMB_SIZE + 8; // thumb + gap
     const selectedTop = lutStrip.selectedIndex * thumbTotal;
@@ -33,6 +38,14 @@ export default function LutStripOverlay() {
 
     const maxScroll = container.scrollHeight - container.clientHeight;
     target = Math.max(0, Math.min(target, maxScroll));
+
+    const isInitial = lastSelectedIndexRef.current === null;
+    lastSelectedIndexRef.current = lutStrip.selectedIndex;
+
+    if (isInitial) {
+      container.scrollTop = target;
+      return;
+    }
 
     if (rafRef.current !== null) {
       cancelAnimationFrame(rafRef.current);
@@ -61,7 +74,7 @@ export default function LutStripOverlay() {
         rafRef.current = null;
       }
     };
-  }, [lutStrip?.selectedIndex, lutStrip?.entries.length]);
+  }, [lutStrip?.selectedIndex]);
 
   if (!lutStrip || lutStrip.entries.length === 0) return null;
 
