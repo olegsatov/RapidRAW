@@ -44,11 +44,8 @@ export default function GestureOverlay() {
 
               {/* knob */}
               <div
-                className={clsx(
-                  'absolute w-3 h-3 rounded-full bg-accent border-2 border-white shadow-md',
-                  'transform -translate-x-1/2 -translate-y-1/2',
-                )}
-                style={{ left: `${left}%`, bottom: `${bottom}%` }}
+                className="absolute w-3 h-3 rounded-full bg-accent border-2 border-white shadow-md"
+                style={{ left: `${left}%`, bottom: `${bottom}%`, transform: 'translate(-50%, -50%)' }}
               />
             </div>
             <div className="text-text-primary/40 text-[10px] font-medium text-center mt-2">{panel.label}</div>
