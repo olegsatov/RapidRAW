@@ -5,9 +5,16 @@ import { useGestureStore } from '../../store/useGestureStore';
 
 const THUMB_SIZE = 150;
 
+const SCROLL_DURATION_MS = 350;
+
+function easeInOutCubic(t: number): number {
+  return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+}
+
 export default function LutStripOverlay() {
   const { lutStrip } = useGestureStore();
   const containerRef = useRef<HTMLDivElement>(null);
+  const rafRef = useRef<number | null>(null);
 
   useEffect(() => {
     if (!containerRef.current || !lutStrip) return;
@@ -25,7 +32,35 @@ export default function LutStripOverlay() {
     }
 
     const maxScroll = container.scrollHeight - container.clientHeight;
-    container.scrollTop = Math.max(0, Math.min(target, maxScroll));
+    target = Math.max(0, Math.min(target, maxScroll));
+
+    if (rafRef.current !== null) {
+      cancelAnimationFrame(rafRef.current);
+    }
+
+    const startScroll = container.scrollTop;
+    const startTime = performance.now();
+
+    const animate = (now: number) => {
+      const elapsed = now - startTime;
+      const progress = Math.min(elapsed / SCROLL_DURATION_MS, 1);
+      const eased = easeInOutCubic(progress);
+      container.scrollTop = startScroll + (target - startScroll) * eased;
+      if (progress < 1) {
+        rafRef.current = requestAnimationFrame(animate);
+      } else {
+        rafRef.current = null;
+      }
+    };
+
+    rafRef.current = requestAnimationFrame(animate);
+
+    return () => {
+      if (rafRef.current !== null) {
+        cancelAnimationFrame(rafRef.current);
+        rafRef.current = null;
+      }
+    };
   }, [lutStrip?.selectedIndex, lutStrip?.entries.length]);
 
   if (!lutStrip || lutStrip.entries.length === 0) return null;
@@ -34,7 +69,7 @@ export default function LutStripOverlay() {
     <div
       ref={containerRef}
       className="absolute left-4 top-1/2 -translate-y-1/2 z-40 pointer-events-none flex flex-col gap-2 p-2 max-h-[calc(100%-48px)] overflow-y-auto bg-bg-secondary/25 backdrop-blur-sm rounded-lg shadow-lg border border-surface/40"
-      style={{ scrollbarWidth: 'none', msOverflowStyle: 'none', scrollBehavior: 'smooth' }}
+      style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
     >
       {lutStrip.entries.map((entry, index) => {
         const isSelected = index === lutStrip.selectedIndex;
