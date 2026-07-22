@@ -10,7 +10,14 @@ import { useEditorActions } from './useEditorActions';
 import { getEffectiveKeybind, KEYBIND_DEFINITIONS } from '../utils/keyboardUtils';
 import { GESTURE_BINDINGS, GestureBinding, GestureParam } from '../utils/gestureBindings';
 import { Adjustments, INITIAL_ADJUSTMENTS } from '../utils/adjustments';
-import { DEFAULT_LUT_PARAMS, lutParamsToAdjustments } from '../utils/lutSettings';
+import {
+  DEFAULT_LUT_PARAMS,
+  ResolvedLutParams,
+  getEffectiveLutParams,
+  lutParamsToAdjustments,
+  resolvedLutParamsToLutFileSettings,
+} from '../utils/lutSettings';
+import type { LutFileSettings } from '../components/ui/AppProperties';
 import {
   AxisLock,
   clamp,
@@ -90,6 +97,9 @@ export function useGestureAdjust() {
           'lutInputRange',
           'lutInputOffset',
           'lutOffsetCompensation',
+          'lutWbTemperatureShift',
+          'lutWbTintShift',
+          'lutPerImageParams',
         ]);
         const previewAdjustments: Record<string, unknown> = {};
         Object.entries(adjustments).forEach(([key, value]) => {
@@ -103,16 +113,10 @@ export function useGestureAdjust() {
           lut: true,
         };
 
-        const lutParams: Record<string, { intensity?: number; inputRange?: number; inputOffset?: number }> = {};
+        const lutParams: Record<string, LutFileSettings> = {};
         entries.forEach((entry) => {
-          const stored = appSettings?.lutSettings?.[entry.path];
-          if (stored) {
-            lutParams[entry.path] = {
-              intensity: stored.intensity,
-              inputRange: stored.inputRange,
-              inputOffset: stored.inputOffset,
-            };
-          }
+          const effective = getEffectiveLutParams(appSettings, adjustments, entry.path);
+          lutParams[entry.path] = resolvedLutParamsToLutFileSettings(effective);
         });
 
         useGestureStore.getState().startLutStrip(stripEntries, selectedIndex);
@@ -280,11 +284,31 @@ export function useGestureAdjust() {
       return true;
     };
 
+    const LUT_GESTURE_PARAM_KEYS = new Set([
+      'lutIntensity',
+      'lutInputOffset',
+      'lutInputRange',
+      'lutWbTemperatureShift',
+      'lutWbTintShift',
+    ]);
+
     const applyDelta = (param: GestureParam, rawDelta: number) => {
       if (rawDelta === 0) return;
       setAdjustments((prev) => {
         const current = prev[param.key] ?? (INITIAL_ADJUSTMENTS[param.key] as number | undefined) ?? 0;
-        const next = { ...prev, [param.key]: clamp(current + rawDelta, param.min, param.max) };
+        const next: Adjustments = { ...prev, [param.key]: clamp(current + rawDelta, param.min, param.max) };
+        if (prev.lutPath && LUT_GESTURE_PARAM_KEYS.has(param.key)) {
+          const resolved: ResolvedLutParams = {
+            intensity: next.lutIntensity ?? DEFAULT_LUT_PARAMS.intensity,
+            timing: 'before',
+            inputRange: next.lutInputRange ?? DEFAULT_LUT_PARAMS.inputRange,
+            inputOffset: next.lutInputOffset ?? DEFAULT_LUT_PARAMS.inputOffset,
+            offsetCompensation: next.lutOffsetCompensation ?? DEFAULT_LUT_PARAMS.offsetCompensation,
+            wbTemperatureShift: next.lutWbTemperatureShift ?? DEFAULT_LUT_PARAMS.wbTemperatureShift,
+            wbTintShift: next.lutWbTintShift ?? DEFAULT_LUT_PARAMS.wbTintShift,
+          };
+          next.lutPerImageParams = { ...prev.lutPerImageParams, [prev.lutPath]: resolved };
+        }
         updateOverlayValues(next);
         return next;
       });
