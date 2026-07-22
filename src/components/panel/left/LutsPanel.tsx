@@ -506,7 +506,7 @@ const LutDetailPanel = memo(function LutDetailPanel({
 
   return (
     <div
-      className="w-full mt-4 pt-3 border-t border-surface"
+      className="w-full mt-4 pt-3 pb-5 border-t border-surface"
       onClick={(e) => e.stopPropagation()}
       onPointerDown={(e) => e.stopPropagation()}
     >
