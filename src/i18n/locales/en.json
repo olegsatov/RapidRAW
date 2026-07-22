@@ -1986,6 +1986,7 @@
       "intensity": "Intensity",
       "label": "LUT",
       "noLut": "No LUT",
+      "disabledLut": "LUT disabled",
       "loading": "Loading LUTs...",
       "luts": "LUTs",
       "mode": "Mode",

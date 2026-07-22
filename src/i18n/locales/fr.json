@@ -1813,6 +1813,7 @@
       "intensity": "Intensité",
       "label": "LUT",
       "noLut": "Aucune LUT",
+      "disabledLut": "LUT désactivée",
       "offsetCompensation": "Compenser la luminosité",
       "removeLut": "Supprimer la LUT",
       "select": "Sélectionner",

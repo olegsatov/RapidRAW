@@ -1978,6 +1978,7 @@
       "intensity": "Интенсивность",
       "label": "LUT",
       "noLut": "Без LUT",
+      "disabledLut": "LUT отключён",
       "luts": "LUT-ы",
       "mode": "Режим",
       "parameters": "Параметры",

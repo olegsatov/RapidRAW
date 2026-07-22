@@ -75,7 +75,7 @@ export function useGestureAdjust() {
         const appSettings = useSettingsStore.getState().appSettings;
         const currentPath = adjustments.lutPath ?? null;
 
-        const noLutEntry = { path: NO_LUT_PATH, name: t('ui.lut.noLut'), thumb: null };
+        const noLutEntry = { path: NO_LUT_PATH, name: t('ui.lut.disabledLut'), thumb: null };
         const stripEntries = [noLutEntry, ...entries.map((e) => ({ path: e.path, name: e.name, thumb: null }))];
         const selectedIndex = currentPath ? Math.max(1, 1 + entries.findIndex((e) => e.path === currentPath)) : 0;
 

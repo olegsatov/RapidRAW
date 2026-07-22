@@ -1813,6 +1813,7 @@
       "intensity": "강도",
       "label": "LUT",
       "noLut": "LUT 없음",
+      "disabledLut": "LUT 비활성화",
       "offsetCompensation": "밝기 보정",
       "removeLut": "LUT 제거",
       "select": "선택",

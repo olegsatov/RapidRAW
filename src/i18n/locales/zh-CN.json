@@ -1813,6 +1813,7 @@
       "intensity": "强度",
       "label": "LUT",
       "noLut": "无 LUT",
+      "disabledLut": "LUT 已禁用",
       "offsetCompensation": "补偿亮度",
       "removeLut": "移除 LUT",
       "select": "选择",

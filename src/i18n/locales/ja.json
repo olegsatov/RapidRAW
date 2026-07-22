@@ -1812,6 +1812,7 @@
       "intensity": "適用度",
       "label": "LUT",
       "noLut": "LUTなし",
+      "disabledLut": "LUT無効",
       "offsetCompensation": "輝度を補正",
       "removeLut": "LUTを削除",
       "select": "選択",
