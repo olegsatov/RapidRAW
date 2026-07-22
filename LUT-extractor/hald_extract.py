@@ -209,11 +209,8 @@ def extract_lut(path, n_request=None):
     return native_lut, n_native
 
 
-def write_cube(path, lut, n, title="Extracted LUT", swap_rb=True):
-    """Write .cube 3D LUT file.
-    
-    swap_rb=True: compensates for RapidRAW shader R/B axis swap in 3D texture.
-    """
+def write_cube(path, lut, n, title="Extracted LUT"):
+    """Write .cube 3D LUT file (standard R-fastest order)."""
     with open(path, 'w') as f:
         f.write(f'TITLE "{title}"\n')
         f.write(f'LUT_3D_SIZE {n}\n')
@@ -221,28 +218,18 @@ def write_cube(path, lut, n, title="Extracted LUT", swap_rb=True):
         f.write('DOMAIN_MAX 1.0 1.0 1.0\n')
         f.write('\n')
         
+        # Standard .cube: R fastest (innermost), G middle, B slowest (outermost)
         count = 0
-        for ri in range(n):
+        for bi in range(n):
             for gi in range(n):
-                for bi in range(n):
-                    if swap_rb:
-                        # RapidRAW shader reads texture(r,g,b) but gets .cube(b,g,r)
-                        # Pre-swap so stored value compensates
-                        key = (bi, gi, ri)
-                        if key in lut:
-                            r, g, b = lut[key]
-                        else:
-                            r = bi / (n - 1)
-                            g = gi / (n - 1)
-                            b = ri / (n - 1)
+                for ri in range(n):
+                    key = (ri, gi, bi)
+                    if key in lut:
+                        r, g, b = lut[key]
                     else:
-                        key = (ri, gi, bi)
-                        if key in lut:
-                            r, g, b = lut[key]
-                        else:
-                            r = ri / (n - 1)
-                            g = gi / (n - 1)
-                            b = bi / (n - 1)
+                        r = ri / (n - 1)
+                        g = gi / (n - 1)
+                        b = bi / (n - 1)
                     f.write(f'{r:.6f} {g:.6f} {b:.6f}\n')
                     count += 1
     

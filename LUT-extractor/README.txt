@@ -16,12 +16,9 @@ LUT Extractor — извлечение .cube LUT из Dehancer
 
 Файлы:
   hald_identity.py     — генератор identity HALD (если нужен другой размер)
-  hald_extract.py      — экстрактор .cube из обработанного HALD
+  hald_extract.py      — экстрактор .cube из обработанного HALD (поддерживает TIFF/PNG/PPM)
   hald_identity_512.png  — 512×512, куб 64³ (стандарт, 7 MB LUT)
   hald_identity_1024.png — 1024×1024, куб 101³ (точнее, 27 MB LUT)
 
 Готовый LUT:
   Kodak Portra 400.cube — 64³, извлечён из Dehancer v7
-
-Важно: экстрактор автоматически меняет R/B каналы местами —
-это компенсирует баг в шейдере RapidRAW (оси R и B 3D-текстуры перепутаны).
