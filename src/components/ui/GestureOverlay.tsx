@@ -31,12 +31,16 @@ export default function GestureOverlay() {
               style={{ width: PANEL_SIZE, height: PANEL_SIZE }}
             >
               {/* crosshair */}
-              <div className="absolute inset-0 flex items-center justify-center">
-                <div className="w-full h-px bg-text-secondary/20" />
-              </div>
-              <div className="absolute inset-0 flex items-center justify-center">
-                <div className="h-full w-px bg-text-secondary/20" />
-              </div>
+              {panel.orientation !== 'vertical' && (
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <div className="w-full h-px bg-text-secondary/20" />
+                </div>
+              )}
+              {panel.orientation !== 'horizontal' && (
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <div className="h-full w-px bg-text-secondary/20" />
+                </div>
+              )}
 
               {/* knob */}
               <div

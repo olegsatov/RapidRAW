@@ -190,10 +190,10 @@ export function useGestureAdjust() {
             {
               label: t('gesture.overlay.lutIntensity'),
               axisLabels: ['lutIntensity', 'lutIntensity'],
-              values: [adjustments.lutIntensity ?? 100, (binding.scroll[0].max + binding.scroll[0].min) / 2],
+              values: [(binding.scroll[0].max + binding.scroll[0].min) / 2, adjustments.lutIntensity ?? 100],
               min: [binding.scroll[0].min, binding.scroll[1].min],
               max: [binding.scroll[0].max, binding.scroll[1].max],
-              orientation: 'vertical',
+              orientation: 'horizontal',
             },
           ];
         }
@@ -318,7 +318,10 @@ export function useGestureAdjust() {
 
       useGestureStore.getState().setParams(
         session.overlayParams.map((panel) => {
-          const vertical = clamp(adjustments[panel.axisLabels[0]], panel.min[0], panel.max[0]);
+          const vertical =
+            panel.orientation === 'horizontal'
+              ? (panel.max[0] + panel.min[0]) / 2
+              : clamp(adjustments[panel.axisLabels[0]], panel.min[0], panel.max[0]);
           const horizontal =
             panel.orientation === 'vertical'
               ? (panel.max[1] + panel.min[1]) / 2
