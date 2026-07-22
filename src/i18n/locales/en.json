@@ -1253,7 +1253,10 @@
       "cancel": "Cancel",
       "hotkeyLabel": "Hotkey",
       "save": "Save",
-      "title": "Configure LUT hotkey"
+      "title": "Configure LUT",
+      "nameLabel": "Name",
+      "emptyName": "Name cannot be empty",
+      "saveFailed": "Failed to save LUT settings"
     },
     "confirm": {
       "cancel": "Cancel",
@@ -2005,7 +2008,9 @@
       "timingBefore": "Before tone mapper",
       "unsupportedFormat": "Unsupported file format(s) detected: .{{ext}}",
       "saveAsDefault": "Save as default",
-      "resetToDefault": "Reset to default"
+      "resetToDefault": "Reset to default",
+      "configureLut": "Configure LUT",
+      "deleteLut": "Delete LUT"
     },
     "slider": {
       "clickToEdit": "Click to edit",

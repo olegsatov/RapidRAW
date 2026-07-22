@@ -42,6 +42,13 @@ pub struct LutEntry {
 }
 
 #[derive(Serialize)]
+pub struct LutRenameResult {
+    pub old_path: String,
+    pub new_path: String,
+    pub name: String,
+}
+
+#[derive(Serialize)]
 pub struct LutParseResult {
     pub size: u32,
 }
@@ -664,6 +671,75 @@ pub fn remove_lut(app_handle: AppHandle, path: String) -> Result<Vec<LutEntry>, 
     {
         list_luts_in_dir(&luts_dir).map_err(|e| e.to_string())
     }
+}
+
+#[tauri::command]
+pub fn rename_lut(
+    app_handle: AppHandle,
+    path: String,
+    new_name: String,
+) -> Result<LutRenameResult, String> {
+    let data_dir = app_handle
+        .path()
+        .app_data_dir()
+        .map_err(|e| e.to_string())?;
+    let luts_dir = get_luts_dir(&data_dir).map_err(|e| e.to_string())?;
+    let old_path = PathBuf::from(&path);
+
+    #[cfg(target_os = "android")]
+    {
+        let cache_dir = get_lut_cache_dir().map_err(|e| e.to_string())?;
+        if !old_path.starts_with(&luts_dir) && !old_path.starts_with(&cache_dir) {
+            return Err(
+                "Access denied: Cannot rename files outside the user LUT directory".to_string(),
+            );
+        }
+    }
+    #[cfg(not(target_os = "android"))]
+    if !old_path.starts_with(&luts_dir) {
+        return Err(
+            "Access denied: Cannot rename files outside the user LUT directory".to_string(),
+        );
+    }
+
+    if !old_path.exists() {
+        return Err("LUT file not found".to_string());
+    }
+
+    let trimmed = new_name.trim();
+    if trimmed.is_empty() {
+        return Err("New name cannot be empty".to_string());
+    }
+    if trimmed.contains('/') || trimmed.contains('\\') {
+        return Err("New name cannot contain path separators".to_string());
+    }
+
+    let extension = old_path.extension().and_then(|s| s.to_str()).unwrap_or("");
+    let mut final_name = trimmed.to_string();
+    let new_has_ext = Path::new(&final_name).extension().is_some();
+    if !new_has_ext && !extension.is_empty() {
+        final_name.push('.');
+        final_name.push_str(extension);
+    }
+
+    let new_path = luts_dir.join(&final_name);
+    if new_path.exists() {
+        return Err("A LUT with that name already exists".to_string());
+    }
+
+    std::fs::rename(&old_path, &new_path).map_err(|e| e.to_string())?;
+
+    let name = new_path
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or("LUT")
+        .to_string();
+
+    Ok(LutRenameResult {
+        old_path: path,
+        new_path: new_path.to_string_lossy().into_owned(),
+        name,
+    })
 }
 
 fn render_lut_swatch(

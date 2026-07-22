@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { invoke } from '@tauri-apps/api/core';
 import { open } from '@tauri-apps/plugin-dialog';
 import clsx from 'clsx';
-import { ImageOff, Keyboard, Loader2, RotateCcw, Save, Upload } from 'lucide-react';
+import { ImageOff, Loader2, Pencil, RotateCcw, Save, Trash2, Upload } from 'lucide-react';
 import { toast } from 'react-toastify';
 
 import Slider from '../../ui/Slider';
@@ -284,9 +284,37 @@ export default function LutsPanel({ isVisible, panelWidth }: LutsPanelProps) {
 
       showContextMenu(event.clientX, event.clientY, [
         {
-          icon: Keyboard,
-          label: t('ui.lut.configureHotkey'),
+          icon: Pencil,
+          label: t('ui.lut.configureLut'),
           onClick: () => setHotkeyModalState({ isOpen: true, entry }),
+        },
+        {
+          icon: Trash2,
+          label: t('ui.lut.deleteLut'),
+          onClick: async () => {
+            try {
+              await invoke('remove_lut', { path: entry.path });
+              previewCache.current.delete(entry.path);
+              setPreviews((prev) => {
+                const next = { ...prev };
+                delete next[entry.path];
+                return next;
+              });
+              if (selectedLutPath === entry.path) {
+                setAdjustments((prev) => ({
+                  ...prev,
+                  ...lutParamsToAdjustments(DEFAULT_LUT_PARAMS),
+                  lutPath: null,
+                  lutName: null,
+                  lutData: null,
+                  lutSize: 0,
+                }));
+              }
+              refreshList();
+            } catch (err) {
+              toast.error(`Failed to delete LUT: ${err}`);
+            }
+          },
         },
       ]);
     },
@@ -481,6 +509,16 @@ export default function LutsPanel({ isVisible, panelWidth }: LutsPanelProps) {
           lutPath={hotkeyModalState.entry.path}
           lutName={hotkeyModalState.entry.name}
           osPlatform={osPlatform}
+          onSaved={({ newPath, newName }) => {
+            refreshList();
+            if (newPath && selectedLutPath === hotkeyModalState.entry?.path) {
+              setAdjustments((prev) => ({
+                ...prev,
+                lutPath: newPath,
+                lutName: newName ?? prev.lutName,
+              }));
+            }
+          }}
         />
       )}
     </div>

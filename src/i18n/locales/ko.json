@@ -1370,7 +1370,10 @@
       "cancel": "Cancel",
       "hotkeyLabel": "Hotkey",
       "save": "Save",
-      "title": "Configure LUT hotkey"
+      "title": "LUT 설정",
+      "nameLabel": "이름",
+      "emptyName": "이름은 비워둘 수 없습니다",
+      "saveFailed": "LUT 설정 저장 실패"
     }
   },
   "settings": {
@@ -1822,7 +1825,9 @@
       "loading": "Loading LUTs...",
       "configureHotkey": "Configure hotkey",
       "saveAsDefault": "기본값으로 저장",
-      "resetToDefault": "기본값으로 재설정"
+      "resetToDefault": "기본값으로 재설정",
+      "configureLut": "LUT 설정",
+      "deleteLut": "LUT 삭제"
     },
     "slider": {
       "clickToEdit": "클릭하여 편집",

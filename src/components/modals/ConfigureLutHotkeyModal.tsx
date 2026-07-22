@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, KeyboardEvent } from 'react';
 import { useTranslation } from 'react-i18next';
+import { invoke } from '@tauri-apps/api/core';
+import { toast } from 'react-toastify';
 import Text from '../ui/Text';
 import { TextVariants } from '../../types/typography';
 import Button from '../ui/Button';
@@ -8,6 +10,7 @@ import { getEffectiveKeybind, KEYBIND_DEFINITIONS } from '../../utils/keyboardUt
 import { usePresetStore } from '../../store/usePresetStore';
 import { useSettingsStore } from '../../store/useSettingsStore';
 import { saveLutParams } from '../../utils/lutSettings';
+import type { LutFileSettings } from '../ui/AppProperties';
 
 interface ConfigureLutHotkeyModalProps {
   isOpen: boolean;
@@ -15,6 +18,7 @@ interface ConfigureLutHotkeyModalProps {
   lutPath: string;
   lutName: string;
   osPlatform: string;
+  onSaved?(payload: { newPath?: string; newName?: string }): void;
 }
 
 export default function ConfigureLutHotkeyModal({
@@ -23,9 +27,11 @@ export default function ConfigureLutHotkeyModal({
   lutPath,
   lutName,
   osPlatform,
+  onSaved,
 }: ConfigureLutHotkeyModalProps) {
   const { t } = useTranslation();
   const [hotkey, setHotkey] = useState<string[] | null>(null);
+  const [nameValue, setNameValue] = useState(lutName);
   const [isMounted, setIsMounted] = useState(false);
   const [show, setShow] = useState(false);
   const overlayRef = useRef<HTMLDivElement>(null);
@@ -45,6 +51,7 @@ export default function ConfigureLutHotkeyModal({
   useEffect(() => {
     if (isOpen) {
       setHotkey(useSettingsStore.getState().appSettings?.lutSettings?.[lutPath]?.hotkey ?? null);
+      setNameValue(lutName);
       setIsMounted(true);
       const timer = setTimeout(() => setShow(true), 10);
       return () => clearTimeout(timer);
@@ -56,7 +63,7 @@ export default function ConfigureLutHotkeyModal({
       }, 300);
       return () => clearTimeout(timer);
     }
-  }, [isOpen, lutPath]);
+  }, [isOpen, lutPath, lutName]);
 
   useEffect(() => {
     if (isOpen && overlayRef.current) {
@@ -87,7 +94,7 @@ export default function ConfigureLutHotkeyModal({
       }
     }
     return null;
-  }, [hotkey, appSettings?.keybinds, appSettings?.lutSettings, allPresets, lutPath]);
+  }, [hotkey, appSettings?.keybinds, appSettings?.lutSettings, allPresets, lutPath, t]);
 
   const handleOverwrite = useCallback(() => {
     if (!hotkey || hotkey.length === 0 || !conflict) return;
@@ -124,10 +131,45 @@ export default function ConfigureLutHotkeyModal({
     }
   }, [hotkey, conflict, allPresets, updatePreset, appSettings?.lutSettings, lutPath]);
 
-  const handleSave = useCallback(() => {
-    saveLutParams(lutPath, { hotkey });
-    onClose();
-  }, [lutPath, hotkey, onClose]);
+  const handleSave = useCallback(async () => {
+    const trimmedName = nameValue.trim();
+    if (trimmedName.length === 0) {
+      toast.error(t('modals.configureLutHotkey.emptyName'));
+      return;
+    }
+
+    try {
+      let targetPath = lutPath;
+      let renamed = false;
+
+      if (trimmedName !== lutName) {
+        const result = await invoke<{ old_path: string; new_path: string; name: string }>('rename_lut', {
+          path: lutPath,
+          newName: trimmedName,
+        });
+        targetPath = result.new_path;
+        renamed = true;
+      }
+
+      const baseSettings = appSettings?.lutSettings || {};
+      const oldEntry = baseSettings[lutPath];
+      const nextSettings: Record<string, LutFileSettings> = { ...baseSettings };
+      if (renamed) {
+        delete nextSettings[lutPath];
+      }
+      const targetEntry = nextSettings[targetPath] || (renamed ? oldEntry : {}) || {};
+      nextSettings[targetPath] = { ...targetEntry, hotkey };
+
+      const nextAppSettings = { ...appSettings, lutSettings: nextSettings };
+      useSettingsStore.getState().setAppSettings(nextAppSettings);
+      await useSettingsStore.getState().handleSettingsChange(nextAppSettings);
+
+      onSaved?.(renamed ? { newPath: targetPath, newName: trimmedName } : {});
+      onClose();
+    } catch (err) {
+      toast.error(`${t('modals.configureLutHotkey.saveFailed')}: ${err}`);
+    }
+  }, [appSettings, hotkey, lutName, lutPath, nameValue, onClose, onSaved, t]);
 
   const handleKeyDown = useCallback(
     (e: KeyboardEvent<HTMLDivElement>) => {
@@ -171,11 +213,20 @@ export default function ConfigureLutHotkeyModal({
           {t('modals.configureLutHotkey.title')}
         </Text>
 
-        <Text variant={TextVariants.body} className="mb-4 truncate" title={lutName}>
-          {lutName}
-        </Text>
-
         <div className="grow overflow-y-auto pr-2 -mr-2 space-y-6">
+          <div>
+            <Text variant={TextVariants.heading} className="block mb-2">
+              {t('modals.configureLutHotkey.nameLabel')}
+            </Text>
+            <input
+              type="text"
+              value={nameValue}
+              onChange={(e) => setNameValue(e.target.value)}
+              className="w-full px-3 py-2 rounded-md bg-bg-primary border border-surface text-text-primary placeholder:text-text-secondary focus:outline-none focus:border-accent"
+              placeholder={lutName}
+            />
+          </div>
+
           <div>
             <Text variant={TextVariants.heading} className="block mb-2">
               {t('modals.configureLutHotkey.hotkeyLabel')}

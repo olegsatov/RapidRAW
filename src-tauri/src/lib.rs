@@ -2505,6 +2505,7 @@ pub fn run() {
             lut_processing::list_luts,
             lut_processing::import_luts,
             lut_processing::remove_lut,
+            lut_processing::rename_lut,
             lut_processing::generate_lut_previews,
             fetch_community_presets,
             generate_all_community_previews,

@@ -1370,7 +1370,10 @@
       "cancel": "Cancel",
       "hotkeyLabel": "Hotkey",
       "save": "Save",
-      "title": "Configure LUT hotkey"
+      "title": "配置 LUT",
+      "nameLabel": "名称",
+      "emptyName": "名称不能为空",
+      "saveFailed": "保存 LUT 设置失败"
     }
   },
   "settings": {
@@ -1822,7 +1825,9 @@
       "loading": "Loading LUTs...",
       "configureHotkey": "Configure hotkey",
       "saveAsDefault": "保存为默认",
-      "resetToDefault": "重置为默认"
+      "resetToDefault": "重置为默认",
+      "configureLut": "配置 LUT",
+      "deleteLut": "删除 LUT"
     },
     "slider": {
       "clickToEdit": "点击编辑",

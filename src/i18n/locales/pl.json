@@ -1426,7 +1426,10 @@
       "cancel": "Cancel",
       "hotkeyLabel": "Hotkey",
       "save": "Save",
-      "title": "Configure LUT hotkey"
+      "title": "Skonfiguruj LUT",
+      "nameLabel": "Nazwa",
+      "emptyName": "Nazwa nie może być pusta",
+      "saveFailed": "Nie udało się zapisać ustawień LUT"
     }
   },
   "settings": {
@@ -1886,7 +1889,9 @@
       "loading": "Loading LUTs...",
       "configureHotkey": "Configure hotkey",
       "saveAsDefault": "Zapisz jako domyślne",
-      "resetToDefault": "Przywróć domyślne"
+      "resetToDefault": "Przywróć domyślne",
+      "configureLut": "Skonfiguruj LUT",
+      "deleteLut": "Usuń LUT"
     },
     "slider": {
       "clickToEdit": "Kliknij, aby edytować",
