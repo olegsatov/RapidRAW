@@ -239,6 +239,12 @@ export const KEYBIND_DEFINITIONS: KeybindDefinition[] = [
   { action: 'undo', description: 'settings.keybinds.actions.undo', defaultCombo: ['ctrl', 'KeyZ'], section: 'editing' },
   { action: 'redo', description: 'settings.keybinds.actions.redo', defaultCombo: ['ctrl', 'KeyY'], section: 'editing' },
   {
+    action: 'reset_adjustments',
+    description: 'settings.keybinds.actions.reset_adjustments',
+    defaultCombo: ['ctrl', 'KeyR'],
+    section: 'editing',
+  },
+  {
     action: 'copy_adjustments',
     description: 'settings.keybinds.actions.copy_adjustments',
     defaultCombo: ['ctrl', 'KeyC'],

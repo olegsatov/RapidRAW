@@ -1509,6 +1509,7 @@
         "rate_4": "星级评分：4",
         "rate_5": "星级评分：5",
         "redo": "重做调整",
+        "reset_adjustments": "重置调整",
         "rotate_left": "逆时针旋转 90°",
         "rotate_right": "顺时针旋转 90°",
         "select_all": "选择所有图像",

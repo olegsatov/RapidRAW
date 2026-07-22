@@ -1508,6 +1508,7 @@
         "rate_4": "星評価: 4",
         "rate_5": "星評価: 5",
         "redo": "操作をやり直す",
+        "reset_adjustments": "調整をリセット",
         "rotate_left": "反時計回りに90°回転",
         "rotate_right": "時計回りに90°回転",
         "select_all": "すべての画像を選択",

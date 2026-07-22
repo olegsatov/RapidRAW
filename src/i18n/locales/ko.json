@@ -1509,6 +1509,7 @@
         "rate_4": "별점: 4",
         "rate_5": "별점: 5",
         "redo": "조정 다시 실행",
+        "reset_adjustments": "조정값 초기화",
         "rotate_left": "90° 반시계 방향 회전",
         "rotate_right": "90° 시계 방향 회전",
         "select_all": "모든 이미지 선택",

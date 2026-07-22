@@ -1671,6 +1671,7 @@
         "rate_4": "Star rating: 4",
         "rate_5": "Star rating: 5",
         "redo": "Redo adjustment",
+        "reset_adjustments": "Reset adjustments",
         "rotate_left": "Rotate 90° counter-clockwise",
         "rotate_right": "Rotate 90° clockwise",
         "select_all": "Select all images",
