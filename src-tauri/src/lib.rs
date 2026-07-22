@@ -848,6 +848,9 @@ fn generate_uncropped_preview(
             })
             .collect();
 
+        let norm_factor = state.get_lut_input_norm_factor(&loaded_image);
+        adjustments_clone["lutInputNormFactor"] = serde_json::json!(norm_factor);
+
         let tm_override = resolve_tonemapper_override_from_handle(&app_handle, is_raw);
         let uncropped_adjustments =
             get_all_adjustments_from_json(&adjustments_clone, is_raw, tm_override);
