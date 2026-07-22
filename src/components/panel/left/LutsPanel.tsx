@@ -55,6 +55,10 @@ export default function LutsPanel({ isVisible, panelWidth }: LutsPanelProps) {
   const lutIntensity = useEditorStore((state) => state.adjustments.lutIntensity ?? DEFAULT_LUT_PARAMS.intensity);
   const lutInputOffset = useEditorStore((state) => state.adjustments.lutInputOffset ?? DEFAULT_LUT_PARAMS.inputOffset);
   const lutInputRange = useEditorStore((state) => state.adjustments.lutInputRange ?? DEFAULT_LUT_PARAMS.inputRange);
+  const lutWbTemperatureShift = useEditorStore(
+    (state) => state.adjustments.lutWbTemperatureShift ?? DEFAULT_LUT_PARAMS.wbTemperatureShift,
+  );
+  const lutWbTintShift = useEditorStore((state) => state.adjustments.lutWbTintShift ?? DEFAULT_LUT_PARAMS.wbTintShift);
   const appSettings = useSettingsStore((state) => state.appSettings);
   const osPlatform = useSettingsStore((state) => state.osPlatform);
 
@@ -84,6 +88,8 @@ export default function LutsPanel({ isVisible, panelWidth }: LutsPanelProps) {
         'lutInputRange',
         'lutInputOffset',
         'lutOffsetCompensation',
+        'lutWbTemperatureShift',
+        'lutWbTintShift',
       ]),
     [],
   );
@@ -347,8 +353,10 @@ export default function LutsPanel({ isVisible, panelWidth }: LutsPanelProps) {
       inputOffset: lutInputOffset,
       inputRange: lutInputRange,
       timing: 'before',
+      wbTemperatureShift: lutWbTemperatureShift,
+      wbTintShift: lutWbTintShift,
     });
-  }, [selectedLutPath, lutIntensity, lutInputOffset, lutInputRange]);
+  }, [selectedLutPath, lutIntensity, lutInputOffset, lutInputRange, lutWbTemperatureShift, lutWbTintShift]);
 
   const handleResetToDefault = useCallback(() => {
     if (!selectedLutPath) return;
@@ -363,6 +371,9 @@ export default function LutsPanel({ isVisible, panelWidth }: LutsPanelProps) {
     () => (selectedLutPath ? resolveLutParams(appSettings, selectedLutPath) : DEFAULT_LUT_PARAMS),
     [appSettings, selectedLutPath],
   );
+
+  const defaultWbTemperatureShift = defaultParams.wbTemperatureShift;
+  const defaultWbTintShift = defaultParams.wbTintShift;
 
   const selectedEntry = useMemo(
     () => entries.find((entry) => entry.path === selectedLutPath) || null,
@@ -497,9 +508,13 @@ export default function LutsPanel({ isVisible, panelWidth }: LutsPanelProps) {
                       lutIntensity={lutIntensity}
                       lutInputOffset={lutInputOffset}
                       lutInputRange={lutInputRange}
+                      lutWbTemperatureShift={lutWbTemperatureShift}
+                      lutWbTintShift={lutWbTintShift}
                       defaultIntensity={defaultParams.intensity}
                       defaultInputOffset={defaultParams.inputOffset}
                       defaultInputRange={defaultParams.inputRange}
+                      defaultWbTemperatureShift={defaultWbTemperatureShift}
+                      defaultWbTintShift={defaultWbTintShift}
                       onDragStateChange={handleDragStateChange}
                       onUpdate={updateLutAdjustment}
                       onSaveAsDefault={handleSaveAsDefault}
@@ -551,9 +566,13 @@ interface LutDetailPanelProps {
   lutIntensity: number;
   lutInputOffset: number;
   lutInputRange: number;
+  lutWbTemperatureShift: number;
+  lutWbTintShift: number;
   defaultIntensity: number;
   defaultInputOffset: number;
   defaultInputRange: number;
+  defaultWbTemperatureShift: number;
+  defaultWbTintShift: number;
   onDragStateChange: (isDragging: boolean) => void;
   onUpdate: (adjustmentPatch: Partial<Adjustments>) => void;
   onSaveAsDefault: () => void;
@@ -564,9 +583,13 @@ const LutDetailPanel = memo(function LutDetailPanel({
   lutIntensity,
   lutInputOffset,
   lutInputRange,
+  lutWbTemperatureShift,
+  lutWbTintShift,
   defaultIntensity,
   defaultInputOffset,
   defaultInputRange,
+  defaultWbTemperatureShift,
+  defaultWbTintShift,
   onDragStateChange,
   onUpdate,
   onSaveAsDefault,
@@ -575,7 +598,11 @@ const LutDetailPanel = memo(function LutDetailPanel({
   const { t } = useTranslation();
 
   const isAlreadyDefault =
-    lutIntensity === defaultIntensity && lutInputOffset === defaultInputOffset && lutInputRange === defaultInputRange;
+    lutIntensity === defaultIntensity &&
+    lutInputOffset === defaultInputOffset &&
+    lutInputRange === defaultInputRange &&
+    lutWbTemperatureShift === defaultWbTemperatureShift &&
+    lutWbTintShift === defaultWbTintShift;
 
   const handleIntensityChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -594,6 +621,20 @@ const LutDetailPanel = memo(function LutDetailPanel({
   const handleInputRangeChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
       onUpdate({ lutInputRange: Number(e.target.value) });
+    },
+    [onUpdate],
+  );
+
+  const handleWbTemperatureShiftChange = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      onUpdate({ lutWbTemperatureShift: Number(e.target.value) });
+    },
+    [onUpdate],
+  );
+
+  const handleWbTintShiftChange = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      onUpdate({ lutWbTintShift: Number(e.target.value) });
     },
     [onUpdate],
   );
@@ -638,6 +679,36 @@ const LutDetailPanel = memo(function LutDetailPanel({
           onDragStateChange={onDragStateChange}
           fillOrigin="min"
         />
+        <div className="flex gap-2">
+          <div className="w-1/2">
+            <Slider
+              label={t('ui.lut.wbTemperatureShift')}
+              min={-100}
+              max={100}
+              step={1}
+              value={lutWbTemperatureShift}
+              defaultValue={INITIAL_ADJUSTMENTS.lutWbTemperatureShift}
+              onChange={handleWbTemperatureShiftChange}
+              onDragStateChange={onDragStateChange}
+              trackClassName="temperature-gradient-track"
+              fillOrigin="min"
+            />
+          </div>
+          <div className="w-1/2">
+            <Slider
+              label={t('ui.lut.wbTintShift')}
+              min={-100}
+              max={100}
+              step={1}
+              value={lutWbTintShift}
+              defaultValue={INITIAL_ADJUSTMENTS.lutWbTintShift}
+              onChange={handleWbTintShiftChange}
+              onDragStateChange={onDragStateChange}
+              trackClassName="tint-gradient-track"
+              fillOrigin="min"
+            />
+          </div>
+        </div>
 
         <div className="flex gap-2 mt-2">
           <button

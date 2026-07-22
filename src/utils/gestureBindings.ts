@@ -14,7 +14,9 @@ export interface GestureParam {
     | 'flimToe'
     | 'lutInputOffset'
     | 'lutInputRange'
-    | 'lutIntensity';
+    | 'lutIntensity'
+    | 'lutWbTemperatureShift'
+    | 'lutWbTintShift';
   min: number;
   max: number;
   step: number; // param units per one engine step

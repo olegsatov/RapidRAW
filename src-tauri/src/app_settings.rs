@@ -345,6 +345,10 @@ pub struct LutFileSettings {
     pub input_offset: Option<f32>,
     #[serde(default)]
     pub offset_compensation: Option<bool>,
+    #[serde(default)]
+    pub wb_temperature_shift: Option<f32>,
+    #[serde(default)]
+    pub wb_tint_shift: Option<f32>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]

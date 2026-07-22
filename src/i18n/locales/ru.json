@@ -1982,6 +1982,8 @@
       "inputOffset": "Смещение входа",
       "inputRange": "Диапазон входа",
       "intensity": "Интенсивность",
+      "wbTemperatureShift": "Сдвиг температуры",
+      "wbTintShift": "Сдвиг оттенка",
       "label": "LUT",
       "noLut": "Без LUT",
       "disabledLut": "LUT отключён",

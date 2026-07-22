@@ -1990,6 +1990,8 @@
       "inputOffset": "Input offset",
       "inputRange": "Input range",
       "intensity": "Intensity",
+      "wbTemperatureShift": "Temp shift",
+      "wbTintShift": "Tint shift",
       "label": "LUT",
       "noLut": "No LUT",
       "disabledLut": "LUT disabled",

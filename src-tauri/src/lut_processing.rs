@@ -833,6 +833,8 @@ pub fn generate_lut_previews(
                         "lutOffsetCompensation".to_string(),
                         serde_json::json!(false),
                     );
+                    obj.insert("lutWbTemperatureShift".to_string(), serde_json::json!(0.0));
+                    obj.insert("lutWbTintShift".to_string(), serde_json::json!(0.0));
                     let section_visibility = obj
                         .entry("sectionVisibility")
                         .or_insert_with(|| serde_json::json!({}));
@@ -844,8 +846,14 @@ pub fn generate_lut_previews(
                     }
                 }
                 let adjustments = get_all_adjustments_from_json(&merged_json, is_raw, tm_override);
-                let thumb =
-                    render_lut_swatch(&context, &state, &base_image, transform_hash, adjustments, None);
+                let thumb = render_lut_swatch(
+                    &context,
+                    &state,
+                    &base_image,
+                    transform_hash,
+                    adjustments,
+                    None,
+                );
                 return LutPreview { path, thumb };
             }
 
@@ -860,6 +868,8 @@ pub fn generate_lut_previews(
             let input_range = params.and_then(|p| p.input_range).unwrap_or(6.0);
             let input_offset = params.and_then(|p| p.input_offset).unwrap_or(0.0);
             let offset_compensation = params.and_then(|p| p.offset_compensation).unwrap_or(false);
+            let wb_temperature_shift = params.and_then(|p| p.wb_temperature_shift).unwrap_or(0.0);
+            let wb_tint_shift = params.and_then(|p| p.wb_tint_shift).unwrap_or(0.0);
 
             let mut merged_json = base_json.clone();
             if let Some(obj) = merged_json.as_object_mut() {
@@ -879,6 +889,14 @@ pub fn generate_lut_previews(
                 obj.insert(
                     "lutOffsetCompensation".to_string(),
                     serde_json::json!(offset_compensation),
+                );
+                obj.insert(
+                    "lutWbTemperatureShift".to_string(),
+                    serde_json::json!(wb_temperature_shift),
+                );
+                obj.insert(
+                    "lutWbTintShift".to_string(),
+                    serde_json::json!(wb_tint_shift),
                 );
                 let section_visibility = obj
                     .entry("sectionVisibility")

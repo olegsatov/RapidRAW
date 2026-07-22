@@ -1817,6 +1817,8 @@
       "import": "Import LUTs",
       "importFailed": "LUTs konnten nicht importiert werden",
       "intensity": "Intensität",
+      "wbTemperatureShift": "Temp shift",
+      "wbTintShift": "Tint shift",
       "label": "LUT",
       "noLut": "Kein LUT",
       "disabledLut": "LUT deaktiviert",

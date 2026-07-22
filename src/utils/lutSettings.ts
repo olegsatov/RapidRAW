@@ -10,6 +10,8 @@ export interface ResolvedLutParams {
   inputRange: number;
   inputOffset: number;
   offsetCompensation: boolean;
+  wbTemperatureShift: number;
+  wbTintShift: number;
 }
 
 export const DEFAULT_LUT_PARAMS: ResolvedLutParams = {
@@ -18,6 +20,8 @@ export const DEFAULT_LUT_PARAMS: ResolvedLutParams = {
   inputRange: INITIAL_ADJUSTMENTS.lutInputRange ?? 6,
   inputOffset: INITIAL_ADJUSTMENTS.lutInputOffset ?? 0,
   offsetCompensation: INITIAL_ADJUSTMENTS.lutOffsetCompensation ?? false,
+  wbTemperatureShift: INITIAL_ADJUSTMENTS.lutWbTemperatureShift ?? 0,
+  wbTintShift: INITIAL_ADJUSTMENTS.lutWbTintShift ?? 0,
 };
 
 // Per-LUT params are global defaults (keyed by LUT file path in AppSettings):
@@ -32,6 +36,8 @@ export function resolveLutParams(appSettings: AppSettings | null, path: string):
     inputRange: stored?.inputRange ?? DEFAULT_LUT_PARAMS.inputRange,
     inputOffset: stored?.inputOffset ?? DEFAULT_LUT_PARAMS.inputOffset,
     offsetCompensation: stored?.offsetCompensation ?? DEFAULT_LUT_PARAMS.offsetCompensation,
+    wbTemperatureShift: stored?.wbTemperatureShift ?? DEFAULT_LUT_PARAMS.wbTemperatureShift,
+    wbTintShift: stored?.wbTintShift ?? DEFAULT_LUT_PARAMS.wbTintShift,
   };
 }
 
@@ -45,6 +51,8 @@ export function lutParamsToAdjustments(params: ResolvedLutParams): Partial<Adjus
     lutInputRange: params.inputRange,
     lutInputOffset: params.inputOffset,
     lutOffsetCompensation: params.offsetCompensation,
+    lutWbTemperatureShift: params.wbTemperatureShift,
+    lutWbTintShift: params.wbTintShift,
   };
 }
 

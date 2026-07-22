@@ -321,6 +321,8 @@ export interface Adjustments {
   lutInputRange?: number;
   lutInputOffset?: number;
   lutOffsetCompensation?: boolean;
+  lutWbTemperatureShift?: number;
+  lutWbTintShift?: number;
   masks: Array<MaskContainer>;
   orientationSteps: number;
   rotation: number;
@@ -820,6 +822,8 @@ export const INITIAL_ADJUSTMENTS: Adjustments = {
   lutInputRange: 6,
   lutInputOffset: 0,
   lutOffsetCompensation: false,
+  lutWbTemperatureShift: 0,
+  lutWbTintShift: 0,
   masks: [],
   orientationSteps: 0,
   rotation: 0,

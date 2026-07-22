@@ -1538,10 +1538,10 @@ pub struct GlobalAdjustments {
     // shader only applies them. Layout MUST match shader.wgsl GlobalAdjustments.
     pub flim_extend_mat: GpuMat3,
     pub flim_extend_mat_inv: GpuMat3,
-    pub flim_backlight: [f32; 3],    // print backlight in the extended gamut
-    pub flim_black_cap_luma: f32,    // auto: luma of developed black / white cap; else preset black point / 1000
-    pub flim_white_cap: [f32; 3],    // negative_and_print([1e7; 3])
-    pub flim_sigmoid_log2_max: f32,  // log2_min is hardcoded to -10
+    pub flim_backlight: [f32; 3], // print backlight in the extended gamut
+    pub flim_black_cap_luma: f32, // auto: luma of developed black / white cap; else preset black point / 1000
+    pub flim_white_cap: [f32; 3], // negative_and_print([1e7; 3])
+    pub flim_sigmoid_log2_max: f32, // log2_min is hardcoded to -10
     pub flim_pre_filter: [f32; 3],
     pub flim_pre_filter_strength: f32,
     pub flim_post_filter: [f32; 3],
@@ -1551,14 +1551,14 @@ pub struct GlobalAdjustments {
     pub flim_print_exposure: f32,
     pub flim_print_density: f32,
     pub flim_midtone_saturation: f32,
-    pub flim_ev: f32,                // preset pre-exposure + user EV offset
-    pub flim_strength: f32,          // 0..1 mix against the non-AgX base look
+    pub flim_ev: f32,       // preset pre-exposure + user EV offset
+    pub flim_strength: f32, // 0..1 mix against the non-AgX base look
     _pad_flim_end: f32,
-    pub flim_warmth: [f32; 3],       // per-channel gain along the daylight locus (pre-sigmoid)
-    pub flim_adjacency: f32,         // log-domain unsharp (developer diffusion approx)
-    pub flim_hi_tint: [f32; 3],      // split-tone highlight tint (baked from slider, + = warm)
+    pub flim_warmth: [f32; 3], // per-channel gain along the daylight locus (pre-sigmoid)
+    pub flim_adjacency: f32,   // log-domain unsharp (developer diffusion approx)
+    pub flim_hi_tint: [f32; 3], // split-tone highlight tint (baked from slider, + = warm)
     _pad_flim_hi: f32,
-    pub flim_sh_tint: [f32; 3],      // split-tone shadow tint (baked from slider, + = warm)
+    pub flim_sh_tint: [f32; 3], // split-tone shadow tint (baked from slider, + = warm)
     _pad_flim_sh: f32,
 
     pub lut_timing: u32,
@@ -2220,7 +2220,9 @@ const FLIM_BASE_GAMUT_ROTATIONS: [f32; 3] = [0.5, 2.0, 0.1];
 fn flim_preset_from_advanced_json(js: &serde_json::Value) -> Option<FlimPreset> {
     let pre_exposure = js.get("flimAdvPreExposure")?.as_f64()? as f32;
     let get = |key: &str, default: f32| -> f32 {
-        js.get(key).and_then(|v| v.as_f64()).unwrap_or(default as f64) as f32
+        js.get(key)
+            .and_then(|v| v.as_f64())
+            .unwrap_or(default as f64) as f32
     };
     let expand = get("flimAdvGamutExpand", 100.0) / 100.0;
     let rotate = get("flimAdvPaletteRotate", 0.0);
@@ -2439,9 +2441,24 @@ fn compute_flim_uniforms(
     let print_density = p.print_density * contrast;
     let hues = [0.0f32, 1.0 / 3.0, 2.0 / 3.0];
     let rows = [
-        flim_gamut_extension_row(hues[0], p.gamut_scales[0], p.gamut_rotations[0], p.gamut_muls[0]),
-        flim_gamut_extension_row(hues[1], p.gamut_scales[1], p.gamut_rotations[1], p.gamut_muls[1]),
-        flim_gamut_extension_row(hues[2], p.gamut_scales[2], p.gamut_rotations[2], p.gamut_muls[2]),
+        flim_gamut_extension_row(
+            hues[0],
+            p.gamut_scales[0],
+            p.gamut_rotations[0],
+            p.gamut_muls[0],
+        ),
+        flim_gamut_extension_row(
+            hues[1],
+            p.gamut_scales[1],
+            p.gamut_rotations[1],
+            p.gamut_muls[1],
+        ),
+        flim_gamut_extension_row(
+            hues[2],
+            p.gamut_scales[2],
+            p.gamut_rotations[2],
+            p.gamut_muls[2],
+        ),
     ];
     let backlight_ext = flim_mat3_mul_vec(rows, p.print_backlight);
     let white_cap = flim_negative_and_print(
@@ -2702,27 +2719,29 @@ fn get_global_adjustments_from_json(
     };
 
     // Pre-tonemapper is the default application point; "after" is opt-in.
-    let lut_timing = js_adjustments["lutTiming"].as_str().map_or(1u32, |v| {
-        if v == "after" { 0 } else { 1 }
-    });
+    let lut_timing = js_adjustments["lutTiming"]
+        .as_str()
+        .map_or(1u32, |v| if v == "after" { 0 } else { 1 });
     // LUTs applied before the tone mapper are always sampled with HDR
     // extrapolation so they can act on scene-linear values above 1.0.
     let lut_normalize_mode = if lut_timing == 1 {
         3u32
     } else {
-        js_adjustments["lutNormalizeMode"].as_str().map_or(0u32, |v| {
-            match v {
+        js_adjustments["lutNormalizeMode"]
+            .as_str()
+            .map_or(0u32, |v| match v {
                 "linear" => 1,
                 "log" => 2,
                 "hdr" => 3,
                 _ => 0,
-            }
-        })
+            })
     };
     let lut_input_range = js_adjustments["lutInputRange"].as_f64().unwrap_or(6.0) as f32;
     let lut_input_offset = js_adjustments["lutInputOffset"].as_f64().unwrap_or(0.0) as f32;
     let lut_shoulder = js_adjustments["lutShoulder"].as_f64().unwrap_or(0.0) as f32 / 100.0;
-    let lut_offset_compensation = js_adjustments["lutOffsetCompensation"].as_bool().unwrap_or(false) as u32;
+    let lut_offset_compensation = js_adjustments["lutOffsetCompensation"]
+        .as_bool()
+        .unwrap_or(false) as u32;
     let lut_input_norm_factor = js_adjustments["lutInputNormFactor"].as_f64().unwrap_or(1.0) as f32;
 
     GlobalAdjustments {
@@ -2735,8 +2754,13 @@ fn get_global_adjustments_from_json(
         blacks: get_val("basic", "blacks", SCALES.blacks, None),
 
         saturation: get_val("color", "saturation", SCALES.saturation, None),
-        temperature: get_val("color", "temperature", SCALES.temperature, None),
-        tint: get_val("color", "tint", SCALES.tint, None),
+        temperature: get_val("color", "temperature", SCALES.temperature, None)
+            + js_adjustments["lutWbTemperatureShift"]
+                .as_f64()
+                .unwrap_or(0.0) as f32
+                / SCALES.temperature,
+        tint: get_val("color", "tint", SCALES.tint, None)
+            + js_adjustments["lutWbTintShift"].as_f64().unwrap_or(0.0) as f32 / SCALES.tint,
         vibrance: get_val("color", "vibrance", SCALES.vibrance, None),
         hue: get_val("color", "hue", 1.0, None),
         _pad_color1: 0.0,
@@ -2900,7 +2924,12 @@ fn get_global_adjustments_from_json(
 
         glow_amount: get_val("effects", "glowAmount", SCALES.glow, None),
         // Also editable from the Film section -> active if either is visible.
-        halation_amount: get_val_any(&["effects", "film", "filmEffects"], "halationAmount", SCALES.halation, None),
+        halation_amount: get_val_any(
+            &["effects", "film", "filmEffects"],
+            "halationAmount",
+            SCALES.halation,
+            None,
+        ),
         flare_amount: get_val("effects", "flareAmount", SCALES.flares, None),
         sharpness_threshold: get_val(
             "details",
@@ -2921,17 +2950,25 @@ fn get_global_adjustments_from_json(
             0.5
         },
         film_blur_pre_compensation: if tone_mapper == "flim" && film_effects_on {
-            js_adjustments["filmBlurPreCompensation"].as_f64().unwrap_or(0.0) as f32 / 100.0
+            js_adjustments["filmBlurPreCompensation"]
+                .as_f64()
+                .unwrap_or(0.0) as f32
+                / 100.0
         } else {
             0.0
         },
         film_blur_pre_soft_amount: if tone_mapper == "flim" && film_effects_on {
-            js_adjustments["filmBlurPreSoftAmount"].as_f64().unwrap_or(0.0) as f32 / 100.0
+            js_adjustments["filmBlurPreSoftAmount"]
+                .as_f64()
+                .unwrap_or(0.0) as f32
+                / 100.0
         } else {
             0.0
         },
         film_blur_pre_soft_radius: if tone_mapper == "flim" {
-            js_adjustments["filmBlurPreSoftRadius"].as_f64().unwrap_or(0.5) as f32
+            js_adjustments["filmBlurPreSoftRadius"]
+                .as_f64()
+                .unwrap_or(0.5) as f32
         } else {
             0.5
         },
@@ -3646,7 +3683,9 @@ pub fn compute_lut_auto_params_from_image(image: &DynamicImage) -> Result<LutAut
 }
 
 #[tauri::command]
-pub async fn compute_lut_auto_params(state: tauri::State<'_, AppState>) -> Result<LutAutoParams, String> {
+pub async fn compute_lut_auto_params(
+    state: tauri::State<'_, AppState>,
+) -> Result<LutAutoParams, String> {
     let original = state.original_image.lock().unwrap();
     match original.as_ref() {
         Some(loaded) => compute_lut_auto_params_from_image(&loaded.image),
@@ -4291,7 +4330,9 @@ mod film_layout_tests {
             naga::valid::ValidationFlags::all(),
             naga::valid::Capabilities::all(),
         );
-        validator.validate(&module).expect("shader.wgsl must validate");
+        validator
+            .validate(&module)
+            .expect("shader.wgsl must validate");
     }
 
     #[test]
@@ -4301,12 +4342,15 @@ mod film_layout_tests {
             ("pre_tone.wgsl", include_str!("shaders/pre_tone.wgsl")),
             ("film_post.wgsl", include_str!("shaders/film_post.wgsl")),
         ] {
-            let module = naga::front::wgsl::parse_str(src).unwrap_or_else(|e| panic!("{name} must parse: {e}"));
+            let module = naga::front::wgsl::parse_str(src)
+                .unwrap_or_else(|e| panic!("{name} must parse: {e}"));
             let mut validator = naga::valid::Validator::new(
                 naga::valid::ValidationFlags::all(),
                 naga::valid::Capabilities::all(),
             );
-            validator.validate(&module).unwrap_or_else(|e| panic!("{name} must validate: {e}"));
+            validator
+                .validate(&module)
+                .unwrap_or_else(|e| panic!("{name} must validate: {e}"));
         }
     }
 
@@ -4389,7 +4433,10 @@ mod film_layout_tests {
     }
 
     fn assert_mat_close(a: &GpuMat3, b: &GpuMat3, eps: f32, label: &str) {
-        for (ca, cb) in [a.col0, a.col1, a.col2].iter().zip([b.col0, b.col1, b.col2].iter()) {
+        for (ca, cb) in [a.col0, a.col1, a.col2]
+            .iter()
+            .zip([b.col0, b.col1, b.col2].iter())
+        {
             for k in 0..3 {
                 assert!((ca[k] - cb[k]).abs() < eps, "{label} col {k}");
             }
@@ -4400,20 +4447,44 @@ mod film_layout_tests {
     fn flim_advanced_keys_match_builtin_presets() {
         for idx in 0..FLIM_PRESETS.len() {
             let js = adv_json_for_builtin(idx);
-            let preset = flim_preset_from_advanced_json(&js)
-                .expect("advanced keys must produce a preset");
+            let preset =
+                flim_preset_from_advanced_json(&js).expect("advanced keys must produce a preset");
             let a = compute_flim_uniforms(&preset, 1.0, 0.0, 0.0, 1.0, 0.0);
             let b = compute_flim_uniforms(&FLIM_PRESETS[idx], 1.0, 0.0, 0.0, 1.0, 0.0);
             let eps = 1e-5;
-            assert!((a.pre_exposure - b.pre_exposure).abs() < eps, "preset {idx} pre_exposure");
-            assert!((a.negative_exposure - b.negative_exposure).abs() < eps, "preset {idx} neg_exposure");
-            assert!((a.negative_density - b.negative_density).abs() < eps, "preset {idx} neg_density");
-            assert!((a.print_exposure - b.print_exposure).abs() < eps, "preset {idx} print_exposure");
-            assert!((a.print_density - b.print_density).abs() < eps, "preset {idx} print_density");
-            assert!((a.midtone_saturation - b.midtone_saturation).abs() < eps, "preset {idx} saturation");
-            assert!((a.black_cap_luma - b.black_cap_luma).abs() < 1e-6, "preset {idx} black_cap");
+            assert!(
+                (a.pre_exposure - b.pre_exposure).abs() < eps,
+                "preset {idx} pre_exposure"
+            );
+            assert!(
+                (a.negative_exposure - b.negative_exposure).abs() < eps,
+                "preset {idx} neg_exposure"
+            );
+            assert!(
+                (a.negative_density - b.negative_density).abs() < eps,
+                "preset {idx} neg_density"
+            );
+            assert!(
+                (a.print_exposure - b.print_exposure).abs() < eps,
+                "preset {idx} print_exposure"
+            );
+            assert!(
+                (a.print_density - b.print_density).abs() < eps,
+                "preset {idx} print_density"
+            );
+            assert!(
+                (a.midtone_saturation - b.midtone_saturation).abs() < eps,
+                "preset {idx} saturation"
+            );
+            assert!(
+                (a.black_cap_luma - b.black_cap_luma).abs() < 1e-6,
+                "preset {idx} black_cap"
+            );
             for k in 0..3 {
-                assert!((a.backlight_ext[k] - b.backlight_ext[k]).abs() < eps, "preset {idx} backlight {k}");
+                assert!(
+                    (a.backlight_ext[k] - b.backlight_ext[k]).abs() < eps,
+                    "preset {idx} backlight {k}"
+                );
                 assert!(
                     (eff_filter(a.pre_filter, a.pre_filter_strength)[k]
                         - eff_filter(b.pre_filter, b.pre_filter_strength)[k])
@@ -4431,9 +4502,15 @@ mod film_layout_tests {
             }
             assert_mat_close(&a.extend_mat, &b.extend_mat, eps, "extend_mat");
             assert_mat_close(&a.extend_mat_inv, &b.extend_mat_inv, eps, "extend_mat_inv");
-            assert!((a.sigmoid_log2_max - b.sigmoid_log2_max).abs() < eps, "preset {idx} log2_max");
+            assert!(
+                (a.sigmoid_log2_max - b.sigmoid_log2_max).abs() < eps,
+                "preset {idx} log2_max"
+            );
             for k in 0..3 {
-                assert!((a.white_cap[k] - b.white_cap[k]).abs() < eps, "preset {idx} white_cap {k}");
+                assert!(
+                    (a.white_cap[k] - b.white_cap[k]).abs() < eps,
+                    "preset {idx} white_cap {k}"
+                );
             }
         }
     }
@@ -4460,7 +4537,10 @@ mod film_layout_tests {
         assert_eq!(p.gamut_muls[1], 1.0);
         assert!((p.gamut_muls[2] - 0.8).abs() < 1e-6);
         assert_eq!(p.black_point, Some(-3.0));
-        assert!((p.pre_filter[1] - 1.0).abs() < 1e-6, "hue 120 must be pure green");
+        assert!(
+            (p.pre_filter[1] - 1.0).abs() < 1e-6,
+            "hue 120 must be pure green"
+        );
         assert!(p.pre_filter[0].abs() < 1e-6 && p.pre_filter[2].abs() < 1e-6);
         assert!((p.pre_filter_strength - 0.1).abs() < 1e-6);
         // Missing optional keys fall back to default-preset values.
@@ -4496,9 +4576,15 @@ mod film_layout_tests {
             });
             get_global_adjustments_from_json(&js, true, None).flim_sigmoid_log2_max
         };
-        assert!((run(0) - 20.0).abs() < 1e-5, "new default 0 should equal old -50");
+        assert!(
+            (run(0) - 20.0).abs() < 1e-5,
+            "new default 0 should equal old -50"
+        );
         assert!((run(50) - 22.0).abs() < 1e-5, "new 50 should equal old 0");
-        assert!((run(-50) - 18.0).abs() < 1e-5, "new -50 should equal old -100");
+        assert!(
+            (run(-50) - 18.0).abs() < 1e-5,
+            "new -50 should equal old -100"
+        );
     }
 
     #[test]
@@ -4514,14 +4600,23 @@ mod film_layout_tests {
         // Panel OFF (non-flim tonemapper): crystal grain and B&W are gated out
         // even though their sections are marked visible.
         let off = get_global_adjustments_from_json(&base, true, None);
-        assert_eq!(off.crystal_grain_amount, 0.0, "crystal grain must be gated when panel is off");
-        assert_eq!(off.bw_weights[3], 0.0, "B&W must be gated when panel is off");
+        assert_eq!(
+            off.crystal_grain_amount, 0.0,
+            "crystal grain must be gated when panel is off"
+        );
+        assert_eq!(
+            off.bw_weights[3], 0.0,
+            "B&W must be gated when panel is off"
+        );
 
         // Panel ON (flim): section values pass through.
         let mut on_json = base.clone();
         on_json["toneMapper"] = serde_json::json!("flim");
         let on = get_global_adjustments_from_json(&on_json, true, None);
-        assert!((on.flim_ev - 4.8).abs() < 1e-6, "flim EV must include preset pre-exposure + user offset");
+        assert!(
+            (on.flim_ev - 4.8).abs() < 1e-6,
+            "flim EV must include preset pre-exposure + user offset"
+        );
         assert!((on.crystal_grain_amount - 0.5).abs() < 1e-6);
         assert_eq!(on.bw_weights[3], 1.0);
     }
@@ -4543,20 +4638,32 @@ mod film_layout_tests {
         let mut off_json = base.clone();
         off_json["sectionVisibility"] = serde_json::json!({ "grain": false });
         let off = get_global_adjustments_from_json(&off_json, true, None);
-        assert_eq!(off.crystal_grain_amount, 0.0, "grain section off must zero amount");
-        assert_eq!(off.crystal_grain_mono, 0.0, "grain section off must zero mono");
+        assert_eq!(
+            off.crystal_grain_amount, 0.0,
+            "grain section off must zero amount"
+        );
+        assert_eq!(
+            off.crystal_grain_mono, 0.0,
+            "grain section off must zero mono"
+        );
 
         // IPOL engine: no GPU grain on the canvas (CPU-only engine).
         let mut ipol_json = base.clone();
         ipol_json["grainEngine"] = serde_json::json!("ipol");
         let ipol = get_global_adjustments_from_json(&ipol_json, true, None);
-        assert_eq!(ipol.crystal_grain_amount, 0.0, "ipol engine must have no GPU grain");
+        assert_eq!(
+            ipol.crystal_grain_amount, 0.0,
+            "ipol engine must have no GPU grain"
+        );
 
         // Flim panel off gates grain too (grain lives in the Film tab).
         let mut panel_off = base.clone();
         panel_off["toneMapper"] = serde_json::json!("basic");
         let gated = get_global_adjustments_from_json(&panel_off, true, None);
-        assert_eq!(gated.crystal_grain_amount, 0.0, "flim panel off must gate grain");
+        assert_eq!(
+            gated.crystal_grain_amount, 0.0,
+            "flim panel off must gate grain"
+        );
     }
 
     #[test]

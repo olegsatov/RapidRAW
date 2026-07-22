@@ -189,6 +189,8 @@ export interface LutFileSettings {
   inputRange?: number;
   inputOffset?: number;
   offsetCompensation?: boolean;
+  wbTemperatureShift?: number;
+  wbTintShift?: number;
   hotkey?: string[] | null;
 }
 

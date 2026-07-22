@@ -1816,6 +1816,8 @@
       "import": "Import LUTs",
       "importFailed": "LUTのインポートに失敗しました",
       "intensity": "適用度",
+      "wbTemperatureShift": "Temp shift",
+      "wbTintShift": "Tint shift",
       "label": "LUT",
       "noLut": "LUTなし",
       "disabledLut": "LUT無効",
