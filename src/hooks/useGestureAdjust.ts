@@ -58,6 +58,7 @@ export function useGestureAdjust() {
   const setEditor = useEditorStore((s) => s.setEditor);
   const sessionRef = useRef<GestureSession | null>(null);
   const pendingRef = useRef<{ event: KeyboardEvent; timer: ReturnType<typeof setTimeout> } | null>(null);
+  const stripRefreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     const getGestureAction = (code: string): GestureBinding['action'] | null => {
@@ -134,6 +135,64 @@ export function useGestureAdjust() {
       } catch (err) {
         console.error('Failed to load LUT strip:', err);
       }
+    };
+
+    const refreshSelectedStripThumb = () => {
+      const strip = useGestureStore.getState().lutStrip;
+      const lutPath = useEditorStore.getState().adjustments.lutPath;
+      if (!strip || !lutPath) return;
+
+      if (stripRefreshTimer.current) {
+        clearTimeout(stripRefreshTimer.current);
+      }
+
+      stripRefreshTimer.current = setTimeout(() => {
+        const adjustments = useEditorStore.getState().adjustments;
+        const appSettings = useSettingsStore.getState().appSettings;
+        const lutFieldSet = new Set([
+          'lutPath',
+          'lutName',
+          'lutData',
+          'lutSize',
+          'lutIntensity',
+          'lutTiming',
+          'lutNormalizeMode',
+          'lutInputRange',
+          'lutInputOffset',
+          'lutOffsetCompensation',
+          'lutWbTemperatureShift',
+          'lutWbTintShift',
+          'lutPerImageParams',
+        ]);
+        const previewAdjustments: Record<string, unknown> = {};
+        Object.entries(adjustments).forEach(([key, value]) => {
+          if (!lutFieldSet.has(key)) {
+            previewAdjustments[key] = value;
+          }
+        });
+        previewAdjustments.sectionVisibility = {
+          ...(adjustments.sectionVisibility ?? {}),
+          effects: true,
+          lut: true,
+        };
+
+        const effective = getEffectiveLutParams(appSettings, adjustments, lutPath);
+        invoke<Array<{ path: string; thumb: string | null }>>('generate_lut_previews', {
+          lutPaths: [lutPath],
+          size: 200,
+          adjustments: previewAdjustments,
+          lutParams: { [lutPath]: resolvedLutParamsToLutFileSettings(effective) },
+        })
+          .then((results) => {
+            const result = results[0];
+            if (result) {
+              useGestureStore.getState().setLutStripThumb(result.path, result.thumb);
+            }
+          })
+          .catch((err) => {
+            console.error('Failed to refresh LUT strip thumb:', err);
+          });
+      }, 200);
     };
 
     const startSession = (action: GestureBinding['action'], gestureKey: string) => {
@@ -308,13 +367,14 @@ export function useGestureAdjust() {
             wbTintShift: next.lutWbTintShift ?? DEFAULT_LUT_PARAMS.wbTintShift,
           };
           next.lutPerImageParams = { ...prev.lutPerImageParams, [prev.lutPath]: resolved };
+          refreshSelectedStripThumb();
         }
         updateOverlayValues(next);
         return next;
       });
     };
 
-    const cycleLut = (delta: number) => {
+    const cycleLut = async (delta: number) => {
       const strip = useGestureStore.getState().lutStrip;
       if (!strip || strip.entries.length === 0) return;
       const nextIndex = clamp(strip.selectedIndex + delta, 0, strip.entries.length - 1);
@@ -332,8 +392,15 @@ export function useGestureAdjust() {
           lutSize: 0,
         }));
       } else {
-        handleLutSelect(path);
+        try {
+          await handleLutSelect(path);
+        } catch (err) {
+          console.error('Failed to select LUT from gesture strip:', err);
+          return;
+        }
       }
+      updateOverlayValues(useEditorStore.getState().adjustments);
+      refreshSelectedStripThumb();
     };
 
     const updateOverlayValues = (adjustments: Adjustments) => {
@@ -570,6 +637,10 @@ export function useGestureAdjust() {
       if (pendingRef.current) {
         clearTimeout(pendingRef.current.timer);
         pendingRef.current = null;
+      }
+      if (stripRefreshTimer.current) {
+        clearTimeout(stripRefreshTimer.current);
+        stripRefreshTimer.current = null;
       }
       endSession();
     };
