@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
+import { invoke } from '@tauri-apps/api/core';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { useEditorStore } from '../store/useEditorStore';
 import { useUIStore } from '../store/useUIStore';
@@ -37,13 +38,14 @@ interface GestureSession {
   scrollContAccY: ContinuousAccumulator;
   gestureKey: string;
   overlayParams: GestureOverlayParam[];
+  lutCycleAccY: StepAccumulator;
 }
 
 const GESTURE_HOLD_DELAY_MS = 150;
 
 export function useGestureAdjust() {
   const { t } = useTranslation();
-  const { setAdjustments } = useEditorActions();
+  const { setAdjustments, handleLutSelect } = useEditorActions();
   const setEditor = useEditorStore((s) => s.setEditor);
   const sessionRef = useRef<GestureSession | null>(null);
   const pendingRef = useRef<{ event: KeyboardEvent; timer: ReturnType<typeof setTimeout> } | null>(null);
@@ -60,6 +62,56 @@ export function useGestureAdjust() {
         }
       }
       return null;
+    };
+
+    const loadLutStrip = async () => {
+      try {
+        const entries = await invoke<Array<{ name: string; path: string }>>('list_luts');
+        if (entries.length === 0) return;
+
+        const adjustments = useEditorStore.getState().adjustments;
+        const currentPath = adjustments.lutPath ?? null;
+        const selectedIndex = Math.max(
+          0,
+          entries.findIndex((e) => e.path === currentPath),
+        );
+
+        const lutFieldSet = new Set([
+          'lutPath',
+          'lutName',
+          'lutData',
+          'lutSize',
+          'lutIntensity',
+          'lutTiming',
+          'lutNormalizeMode',
+          'lutInputRange',
+          'lutInputOffset',
+          'lutOffsetCompensation',
+        ]);
+        const previewAdjustments: Record<string, unknown> = {};
+        Object.entries(adjustments).forEach(([key, value]) => {
+          if (!lutFieldSet.has(key)) {
+            previewAdjustments[key] = value;
+          }
+        });
+
+        useGestureStore.getState().startLutStrip(
+          entries.map((e) => ({ path: e.path, name: e.name, thumb: null })),
+          selectedIndex,
+        );
+
+        const results = await invoke<Array<{ path: string; thumb: string | null }>>('generate_lut_previews', {
+          lutPaths: entries.map((e) => e.path),
+          size: 200,
+          adjustments: previewAdjustments,
+        });
+        results.forEach((result) => {
+          useGestureStore.getState().setLutStripThumb(result.path, result.thumb);
+        });
+        useGestureStore.getState().setLutStripLoading(false);
+      } catch (err) {
+        console.error('Failed to load LUT strip:', err);
+      }
     };
 
     const startSession = (action: GestureBinding['action'], gestureKey: string) => {
@@ -155,7 +207,12 @@ export function useGestureAdjust() {
         ),
         gestureKey,
         overlayParams,
+        lutCycleAccY: new StepAccumulator(50),
       };
+
+      if (action === 'gesture_lut') {
+        loadLutStrip();
+      }
 
       setEditor({ isSliderDragging: true });
       const appWindow = getCurrentWindow();
@@ -213,6 +270,15 @@ export function useGestureAdjust() {
         updateOverlayValues(next);
         return next;
       });
+    };
+
+    const cycleLut = (delta: number) => {
+      const strip = useGestureStore.getState().lutStrip;
+      if (!strip || strip.entries.length === 0) return;
+      const nextIndex = clamp(strip.selectedIndex + delta, 0, strip.entries.length - 1);
+      if (nextIndex === strip.selectedIndex) return;
+      useGestureStore.getState().setLutStripSelectedIndex(nextIndex);
+      handleLutSelect(strip.entries[nextIndex].path);
     };
 
     const updateOverlayValues = (adjustments: Adjustments) => {
@@ -335,9 +401,17 @@ export function useGestureAdjust() {
       const scrollSign = binding.scrollSign ?? [1, 1];
       const device = detectWheelDevice(event);
 
+      const isLutSession = binding.action === 'gesture_lut';
+
       if (device === 'mouse') {
         const qx = quantizeMouseWheel(event.deltaX);
         const qy = quantizeMouseWheel(event.deltaY);
+
+        if (isLutSession && qy !== 0 && (qx === 0 || Math.abs(qy) >= Math.abs(qx))) {
+          cycleLut(qy);
+          return;
+        }
+
         const dx = qx * MOUSE_SCROLL_STEP;
         const dy = qy * MOUSE_SCROLL_STEP;
 
@@ -378,6 +452,14 @@ export function useGestureAdjust() {
       const dx = event.deltaX;
       const dy = event.deltaY;
       const locked = trackpadScrollLock.push(dx, dy);
+
+      if (isLutSession && (locked === 'vertical' || (locked === 'both' && Math.abs(dy) >= Math.abs(dx)))) {
+        const steps = sessionRef.current.lutCycleAccY.push(dy);
+        if (steps !== 0) {
+          cycleLut(Math.sign(steps));
+        }
+        return;
+      }
 
       if (binding.scrollSingleParam !== undefined) {
         const param = binding.scroll[binding.scrollSingleParam];
@@ -430,5 +512,5 @@ export function useGestureAdjust() {
       }
       endSession();
     };
-  }, [setAdjustments, setEditor, t]);
+  }, [setAdjustments, setEditor, handleLutSelect, t]);
 }
