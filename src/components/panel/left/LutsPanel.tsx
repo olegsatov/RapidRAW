@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { invoke } from '@tauri-apps/api/core';
 import { open } from '@tauri-apps/plugin-dialog';
 import clsx from 'clsx';
-import { ImageOff, Keyboard, Loader2, RotateCcw, Save, Upload, X } from 'lucide-react';
+import { ImageOff, Keyboard, Loader2, RotateCcw, Save, Upload } from 'lucide-react';
 import { toast } from 'react-toastify';
 
 import Slider from '../../ui/Slider';
@@ -452,7 +452,6 @@ export default function LutsPanel({ isVisible, panelWidth }: LutsPanelProps) {
                       defaultInputRange={defaultParams.inputRange}
                       onDragStateChange={handleDragStateChange}
                       onUpdate={updateLutAdjustment}
-                      onClear={handleClear}
                       onSaveAsDefault={handleSaveAsDefault}
                       onResetToDefault={handleResetToDefault}
                     />
@@ -489,7 +488,6 @@ export default function LutsPanel({ isVisible, panelWidth }: LutsPanelProps) {
 }
 
 interface LutDetailPanelProps {
-  entry: LutEntry;
   lutIntensity: number;
   lutInputOffset: number;
   lutInputRange: number;
@@ -498,13 +496,11 @@ interface LutDetailPanelProps {
   defaultInputRange: number;
   onDragStateChange: (isDragging: boolean) => void;
   onUpdate: (adjustmentPatch: Partial<Adjustments>) => void;
-  onClear: () => void;
   onSaveAsDefault: () => void;
   onResetToDefault: () => void;
 }
 
 const LutDetailPanel = memo(function LutDetailPanel({
-  entry,
   lutIntensity,
   lutInputOffset,
   lutInputRange,
@@ -513,7 +509,6 @@ const LutDetailPanel = memo(function LutDetailPanel({
   defaultInputRange,
   onDragStateChange,
   onUpdate,
-  onClear,
   onSaveAsDefault,
   onResetToDefault,
 }: LutDetailPanelProps) {
@@ -549,20 +544,6 @@ const LutDetailPanel = memo(function LutDetailPanel({
       onClick={(e) => e.stopPropagation()}
       onPointerDown={(e) => e.stopPropagation()}
     >
-      <div className="flex items-center justify-between gap-2 mb-2 px-0.5">
-        <Text variant={TextVariants.small} color={TextColors.primary} weight={TextWeights.medium} className="truncate">
-          {entry.name}
-        </Text>
-        <button
-          className="p-1 rounded-md text-text-secondary hover:text-text-primary hover:bg-surface transition-colors shrink-0"
-          onClick={onClear}
-          data-tooltip={t('ui.lut.clearLut')}
-          aria-label={t('ui.lut.clearLut')}
-        >
-          <X size={14} />
-        </button>
-      </div>
-
       <div className="space-y-1 px-0.5">
         <Slider
           label={t('ui.lut.intensity')}
