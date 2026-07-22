@@ -851,6 +851,14 @@ fn generate_uncropped_preview(
         let norm_factor = state.get_lut_input_norm_factor(&loaded_image);
         adjustments_clone["lutInputNormFactor"] = serde_json::json!(norm_factor);
 
+        // The uncropped crop preview is a CPU JPEG readback, while the main
+        // editor is rendered straight to screen via WGPU. That path loses a
+        // tiny bit of saturation; compensate with a small preview-only bump.
+        let saturation_boost = 1.5;
+        adjustments_clone["saturation"] = serde_json::json!(
+            adjustments_clone["saturation"].as_f64().unwrap_or(0.0) + saturation_boost
+        );
+
         let tm_override = resolve_tonemapper_override_from_handle(&app_handle, is_raw);
         let uncropped_adjustments =
             get_all_adjustments_from_json(&adjustments_clone, is_raw, tm_override);
