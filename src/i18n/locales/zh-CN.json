@@ -1827,7 +1827,8 @@
       "saveAsDefault": "保存为默认",
       "resetToDefault": "重置为默认",
       "configureLut": "配置 LUT",
-      "deleteLut": "删除 LUT"
+      "deleteLut": "删除 LUT",
+      "confirmDelete": "删除"
     },
     "slider": {
       "clickToEdit": "点击编辑",

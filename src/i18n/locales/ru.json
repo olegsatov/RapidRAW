@@ -2003,7 +2003,8 @@
       "saveAsDefault": "Сохранить как стандартные",
       "resetToDefault": "Сбросить к стандартным",
       "configureLut": "Настроить LUT",
-      "deleteLut": "Удалить LUT"
+      "deleteLut": "Удалить LUT",
+      "confirmDelete": "Удалить"
     },
     "slider": {
       "clickToEdit": "Нажмите для точного ввода",

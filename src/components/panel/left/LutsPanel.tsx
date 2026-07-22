@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { invoke } from '@tauri-apps/api/core';
 import { open } from '@tauri-apps/plugin-dialog';
 import clsx from 'clsx';
-import { ImageOff, Loader2, Pencil, RotateCcw, Save, Trash2, Upload } from 'lucide-react';
+import { Check, ImageOff, Loader2, Pencil, RotateCcw, Save, Trash2, Upload, X } from 'lucide-react';
 import { toast } from 'react-toastify';
 
 import Slider from '../../ui/Slider';
@@ -291,30 +291,38 @@ export default function LutsPanel({ isVisible, panelWidth }: LutsPanelProps) {
         {
           icon: Trash2,
           label: t('ui.lut.deleteLut'),
-          onClick: async () => {
-            try {
-              await invoke('remove_lut', { path: entry.path });
-              previewCache.current.delete(entry.path);
-              setPreviews((prev) => {
-                const next = { ...prev };
-                delete next[entry.path];
-                return next;
-              });
-              if (selectedLutPath === entry.path) {
-                setAdjustments((prev) => ({
-                  ...prev,
-                  ...lutParamsToAdjustments(DEFAULT_LUT_PARAMS),
-                  lutPath: null,
-                  lutName: null,
-                  lutData: null,
-                  lutSize: 0,
-                }));
-              }
-              refreshList();
-            } catch (err) {
-              toast.error(`Failed to delete LUT: ${err}`);
-            }
-          },
+          submenu: [
+            { label: t('contextMenus.editor.cancel'), icon: X, onClick: () => {} },
+            {
+              label: t('ui.lut.confirmDelete'),
+              icon: Check,
+              isDestructive: true,
+              onClick: async () => {
+                try {
+                  await invoke('remove_lut', { path: entry.path });
+                  previewCache.current.delete(entry.path);
+                  setPreviews((prev) => {
+                    const next = { ...prev };
+                    delete next[entry.path];
+                    return next;
+                  });
+                  if (selectedLutPath === entry.path) {
+                    setAdjustments((prev) => ({
+                      ...prev,
+                      ...lutParamsToAdjustments(DEFAULT_LUT_PARAMS),
+                      lutPath: null,
+                      lutName: null,
+                      lutData: null,
+                      lutSize: 0,
+                    }));
+                  }
+                  refreshList();
+                } catch (err) {
+                  toast.error(`Failed to delete LUT: ${err}`);
+                }
+              },
+            },
+          ],
         },
       ]);
     },

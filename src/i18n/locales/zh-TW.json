@@ -1827,7 +1827,8 @@
       "saveAsDefault": "儲存為預設",
       "resetToDefault": "重設為預設",
       "configureLut": "設定 LUT",
-      "deleteLut": "刪除 LUT"
+      "deleteLut": "刪除 LUT",
+      "confirmDelete": "刪除"
     },
     "slider": {
       "clickToEdit": "點選編輯",

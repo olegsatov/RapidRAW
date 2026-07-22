@@ -2010,7 +2010,8 @@
       "saveAsDefault": "Save as default",
       "resetToDefault": "Reset to default",
       "configureLut": "Configure LUT",
-      "deleteLut": "Delete LUT"
+      "deleteLut": "Delete LUT",
+      "confirmDelete": "Delete"
     },
     "slider": {
       "clickToEdit": "Click to edit",

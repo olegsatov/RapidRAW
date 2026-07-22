@@ -1891,7 +1891,8 @@
       "saveAsDefault": "Zapisz jako domyślne",
       "resetToDefault": "Przywróć domyślne",
       "configureLut": "Skonfiguruj LUT",
-      "deleteLut": "Usuń LUT"
+      "deleteLut": "Usuń LUT",
+      "confirmDelete": "Usuń"
     },
     "slider": {
       "clickToEdit": "Kliknij, aby edytować",

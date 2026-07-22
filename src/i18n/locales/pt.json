@@ -1827,7 +1827,8 @@
       "saveAsDefault": "Salvar como padrão",
       "resetToDefault": "Redefinir para padrão",
       "configureLut": "Configurar LUT",
-      "deleteLut": "Excluir LUT"
+      "deleteLut": "Excluir LUT",
+      "confirmDelete": "Excluir"
     },
     "slider": {
       "clickToEdit": "Clique para editar",

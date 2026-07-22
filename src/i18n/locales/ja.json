@@ -1826,7 +1826,8 @@
       "saveAsDefault": "デフォルトとして保存",
       "resetToDefault": "デフォルトに戻す",
       "configureLut": "LUTを設定",
-      "deleteLut": "LUTを削除"
+      "deleteLut": "LUTを削除",
+      "confirmDelete": "削除"
     },
     "slider": {
       "clickToEdit": "クリックして編集",
