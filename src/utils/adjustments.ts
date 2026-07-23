@@ -84,6 +84,14 @@ export enum Effect {
   LutNormalizeMode = 'lutNormalizeMode',
   LutInputRange = 'lutInputRange',
   LutInputOffset = 'lutInputOffset',
+  LutOffsetCompensation = 'lutOffsetCompensation',
+  LutWbTemperatureShift = 'lutWbTemperatureShift',
+  LutWbTintShift = 'lutWbTintShift',
+  LutFlimContrast = 'lutFlimContrast',
+  LutFlimLights = 'lutFlimLights',
+  LutFlimShadows = 'lutFlimShadows',
+  LutSaturation = 'lutSaturation',
+  LutVibrance = 'lutVibrance',
   VignetteAmount = 'vignetteAmount',
   VignetteFeather = 'vignetteFeather',
   VignetteMidpoint = 'vignetteMidpoint',
@@ -323,6 +331,11 @@ export interface Adjustments {
   lutOffsetCompensation?: boolean;
   lutWbTemperatureShift?: number;
   lutWbTintShift?: number;
+  lutFlimContrast?: number;
+  lutFlimLights?: number;
+  lutFlimShadows?: number;
+  lutSaturation?: number;
+  lutVibrance?: number;
   lutPerImageParams?: Record<
     string,
     {
@@ -333,6 +346,11 @@ export interface Adjustments {
       offsetCompensation: boolean;
       wbTemperatureShift: number;
       wbTintShift: number;
+      flimContrast: number;
+      flimLights: number;
+      flimShadows: number;
+      saturation: number;
+      vibrance: number;
     }
   >;
   masks: Array<MaskContainer>;
@@ -836,6 +854,11 @@ export const INITIAL_ADJUSTMENTS: Adjustments = {
   lutOffsetCompensation: false,
   lutWbTemperatureShift: 0,
   lutWbTintShift: 0,
+  lutFlimContrast: 0,
+  lutFlimLights: 0,
+  lutFlimShadows: 0,
+  lutSaturation: 0,
+  lutVibrance: 0,
   lutPerImageParams: {},
   masks: [],
   orientationSteps: 0,
@@ -1132,6 +1155,14 @@ export const ADJUSTMENT_GROUPS: Record<string, AdjustmentGroup[]> = {
         Effect.LutNormalizeMode,
         Effect.LutInputRange,
         Effect.LutInputOffset,
+        Effect.LutOffsetCompensation,
+        Effect.LutWbTemperatureShift,
+        Effect.LutWbTintShift,
+        Effect.LutFlimContrast,
+        Effect.LutFlimLights,
+        Effect.LutFlimShadows,
+        Effect.LutSaturation,
+        Effect.LutVibrance,
         Effect.LutData,
       ],
     },
@@ -1295,6 +1326,14 @@ export const ADJUSTMENT_SECTIONS: Sections = {
     Effect.LutNormalizeMode,
     Effect.LutInputRange,
     Effect.LutInputOffset,
+    Effect.LutOffsetCompensation,
+    Effect.LutWbTemperatureShift,
+    Effect.LutWbTintShift,
+    Effect.LutFlimContrast,
+    Effect.LutFlimLights,
+    Effect.LutFlimShadows,
+    Effect.LutSaturation,
+    Effect.LutVibrance,
     Effect.VignetteAmount,
     Effect.VignetteFeather,
     Effect.VignetteMidpoint,

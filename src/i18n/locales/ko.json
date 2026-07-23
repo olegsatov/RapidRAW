@@ -1833,7 +1833,8 @@
       "resetToDefault": "기본값으로 재설정",
       "configureLut": "LUT 설정",
       "deleteLut": "LUT 삭제",
-      "confirmDelete": "삭제"
+      "confirmDelete": "삭제",
+      "advanced": "Advanced"
     },
     "slider": {
       "clickToEdit": "클릭하여 편집",

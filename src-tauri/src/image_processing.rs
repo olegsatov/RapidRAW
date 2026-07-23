@@ -2674,12 +2674,18 @@ fn get_global_adjustments_from_json(
         .clamp(0, (FLIM_PRESETS.len() - 1) as i64) as usize;
     let flim_user_ev = js_adjustments["flimEv"].as_f64().unwrap_or(0.0) as f32;
     let flim_strength = js_adjustments["flimStrength"].as_f64().unwrap_or(100.0) as f32 / 100.0;
-    let flim_contrast = js_adjustments["flimContrast"].as_f64().unwrap_or(100.0) as f32 / 100.0;
+    let flim_contrast = (js_adjustments["flimContrast"].as_f64().unwrap_or(100.0) as f32
+        + js_adjustments["lutFlimContrast"].as_f64().unwrap_or(0.0) as f32)
+        / 100.0;
     // Recalibrate shoulder so that the new UI default (0) matches the previous
     // -50 position, shifting the whole range by -50.
-    let flim_shoulder =
-        (js_adjustments["flimShoulder"].as_f64().unwrap_or(0.0) as f32 - 50.0) / 100.0;
-    let flim_toe = js_adjustments["flimToe"].as_f64().unwrap_or(0.0) as f32 / 100.0;
+    let flim_shoulder = (js_adjustments["flimShoulder"].as_f64().unwrap_or(0.0) as f32
+        + js_adjustments["lutFlimLights"].as_f64().unwrap_or(0.0) as f32
+        - 50.0)
+        / 100.0;
+    let flim_toe = (js_adjustments["flimToe"].as_f64().unwrap_or(0.0) as f32
+        + js_adjustments["lutFlimShadows"].as_f64().unwrap_or(0.0) as f32)
+        / 100.0;
     let flim_saturation = js_adjustments["flimSaturation"].as_f64().unwrap_or(100.0) as f32 / 100.0;
     let flim_warmth_t = js_adjustments["flimWarmth"].as_f64().unwrap_or(0.0) as f32 / 100.0 * 0.15;
     let flim_adjacency = js_adjustments["flimAdjacency"].as_f64().unwrap_or(0.0) as f32 / 100.0;
@@ -2753,7 +2759,8 @@ fn get_global_adjustments_from_json(
         whites: get_val("basic", "whites", SCALES.whites, None),
         blacks: get_val("basic", "blacks", SCALES.blacks, None),
 
-        saturation: get_val("color", "saturation", SCALES.saturation, None),
+        saturation: get_val("color", "saturation", SCALES.saturation, None)
+            + js_adjustments["lutSaturation"].as_f64().unwrap_or(0.0) as f32 / SCALES.saturation,
         temperature: get_val("color", "temperature", SCALES.temperature, None)
             + js_adjustments["lutWbTemperatureShift"]
                 .as_f64()
@@ -2761,7 +2768,8 @@ fn get_global_adjustments_from_json(
                 / SCALES.temperature,
         tint: get_val("color", "tint", SCALES.tint, None)
             + js_adjustments["lutWbTintShift"].as_f64().unwrap_or(0.0) as f32 / SCALES.tint,
-        vibrance: get_val("color", "vibrance", SCALES.vibrance, None),
+        vibrance: get_val("color", "vibrance", SCALES.vibrance, None)
+            + js_adjustments["lutVibrance"].as_f64().unwrap_or(0.0) as f32 / SCALES.vibrance,
         hue: get_val("color", "hue", 1.0, None),
         _pad_color1: 0.0,
         _pad_color2: 0.0,

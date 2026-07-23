@@ -57,6 +57,14 @@ const LUT_KEYS = [
   Effect.LutNormalizeMode,
   Effect.LutInputRange,
   Effect.LutInputOffset,
+  Effect.LutOffsetCompensation,
+  Effect.LutWbTemperatureShift,
+  Effect.LutWbTintShift,
+  Effect.LutFlimContrast,
+  Effect.LutFlimLights,
+  Effect.LutFlimShadows,
+  Effect.LutSaturation,
+  Effect.LutVibrance,
   Effect.LutData,
 ];
 

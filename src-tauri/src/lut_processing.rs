@@ -835,6 +835,11 @@ pub fn generate_lut_previews(
                     );
                     obj.insert("lutWbTemperatureShift".to_string(), serde_json::json!(0.0));
                     obj.insert("lutWbTintShift".to_string(), serde_json::json!(0.0));
+                    obj.insert("lutFlimContrast".to_string(), serde_json::json!(0.0));
+                    obj.insert("lutFlimLights".to_string(), serde_json::json!(0.0));
+                    obj.insert("lutFlimShadows".to_string(), serde_json::json!(0.0));
+                    obj.insert("lutSaturation".to_string(), serde_json::json!(0.0));
+                    obj.insert("lutVibrance".to_string(), serde_json::json!(0.0));
                     let section_visibility = obj
                         .entry("sectionVisibility")
                         .or_insert_with(|| serde_json::json!({}));
@@ -870,6 +875,11 @@ pub fn generate_lut_previews(
             let offset_compensation = params.and_then(|p| p.offset_compensation).unwrap_or(false);
             let wb_temperature_shift = params.and_then(|p| p.wb_temperature_shift).unwrap_or(0.0);
             let wb_tint_shift = params.and_then(|p| p.wb_tint_shift).unwrap_or(0.0);
+            let flim_contrast = params.and_then(|p| p.flim_contrast).unwrap_or(0.0);
+            let flim_lights = params.and_then(|p| p.flim_lights).unwrap_or(0.0);
+            let flim_shadows = params.and_then(|p| p.flim_shadows).unwrap_or(0.0);
+            let saturation = params.and_then(|p| p.saturation).unwrap_or(0.0);
+            let vibrance = params.and_then(|p| p.vibrance).unwrap_or(0.0);
 
             let mut merged_json = base_json.clone();
             if let Some(obj) = merged_json.as_object_mut() {
@@ -897,6 +907,26 @@ pub fn generate_lut_previews(
                 obj.insert(
                     "lutWbTintShift".to_string(),
                     serde_json::json!(wb_tint_shift),
+                );
+                obj.insert(
+                    "lutFlimContrast".to_string(),
+                    serde_json::json!(flim_contrast),
+                );
+                obj.insert(
+                    "lutFlimLights".to_string(),
+                    serde_json::json!(flim_lights),
+                );
+                obj.insert(
+                    "lutFlimShadows".to_string(),
+                    serde_json::json!(flim_shadows),
+                );
+                obj.insert(
+                    "lutSaturation".to_string(),
+                    serde_json::json!(saturation),
+                );
+                obj.insert(
+                    "lutVibrance".to_string(),
+                    serde_json::json!(vibrance),
                 );
                 let section_visibility = obj
                     .entry("sectionVisibility")

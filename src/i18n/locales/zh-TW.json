@@ -1833,7 +1833,8 @@
       "resetToDefault": "重設為預設",
       "configureLut": "設定 LUT",
       "deleteLut": "刪除 LUT",
-      "confirmDelete": "刪除"
+      "confirmDelete": "刪除",
+      "advanced": "Advanced"
     },
     "slider": {
       "clickToEdit": "點選編輯",

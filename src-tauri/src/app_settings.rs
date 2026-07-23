@@ -349,6 +349,18 @@ pub struct LutFileSettings {
     pub wb_temperature_shift: Option<f32>,
     #[serde(default)]
     pub wb_tint_shift: Option<f32>,
+    #[serde(default)]
+    pub flim_contrast: Option<f32>,
+    #[serde(default)]
+    pub flim_lights: Option<f32>,
+    #[serde(default)]
+    pub flim_shadows: Option<f32>,
+    #[serde(default)]
+    pub saturation: Option<f32>,
+    #[serde(default)]
+    pub vibrance: Option<f32>,
+    #[serde(default)]
+    pub hotkey: Option<Vec<String>>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]

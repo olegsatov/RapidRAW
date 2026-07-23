@@ -1999,6 +1999,7 @@
       "luts": "LUTs",
       "mode": "Mode",
       "parameters": "Parameters",
+      "advanced": "Advanced",
       "normalizeClamp": "Clamp",
       "normalizeLinear": "Linear",
       "normalizeLog": "Log",

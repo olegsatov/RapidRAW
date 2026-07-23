@@ -1832,7 +1832,8 @@
       "resetToDefault": "デフォルトに戻す",
       "configureLut": "LUTを設定",
       "deleteLut": "LUTを削除",
-      "confirmDelete": "削除"
+      "confirmDelete": "削除",
+      "advanced": "Advanced"
     },
     "slider": {
       "clickToEdit": "クリックして編集",

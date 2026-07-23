@@ -191,6 +191,11 @@ export interface LutFileSettings {
   offsetCompensation?: boolean;
   wbTemperatureShift?: number;
   wbTintShift?: number;
+  flimContrast?: number;
+  flimLights?: number;
+  flimShadows?: number;
+  saturation?: number;
+  vibrance?: number;
   hotkey?: string[] | null;
 }
 

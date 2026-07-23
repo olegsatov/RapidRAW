@@ -1833,7 +1833,8 @@
       "resetToDefault": "重置为默认",
       "configureLut": "配置 LUT",
       "deleteLut": "删除 LUT",
-      "confirmDelete": "删除"
+      "confirmDelete": "删除",
+      "advanced": "Advanced"
     },
     "slider": {
       "clickToEdit": "点击编辑",

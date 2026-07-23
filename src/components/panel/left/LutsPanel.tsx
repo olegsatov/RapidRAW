@@ -1,9 +1,10 @@
-import { Fragment, memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { invoke } from '@tauri-apps/api/core';
 import { open } from '@tauri-apps/plugin-dialog';
 import clsx from 'clsx';
-import { Check, ImageOff, Loader2, Pencil, RotateCcw, Save, Trash2, Upload, X } from 'lucide-react';
+import { AnimatePresence, motion } from 'framer-motion';
+import { Check, ChevronRight, ImageOff, Loader2, Pencil, RotateCcw, Save, Trash2, Upload, X } from 'lucide-react';
 import { toast } from 'react-toastify';
 
 import Slider from '../../ui/Slider';
@@ -62,6 +63,13 @@ export default function LutsPanel({ isVisible, panelWidth }: LutsPanelProps) {
     (state) => state.adjustments.lutWbTemperatureShift ?? DEFAULT_LUT_PARAMS.wbTemperatureShift,
   );
   const lutWbTintShift = useEditorStore((state) => state.adjustments.lutWbTintShift ?? DEFAULT_LUT_PARAMS.wbTintShift);
+  const lutFlimContrast = useEditorStore(
+    (state) => state.adjustments.lutFlimContrast ?? DEFAULT_LUT_PARAMS.flimContrast,
+  );
+  const lutFlimLights = useEditorStore((state) => state.adjustments.lutFlimLights ?? DEFAULT_LUT_PARAMS.flimLights);
+  const lutFlimShadows = useEditorStore((state) => state.adjustments.lutFlimShadows ?? DEFAULT_LUT_PARAMS.flimShadows);
+  const lutSaturation = useEditorStore((state) => state.adjustments.lutSaturation ?? DEFAULT_LUT_PARAMS.saturation);
+  const lutVibrance = useEditorStore((state) => state.adjustments.lutVibrance ?? DEFAULT_LUT_PARAMS.vibrance);
   const appSettings = useSettingsStore((state) => state.appSettings);
   const osPlatform = useSettingsStore((state) => state.osPlatform);
 
@@ -93,6 +101,11 @@ export default function LutsPanel({ isVisible, panelWidth }: LutsPanelProps) {
         'lutOffsetCompensation',
         'lutWbTemperatureShift',
         'lutWbTintShift',
+        'lutFlimContrast',
+        'lutFlimLights',
+        'lutFlimShadows',
+        'lutSaturation',
+        'lutVibrance',
         'lutPerImageParams',
       ]),
     [],
@@ -200,7 +213,15 @@ export default function LutsPanel({ isVisible, panelWidth }: LutsPanelProps) {
         clearTimeout(previewTimer.current);
       }
     };
-  }, [isVisible, selectedImagePath, isImageReady, entries, appSettings?.lutSettings, adjustmentsKey, adjustments.lutPerImageParams]);
+  }, [
+    isVisible,
+    selectedImagePath,
+    isImageReady,
+    entries,
+    appSettings?.lutSettings,
+    adjustmentsKey,
+    adjustments.lutPerImageParams,
+  ]);
 
   useEffect(() => {
     return () => {
@@ -353,6 +374,11 @@ export default function LutsPanel({ isVisible, panelWidth }: LutsPanelProps) {
             offsetCompensation: next.lutOffsetCompensation ?? DEFAULT_LUT_PARAMS.offsetCompensation,
             wbTemperatureShift: next.lutWbTemperatureShift ?? DEFAULT_LUT_PARAMS.wbTemperatureShift,
             wbTintShift: next.lutWbTintShift ?? DEFAULT_LUT_PARAMS.wbTintShift,
+            flimContrast: next.lutFlimContrast ?? DEFAULT_LUT_PARAMS.flimContrast,
+            flimLights: next.lutFlimLights ?? DEFAULT_LUT_PARAMS.flimLights,
+            flimShadows: next.lutFlimShadows ?? DEFAULT_LUT_PARAMS.flimShadows,
+            saturation: next.lutSaturation ?? DEFAULT_LUT_PARAMS.saturation,
+            vibrance: next.lutVibrance ?? DEFAULT_LUT_PARAMS.vibrance,
           };
           next.lutPerImageParams = { ...prev.lutPerImageParams, [selectedLutPath]: resolved };
         }
@@ -371,8 +397,25 @@ export default function LutsPanel({ isVisible, panelWidth }: LutsPanelProps) {
       timing: 'before',
       wbTemperatureShift: lutWbTemperatureShift,
       wbTintShift: lutWbTintShift,
+      flimContrast: lutFlimContrast,
+      flimLights: lutFlimLights,
+      flimShadows: lutFlimShadows,
+      saturation: lutSaturation,
+      vibrance: lutVibrance,
     });
-  }, [selectedLutPath, lutIntensity, lutInputOffset, lutInputRange, lutWbTemperatureShift, lutWbTintShift]);
+  }, [
+    selectedLutPath,
+    lutIntensity,
+    lutInputOffset,
+    lutInputRange,
+    lutWbTemperatureShift,
+    lutWbTintShift,
+    lutFlimContrast,
+    lutFlimLights,
+    lutFlimShadows,
+    lutSaturation,
+    lutVibrance,
+  ]);
 
   const handleResetToDefault = useCallback(() => {
     if (!selectedLutPath) return;
@@ -394,6 +437,11 @@ export default function LutsPanel({ isVisible, panelWidth }: LutsPanelProps) {
 
   const defaultWbTemperatureShift = defaultParams.wbTemperatureShift;
   const defaultWbTintShift = defaultParams.wbTintShift;
+  const defaultFlimContrast = defaultParams.flimContrast;
+  const defaultFlimLights = defaultParams.flimLights;
+  const defaultFlimShadows = defaultParams.flimShadows;
+  const defaultSaturation = defaultParams.saturation;
+  const defaultVibrance = defaultParams.vibrance;
 
   const selectedEntry = useMemo(
     () => entries.find((entry) => entry.path === selectedLutPath) || null,
@@ -443,105 +491,128 @@ export default function LutsPanel({ isVisible, panelWidth }: LutsPanelProps) {
               const columns = isWide ? 2 : 1;
               const start = rowIndex * columns;
               const rowEntries = entries.slice(start, start + columns);
-              const isSelectedRow = selectedIndex >= start && selectedIndex < start + columns;
               const isLastRow = rowIndex === Math.ceil(entries.length / columns) - 1;
               return (
-                <Fragment key={rowIndex}>
-                  <div
-                    className={clsx('grid gap-3', isWide ? 'grid-cols-2' : 'grid-cols-1', !isLastRow && 'mb-2.5')}
-                    role="row"
-                  >
-                    {rowEntries.map((entry) => {
-                      const thumb = previews[entry.path];
-                      const isSelected = entry.path === selectedLutPath;
-                      return (
-                        <div key={entry.path} className="flex flex-col">
-                          <button
-                            onClick={() => handleSelect(entry.path)}
-                            onContextMenu={(e) => handleContextMenu(e, entry)}
-                            onMouseEnter={() => setLutPreviewOverride(entry.path)}
-                            onMouseLeave={() => setLutPreviewOverride(null)}
-                            className={clsx(
-                              'relative aspect-square rounded-md overflow-hidden bg-bg-tertiary border-2 transition-colors text-left',
-                              isSelected ? 'border-accent' : 'border-transparent hover:border-surface',
-                            )}
-                            data-tooltip={entry.name}
-                            aria-selected={isSelected}
-                            aria-label={entry.name}
-                            role="gridcell"
-                          >
-                            {isLoadingPreviews && thumb === undefined ? (
-                              <div className="w-full h-full animate-pulse bg-surface" />
-                            ) : thumb ? (
-                              <img
-                                src={thumb}
-                                alt={entry.name}
-                                className="w-full h-full object-cover"
-                                draggable={false}
-                              />
-                            ) : (
-                              <div className="w-full h-full flex items-center justify-center text-text-secondary">
-                                <ImageOff size={18} />
-                              </div>
-                            )}
-                            {appSettings?.lutSettings?.[entry.path]?.hotkey &&
-                              appSettings.lutSettings[entry.path].hotkey.length > 0 && (
-                                <Text
-                                  as="kbd"
-                                  variant={TextVariants.small}
-                                  color={TextColors.secondary}
-                                  className="absolute top-1.5 right-1.5 px-1 py-0.5 bg-bg-primary/90 backdrop-blur-sm border border-border-color/50 rounded text-[10px] leading-none"
-                                >
-                                  {appSettings.lutSettings[entry.path].hotkey
-                                    .map((k) => formatKeyCode(k, osPlatform))
-                                    .join('')}
-                                </Text>
-                              )}
-                          </button>
-                          <Text
-                            variant={TextVariants.small}
-                            color={isSelected ? TextColors.primary : TextColors.secondary}
-                            weight={isSelected ? TextWeights.medium : TextWeights.normal}
-                            className="mt-1.5 truncate px-0.5"
-                          >
-                            {entry.name}
-                          </Text>
-                        </div>
-                      );
-                    })}
-                    {isLastRow && isWide && rowEntries.length < 2 && (
-                      <button
-                        onClick={handleImport}
-                        className="aspect-square rounded-md bg-bg-tertiary border-2 border-text-secondary/25 hover:border-accent flex items-center justify-center text-text-secondary hover:text-text-primary transition-all duration-150"
-                        data-tooltip={t('ui.lut.import')}
-                        aria-label={t('ui.lut.import')}
-                        role="gridcell"
-                      >
-                        <Upload size={20} />
-                      </button>
-                    )}
-                  </div>
-                  {isSelectedRow && selectedEntry && (
-                    <LutDetailPanel
-                      key={selectedEntry.path}
-                      entry={selectedEntry}
-                      lutIntensity={lutIntensity}
-                      lutInputOffset={lutInputOffset}
-                      lutInputRange={lutInputRange}
-                      lutWbTemperatureShift={lutWbTemperatureShift}
-                      lutWbTintShift={lutWbTintShift}
-                      defaultIntensity={defaultParams.intensity}
-                      defaultInputOffset={defaultParams.inputOffset}
-                      defaultInputRange={defaultParams.inputRange}
-                      defaultWbTemperatureShift={defaultWbTemperatureShift}
-                      defaultWbTintShift={defaultWbTintShift}
-                      onDragStateChange={handleDragStateChange}
-                      onUpdate={updateLutAdjustment}
-                      onSaveAsDefault={handleSaveAsDefault}
-                      onResetToDefault={handleResetToDefault}
-                    />
+                <div
+                  key={rowIndex}
+                  className={clsx(
+                    'grid gap-3 items-start',
+                    isWide ? 'grid-cols-2' : 'grid-cols-1',
+                    !isLastRow && 'mb-2.5',
                   )}
-                </Fragment>
+                  role="row"
+                >
+                  {rowEntries.map((entry) => {
+                    const thumb = previews[entry.path];
+                    const isSelected = entry.path === selectedLutPath;
+                    return (
+                      <div key={entry.path} className="flex flex-col p-2 rounded-lg bg-surface">
+                        <button
+                          onClick={() => handleSelect(entry.path)}
+                          onContextMenu={(e) => handleContextMenu(e, entry)}
+                          onMouseEnter={() => setLutPreviewOverride(entry.path)}
+                          onMouseLeave={() => setLutPreviewOverride(null)}
+                          className={clsx(
+                            'relative aspect-square rounded-md overflow-hidden bg-bg-tertiary text-left outline-2 outline-offset-[-2px] transition-[outline-color]',
+                            isSelected ? 'outline-accent' : 'outline-transparent hover:outline-accent/50',
+                          )}
+                          aria-selected={isSelected}
+                          aria-label={entry.name}
+                          role="gridcell"
+                        >
+                          {isLoadingPreviews && thumb === undefined ? (
+                            <div className="w-full h-full animate-pulse bg-surface" />
+                          ) : thumb ? (
+                            <img
+                              src={thumb}
+                              alt={entry.name}
+                              className="w-full h-full object-cover"
+                              draggable={false}
+                            />
+                          ) : (
+                            <div className="w-full h-full flex items-center justify-center text-text-secondary">
+                              <ImageOff size={18} />
+                            </div>
+                          )}
+                          {appSettings?.lutSettings?.[entry.path]?.hotkey &&
+                            appSettings.lutSettings[entry.path].hotkey.length > 0 && (
+                              <Text
+                                as="kbd"
+                                variant={TextVariants.small}
+                                color={TextColors.secondary}
+                                className="absolute top-1.5 right-1.5 px-1 py-0.5 bg-bg-primary/90 backdrop-blur-sm border border-border-color/50 rounded text-[10px] leading-none"
+                              >
+                                {appSettings.lutSettings[entry.path].hotkey
+                                  .map((k) => formatKeyCode(k, osPlatform))
+                                  .join('')}
+                              </Text>
+                            )}
+                        </button>
+                        <Text
+                          variant={TextVariants.label}
+                          color={isSelected ? TextColors.primary : TextColors.secondary}
+                          weight={isSelected ? TextWeights.medium : TextWeights.normal}
+                          className="mt-[10px] truncate px-0.5"
+                        >
+                          {entry.name}
+                        </Text>
+                        <AnimatePresence initial={false}>
+                          {isSelected && (
+                            <motion.div
+                              initial={{ height: 0, opacity: 0 }}
+                              animate={{ height: 'auto', opacity: 1 }}
+                              exit={{ height: 0, opacity: 0 }}
+                              transition={{ duration: 0.25, ease: 'easeInOut' }}
+                              className="w-full cursor-auto overflow-hidden"
+                              onClick={(e) => e.stopPropagation()}
+                              onPointerDown={(e) => e.stopPropagation()}
+                            >
+                              <div className="mt-3">
+                                <LutDetailPanel
+                                  lutIntensity={lutIntensity}
+                                  lutInputOffset={lutInputOffset}
+                                  lutInputRange={lutInputRange}
+                                  lutWbTemperatureShift={lutWbTemperatureShift}
+                                  lutWbTintShift={lutWbTintShift}
+                                  lutFlimContrast={lutFlimContrast}
+                                  lutFlimLights={lutFlimLights}
+                                  lutFlimShadows={lutFlimShadows}
+                                  lutSaturation={lutSaturation}
+                                  lutVibrance={lutVibrance}
+                                  defaultIntensity={defaultParams.intensity}
+                                  defaultInputOffset={defaultParams.inputOffset}
+                                  defaultInputRange={defaultParams.inputRange}
+                                  defaultWbTemperatureShift={defaultWbTemperatureShift}
+                                  defaultWbTintShift={defaultWbTintShift}
+                                  defaultFlimContrast={defaultFlimContrast}
+                                  defaultFlimLights={defaultFlimLights}
+                                  defaultFlimShadows={defaultFlimShadows}
+                                  defaultSaturation={defaultSaturation}
+                                  defaultVibrance={defaultVibrance}
+                                  onDragStateChange={handleDragStateChange}
+                                  onUpdate={updateLutAdjustment}
+                                  onSaveAsDefault={handleSaveAsDefault}
+                                  onResetToDefault={handleResetToDefault}
+                                />
+                              </div>
+                            </motion.div>
+                          )}
+                        </AnimatePresence>
+                      </div>
+                    );
+                  })}
+                  {isLastRow && isWide && rowEntries.length < 2 && (
+                    <button
+                      onClick={handleImport}
+                      className="aspect-square rounded-md bg-bg-tertiary border-2 border-text-secondary/25 hover:border-accent flex items-center justify-center text-text-secondary hover:text-text-primary transition-all duration-150"
+                      data-tooltip={t('ui.lut.import')}
+                      aria-label={t('ui.lut.import')}
+                      role="gridcell"
+                    >
+                      <Upload size={20} />
+                    </button>
+                  )}
+                </div>
               );
             })}
             {(entries.length === 0 || !isWide || entries.length % 2 === 0) && (
@@ -588,11 +659,21 @@ interface LutDetailPanelProps {
   lutInputRange: number;
   lutWbTemperatureShift: number;
   lutWbTintShift: number;
+  lutFlimContrast: number;
+  lutFlimLights: number;
+  lutFlimShadows: number;
+  lutSaturation: number;
+  lutVibrance: number;
   defaultIntensity: number;
   defaultInputOffset: number;
   defaultInputRange: number;
   defaultWbTemperatureShift: number;
   defaultWbTintShift: number;
+  defaultFlimContrast: number;
+  defaultFlimLights: number;
+  defaultFlimShadows: number;
+  defaultSaturation: number;
+  defaultVibrance: number;
   onDragStateChange: (isDragging: boolean) => void;
   onUpdate: (adjustmentPatch: Partial<Adjustments>) => void;
   onSaveAsDefault: () => void;
@@ -605,24 +686,40 @@ const LutDetailPanel = memo(function LutDetailPanel({
   lutInputRange,
   lutWbTemperatureShift,
   lutWbTintShift,
+  lutFlimContrast,
+  lutFlimLights,
+  lutFlimShadows,
+  lutSaturation,
+  lutVibrance,
   defaultIntensity,
   defaultInputOffset,
   defaultInputRange,
   defaultWbTemperatureShift,
   defaultWbTintShift,
+  defaultFlimContrast,
+  defaultFlimLights,
+  defaultFlimShadows,
+  defaultSaturation,
+  defaultVibrance,
   onDragStateChange,
   onUpdate,
   onSaveAsDefault,
   onResetToDefault,
 }: LutDetailPanelProps) {
   const { t } = useTranslation();
+  const [isAdvancedOpen, setIsAdvancedOpen] = useState(false);
 
   const isAlreadyDefault =
     lutIntensity === defaultIntensity &&
     lutInputOffset === defaultInputOffset &&
     lutInputRange === defaultInputRange &&
     lutWbTemperatureShift === defaultWbTemperatureShift &&
-    lutWbTintShift === defaultWbTintShift;
+    lutWbTintShift === defaultWbTintShift &&
+    lutFlimContrast === defaultFlimContrast &&
+    lutFlimLights === defaultFlimLights &&
+    lutFlimShadows === defaultFlimShadows &&
+    lutSaturation === defaultSaturation &&
+    lutVibrance === defaultVibrance;
 
   const handleIntensityChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -659,98 +756,210 @@ const LutDetailPanel = memo(function LutDetailPanel({
     [onUpdate],
   );
 
-  return (
-    <div
-      className="w-full mt-4 pt-3 pb-10 border-t border-surface"
-      onClick={(e) => e.stopPropagation()}
-      onPointerDown={(e) => e.stopPropagation()}
-    >
-      <div className="space-y-1 px-0.5">
-        <Slider
-          label={t('ui.lut.intensity')}
-          min={0}
-          max={100}
-          step={1}
-          value={lutIntensity}
-          defaultValue={INITIAL_ADJUSTMENTS.lutIntensity}
-          onChange={handleIntensityChange}
-          onDragStateChange={onDragStateChange}
-          fillOrigin="min"
-        />
-        <Slider
-          label={t('ui.lut.inputOffset')}
-          min={-16}
-          max={16}
-          step={0.1}
-          value={lutInputOffset}
-          defaultValue={INITIAL_ADJUSTMENTS.lutInputOffset}
-          onChange={handleInputOffsetChange}
-          onDragStateChange={onDragStateChange}
-          fillOrigin="min"
-        />
-        <Slider
-          label={t('ui.lut.inputRange')}
-          min={0}
-          max={32}
-          step={0.1}
-          value={lutInputRange}
-          defaultValue={INITIAL_ADJUSTMENTS.lutInputRange}
-          onChange={handleInputRangeChange}
-          onDragStateChange={onDragStateChange}
-          fillOrigin="min"
-        />
-        <div className="flex gap-2">
-          <div className="w-1/2">
-            <Slider
-              label={t('ui.lut.wbTemperatureShift')}
-              min={-100}
-              max={100}
-              step={1}
-              value={lutWbTemperatureShift}
-              defaultValue={INITIAL_ADJUSTMENTS.lutWbTemperatureShift}
-              onChange={handleWbTemperatureShiftChange}
-              onDragStateChange={onDragStateChange}
-              trackClassName="temperature-gradient-track"
-              fillOrigin="min"
-            />
-          </div>
-          <div className="w-1/2">
-            <Slider
-              label={t('ui.lut.wbTintShift')}
-              min={-100}
-              max={100}
-              step={1}
-              value={lutWbTintShift}
-              defaultValue={INITIAL_ADJUSTMENTS.lutWbTintShift}
-              onChange={handleWbTintShiftChange}
-              onDragStateChange={onDragStateChange}
-              trackClassName="tint-gradient-track"
-              fillOrigin="min"
-            />
-          </div>
-        </div>
+  const handleFlimContrastChange = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      onUpdate({ lutFlimContrast: Number(e.target.value) });
+    },
+    [onUpdate],
+  );
 
-        <div className="flex gap-2 mt-2">
-          <button
-            className="flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 text-sm font-medium rounded-md bg-card-active text-text-secondary hover:bg-surface disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-            onClick={onSaveAsDefault}
-            disabled={isAlreadyDefault}
-            data-tooltip={t('ui.lut.saveAsDefault')}
+  const handleFlimLightsChange = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      onUpdate({ lutFlimLights: -Number(e.target.value) });
+    },
+    [onUpdate],
+  );
+
+  const handleFlimShadowsChange = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      onUpdate({ lutFlimShadows: -Number(e.target.value) });
+    },
+    [onUpdate],
+  );
+
+  const handleSaturationChange = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      onUpdate({ lutSaturation: Number(e.target.value) });
+    },
+    [onUpdate],
+  );
+
+  const handleVibranceChange = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      onUpdate({ lutVibrance: Number(e.target.value) });
+    },
+    [onUpdate],
+  );
+
+  return (
+    <div className="space-y-1 px-0.5" onClick={(e) => e.stopPropagation()} onPointerDown={(e) => e.stopPropagation()}>
+      <Slider
+        label={t('ui.lut.intensity')}
+        min={0}
+        max={100}
+        step={1}
+        value={lutIntensity}
+        defaultValue={INITIAL_ADJUSTMENTS.lutIntensity}
+        onChange={handleIntensityChange}
+        onDragStateChange={onDragStateChange}
+        fillOrigin="min"
+      />
+
+      <button
+        type="button"
+        className="w-full flex items-center justify-between px-2 py-2 text-sm font-medium text-text-secondary hover:text-text-primary hover:bg-surface rounded-md transition-colors"
+        onClick={() => setIsAdvancedOpen((prev) => !prev)}
+        aria-expanded={isAdvancedOpen}
+      >
+        <span>{t('ui.lut.advanced')}</span>
+        <ChevronRight size={16} className={clsx('transition-transform duration-200', isAdvancedOpen && 'rotate-90')} />
+      </button>
+
+      <AnimatePresence initial={false}>
+        {isAdvancedOpen && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.2, ease: 'easeInOut' }}
+            className="overflow-hidden space-y-1"
           >
-            <Save size={14} />
-            {t('ui.lut.saveAsDefault')}
-          </button>
-          <button
-            className="flex items-center justify-center px-2 py-1.5 rounded-md bg-card-active text-text-secondary hover:bg-surface disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-            onClick={onResetToDefault}
-            disabled={isAlreadyDefault}
-            data-tooltip={t('ui.lut.resetToDefault')}
-            aria-label={t('ui.lut.resetToDefault')}
-          >
-            <RotateCcw size={14} />
-          </button>
-        </div>
-      </div>
+            <Slider
+              label={t('ui.lut.inputOffset')}
+              min={-16}
+              max={16}
+              step={0.1}
+              value={lutInputOffset}
+              defaultValue={INITIAL_ADJUSTMENTS.lutInputOffset}
+              onChange={handleInputOffsetChange}
+              onDragStateChange={onDragStateChange}
+              fillOrigin="min"
+            />
+            <Slider
+              label={t('ui.lut.inputRange')}
+              min={0}
+              max={32}
+              step={0.1}
+              value={lutInputRange}
+              defaultValue={INITIAL_ADJUSTMENTS.lutInputRange}
+              onChange={handleInputRangeChange}
+              onDragStateChange={onDragStateChange}
+              fillOrigin="min"
+            />
+            <div className="flex gap-2">
+              <div className="w-1/2">
+                <Slider
+                  label={t('ui.lut.wbTemperatureShift')}
+                  min={-100}
+                  max={100}
+                  step={1}
+                  value={lutWbTemperatureShift}
+                  defaultValue={INITIAL_ADJUSTMENTS.lutWbTemperatureShift}
+                  onChange={handleWbTemperatureShiftChange}
+                  onDragStateChange={onDragStateChange}
+                  trackClassName="temperature-gradient-track"
+                  fillOrigin="min"
+                />
+              </div>
+              <div className="w-1/2">
+                <Slider
+                  label={t('ui.lut.wbTintShift')}
+                  min={-100}
+                  max={100}
+                  step={1}
+                  value={lutWbTintShift}
+                  defaultValue={INITIAL_ADJUSTMENTS.lutWbTintShift}
+                  onChange={handleWbTintShiftChange}
+                  onDragStateChange={onDragStateChange}
+                  trackClassName="tint-gradient-track"
+                  fillOrigin="min"
+                />
+              </div>
+            </div>
+            <Slider
+              label={t('editor.film.contrast')}
+              min={-100}
+              max={100}
+              step={1}
+              value={lutFlimContrast}
+              defaultValue={INITIAL_ADJUSTMENTS.lutFlimContrast}
+              onChange={handleFlimContrastChange}
+              onDragStateChange={onDragStateChange}
+              fillOrigin="min"
+            />
+            <Slider
+              label={t('editor.film.lights')}
+              min={-100}
+              max={100}
+              step={1}
+              value={-lutFlimLights}
+              defaultValue={INITIAL_ADJUSTMENTS.lutFlimLights}
+              onChange={handleFlimLightsChange}
+              onDragStateChange={onDragStateChange}
+              fillOrigin="min"
+            />
+            <Slider
+              label={t('adjustments.basic.shadows')}
+              min={-100}
+              max={100}
+              step={1}
+              value={-lutFlimShadows}
+              defaultValue={INITIAL_ADJUSTMENTS.lutFlimShadows}
+              onChange={handleFlimShadowsChange}
+              onDragStateChange={onDragStateChange}
+              fillOrigin="min"
+            />
+            <div className="flex gap-2">
+              <div className="w-1/2">
+                <Slider
+                  label={t('adjustments.color.saturation')}
+                  min={-100}
+                  max={100}
+                  step={1}
+                  value={lutSaturation}
+                  defaultValue={INITIAL_ADJUSTMENTS.lutSaturation}
+                  onChange={handleSaturationChange}
+                  onDragStateChange={onDragStateChange}
+                  fillOrigin="min"
+                />
+              </div>
+              <div className="w-1/2">
+                <Slider
+                  label={t('adjustments.color.vibrance')}
+                  min={-100}
+                  max={100}
+                  step={1}
+                  value={lutVibrance}
+                  defaultValue={INITIAL_ADJUSTMENTS.lutVibrance}
+                  onChange={handleVibranceChange}
+                  onDragStateChange={onDragStateChange}
+                  fillOrigin="min"
+                />
+              </div>
+            </div>
+            <div className="flex gap-2 mt-2">
+              <button
+                className="flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 text-sm font-medium rounded-md bg-card-active text-text-secondary hover:bg-surface disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                onClick={onSaveAsDefault}
+                disabled={isAlreadyDefault}
+                data-tooltip={t('ui.lut.saveAsDefault')}
+              >
+                <Save size={14} />
+                {t('ui.lut.saveAsDefault')}
+              </button>
+              <button
+                className="flex items-center justify-center px-2 py-1.5 rounded-md bg-card-active text-text-secondary hover:bg-surface disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                onClick={onResetToDefault}
+                disabled={isAlreadyDefault}
+                data-tooltip={t('ui.lut.resetToDefault')}
+                aria-label={t('ui.lut.resetToDefault')}
+              >
+                <RotateCcw size={14} />
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 });

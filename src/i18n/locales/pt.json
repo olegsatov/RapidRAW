@@ -1833,7 +1833,8 @@
       "resetToDefault": "Redefinir para padrão",
       "configureLut": "Configurar LUT",
       "deleteLut": "Excluir LUT",
-      "confirmDelete": "Excluir"
+      "confirmDelete": "Excluir",
+      "advanced": "Advanced"
     },
     "slider": {
       "clickToEdit": "Clique para editar",

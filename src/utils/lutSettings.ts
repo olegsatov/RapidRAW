@@ -12,6 +12,11 @@ export interface ResolvedLutParams {
   offsetCompensation: boolean;
   wbTemperatureShift: number;
   wbTintShift: number;
+  flimContrast: number;
+  flimLights: number;
+  flimShadows: number;
+  saturation: number;
+  vibrance: number;
 }
 
 export const DEFAULT_LUT_PARAMS: ResolvedLutParams = {
@@ -22,6 +27,11 @@ export const DEFAULT_LUT_PARAMS: ResolvedLutParams = {
   offsetCompensation: INITIAL_ADJUSTMENTS.lutOffsetCompensation ?? false,
   wbTemperatureShift: INITIAL_ADJUSTMENTS.lutWbTemperatureShift ?? 0,
   wbTintShift: INITIAL_ADJUSTMENTS.lutWbTintShift ?? 0,
+  flimContrast: INITIAL_ADJUSTMENTS.lutFlimContrast ?? 0,
+  flimLights: INITIAL_ADJUSTMENTS.lutFlimLights ?? 0,
+  flimShadows: INITIAL_ADJUSTMENTS.lutFlimShadows ?? 0,
+  saturation: INITIAL_ADJUSTMENTS.lutSaturation ?? 0,
+  vibrance: INITIAL_ADJUSTMENTS.lutVibrance ?? 0,
 };
 
 // Per-LUT params are global defaults (keyed by LUT file path in AppSettings):
@@ -38,6 +48,11 @@ export function resolveLutParams(appSettings: AppSettings | null, path: string):
     offsetCompensation: stored?.offsetCompensation ?? DEFAULT_LUT_PARAMS.offsetCompensation,
     wbTemperatureShift: stored?.wbTemperatureShift ?? DEFAULT_LUT_PARAMS.wbTemperatureShift,
     wbTintShift: stored?.wbTintShift ?? DEFAULT_LUT_PARAMS.wbTintShift,
+    flimContrast: stored?.flimContrast ?? DEFAULT_LUT_PARAMS.flimContrast,
+    flimLights: stored?.flimLights ?? DEFAULT_LUT_PARAMS.flimLights,
+    flimShadows: stored?.flimShadows ?? DEFAULT_LUT_PARAMS.flimShadows,
+    saturation: stored?.saturation ?? DEFAULT_LUT_PARAMS.saturation,
+    vibrance: stored?.vibrance ?? DEFAULT_LUT_PARAMS.vibrance,
   };
 }
 
@@ -61,6 +76,11 @@ export function resolvedLutParamsToLutFileSettings(params: ResolvedLutParams): L
     offsetCompensation: params.offsetCompensation,
     wbTemperatureShift: params.wbTemperatureShift,
     wbTintShift: params.wbTintShift,
+    flimContrast: params.flimContrast,
+    flimLights: params.flimLights,
+    flimShadows: params.flimShadows,
+    saturation: params.saturation,
+    vibrance: params.vibrance,
   };
 }
 
@@ -76,6 +96,11 @@ export function lutParamsToAdjustments(params: ResolvedLutParams): Partial<Adjus
     lutOffsetCompensation: params.offsetCompensation,
     lutWbTemperatureShift: params.wbTemperatureShift,
     lutWbTintShift: params.wbTintShift,
+    lutFlimContrast: params.flimContrast,
+    lutFlimLights: params.flimLights,
+    lutFlimShadows: params.flimShadows,
+    lutSaturation: params.saturation,
+    lutVibrance: params.vibrance,
   };
 }
 
