@@ -746,6 +746,11 @@
         "undo": "Annuler (Ctrl+Z) ou Historique (Clic-droit)"
       },
       "vc": "CV"
+    },
+    "film": {
+      "response": "Response",
+      "color": "Couleur",
+      "hwsb": "HDR"
     }
   },
   "folderImport": {

@@ -746,6 +746,11 @@
         "undo": "Rückgängig (Strg+Z) oder Verlauf (Rechtsklick)"
       },
       "vc": "VK"
+    },
+    "film": {
+      "response": "Response",
+      "color": "Farbe",
+      "hwsb": "HDR"
     }
   },
   "folderImport": {

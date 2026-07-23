@@ -605,7 +605,7 @@
       "ev": "Экспозиция (EV)",
       "strength": "Сила",
       "lut": "LUT",
-      "hwsb": "HWSB",
+      "hwsb": "HDR",
       "effects": "Эффекты",
       "classic": "Классические",
       "contrast": "Контраст",
@@ -650,7 +650,9 @@
         "paletteRotate": "Поворот палитры",
         "pushR": "Усиление красного",
         "pushB": "Усиление синего"
-      }
+      },
+      "response": "Отклик",
+      "color": "Цвет"
     },
     "masks": {
       "actions": {

@@ -746,6 +746,11 @@
         "undo": "Deshacer (Ctrl+Z) o Historial (Clic derecho)"
       },
       "vc": "CV"
+    },
+    "film": {
+      "response": "Response",
+      "color": "Color",
+      "hwsb": "HDR"
     }
   },
   "folderImport": {

@@ -784,6 +784,11 @@
         "undo": "Cofnij (Ctrl+Z) lub Historia (Prawy przycisk)"
       },
       "vc": "VC"
+    },
+    "film": {
+      "response": "Response",
+      "color": "Kolor",
+      "hwsb": "HDR"
     }
   },
   "folderImport": {

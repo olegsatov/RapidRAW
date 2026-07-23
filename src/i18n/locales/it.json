@@ -746,6 +746,11 @@
         "undo": "Annulla (Ctrl+Z) o Cronologia (Tasto destro)"
       },
       "vc": "CV"
+    },
+    "film": {
+      "response": "Response",
+      "color": "Colore",
+      "hwsb": "HDR"
     }
   },
   "folderImport": {

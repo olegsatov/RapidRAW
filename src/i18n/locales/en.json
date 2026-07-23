@@ -606,7 +606,7 @@
       "ev": "Exposure (EV)",
       "strength": "Strength",
       "lut": "LUT",
-      "hwsb": "HWSB",
+      "hwsb": "HDR",
       "effects": "Effects",
       "classic": "Classic",
       "contrast": "Contrast",
@@ -651,7 +651,9 @@
         "paletteRotate": "Palette rotate",
         "pushR": "Red push",
         "pushB": "Blue push"
-      }
+      },
+      "response": "Response",
+      "color": "Color"
     },
     "masks": {
       "actions": {

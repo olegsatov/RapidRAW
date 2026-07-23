@@ -746,6 +746,11 @@
         "undo": "撤销（Ctrl+Z）或历史记录（右键单击）"
       },
       "vc": "VC"
+    },
+    "film": {
+      "response": "Response",
+      "color": "颜色",
+      "hwsb": "HDR"
     }
   },
   "folderImport": {

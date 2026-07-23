@@ -746,6 +746,11 @@
         "undo": "元に戻す (Ctrl+Z) または履歴 (右クリック)"
       },
       "vc": "仮想"
+    },
+    "film": {
+      "response": "Response",
+      "color": "カラー",
+      "hwsb": "HDR"
     }
   },
   "folderImport": {

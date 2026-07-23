@@ -746,6 +746,11 @@
         "undo": "실행 취소 (Ctrl+Z) 또는 기록 (우클릭)"
       },
       "vc": "VC"
+    },
+    "film": {
+      "response": "Response",
+      "color": "색상",
+      "hwsb": "HDR"
     }
   },
   "folderImport": {

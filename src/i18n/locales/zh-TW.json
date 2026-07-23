@@ -746,6 +746,11 @@
         "undo": "復原（Ctrl+Z）或歷史記錄（右鍵單擊）"
       },
       "vc": "VC"
+    },
+    "film": {
+      "response": "Response",
+      "color": "顏色",
+      "hwsb": "HDR"
     }
   },
   "folderImport": {

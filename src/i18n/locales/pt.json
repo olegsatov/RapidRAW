@@ -746,6 +746,11 @@
         "undo": "Desfazer (Ctrl+Z) ou Histórico (Botão Direito)"
       },
       "vc": "CV"
+    },
+    "film": {
+      "response": "Response",
+      "color": "Cor",
+      "hwsb": "HDR"
     }
   },
   "folderImport": {

@@ -293,53 +293,17 @@ export default function FilmPanel() {
       >
         <div className="p-2 bg-bg-tertiary rounded-md">
           <Text variant={TextVariants.heading} className="mb-2">
-            {t('editor.film.preset')}
+            {t('editor.film.response')}
           </Text>
-          <Dropdown
-            options={presetOptions}
-            value={resolvedPreset}
-            onChange={(value: number | string) => handlePresetSelect(value)}
+          <Slider
+            label={t('editor.film.ev')}
+            max={3}
+            min={-3}
+            onChange={(e: any) => handleAdjustmentChange(FilmAdjustment.FlimEv, e.target.value)}
+            step={0.05}
+            value={adjustments.flimEv ?? 0}
+            onDragStateChange={onDragStateChange}
           />
-          <div className="mt-2">
-            <Slider
-              label={t('editor.film.ev')}
-              max={3}
-              min={-3}
-              onChange={(e: any) => handleAdjustmentChange(FilmAdjustment.FlimEv, e.target.value)}
-              step={0.05}
-              value={adjustments.flimEv ?? 0}
-              onDragStateChange={onDragStateChange}
-            />
-          </div>
-          <div className="flex gap-2 mt-2">
-            <div className="w-1/2">
-              <Slider
-                label={t('adjustments.color.temperature')}
-                max={100}
-                min={-100}
-                onChange={(e: any) => handleAdjustmentChange(ColorAdjustment.Temperature, e.target.value)}
-                step={1}
-                value={adjustments.temperature ?? 0}
-                trackClassName="temperature-gradient-track"
-                onDragStateChange={onDragStateChange}
-              />
-            </div>
-            <div className="w-1/2">
-              <Slider
-                label={t('adjustments.color.tint')}
-                max={100}
-                min={-100}
-                onChange={(e: any) => handleAdjustmentChange(ColorAdjustment.Tint, e.target.value)}
-                step={1}
-                value={adjustments.tint ?? 0}
-                trackClassName="tint-gradient-track"
-                onDragStateChange={onDragStateChange}
-              />
-            </div>
-          </div>
-        </div>
-
-        <div className="p-2 bg-bg-tertiary rounded-md">
           <Slider
             defaultValue={100}
             label={t('editor.film.contrast')}
@@ -374,6 +338,58 @@ export default function FilmPanel() {
           />
         </div>
 
+        <div className="p-2 bg-bg-tertiary rounded-md">
+          <Text variant={TextVariants.heading} className="mb-2">
+            {t('editor.film.color')}
+          </Text>
+          <div className="flex gap-2">
+            <div className="w-1/2">
+              <Slider
+                label={t('adjustments.color.temperature')}
+                max={100}
+                min={-100}
+                onChange={(e: any) => handleAdjustmentChange(ColorAdjustment.Temperature, e.target.value)}
+                step={1}
+                value={adjustments.temperature ?? 0}
+                trackClassName="temperature-gradient-track"
+                onDragStateChange={onDragStateChange}
+              />
+            </div>
+            <div className="w-1/2">
+              <Slider
+                label={t('adjustments.color.tint')}
+                max={100}
+                min={-100}
+                onChange={(e: any) => handleAdjustmentChange(ColorAdjustment.Tint, e.target.value)}
+                step={1}
+                value={adjustments.tint ?? 0}
+                trackClassName="tint-gradient-track"
+                onDragStateChange={onDragStateChange}
+              />
+            </div>
+          </div>
+          <Slider
+            defaultValue={0}
+            label={t('editor.film.warmth')}
+            max={100}
+            min={-100}
+            onChange={(e: any) => handleAdjustmentChange(FilmAdjustment.FlimWarmth, e.target.value)}
+            step={1}
+            value={adjustments.flimWarmth ?? 0}
+            onDragStateChange={onDragStateChange}
+          />
+          <Slider
+            defaultValue={100}
+            label={t('editor.film.saturation')}
+            max={200}
+            min={0}
+            onChange={(e: any) => handleAdjustmentChange(FilmAdjustment.FlimSaturation, e.target.value)}
+            step={1}
+            value={adjustments.flimSaturation ?? 100}
+            onDragStateChange={onDragStateChange}
+          />
+        </div>
+
         <CollapsibleSection
           canToggleVisibility={false}
           isContentVisible={true}
@@ -385,26 +401,6 @@ export default function FilmPanel() {
             <Text variant={TextVariants.heading} className="mb-2">
               {t('adjustments.basic.toneMapper')}
             </Text>
-            <Slider
-              defaultValue={100}
-              label={t('editor.film.saturation')}
-              max={200}
-              min={0}
-              onChange={(e: any) => handleAdjustmentChange(FilmAdjustment.FlimSaturation, e.target.value)}
-              step={1}
-              value={adjustments.flimSaturation ?? 100}
-              onDragStateChange={onDragStateChange}
-            />
-            <Slider
-              defaultValue={0}
-              label={t('editor.film.warmth')}
-              max={100}
-              min={-100}
-              onChange={(e: any) => handleAdjustmentChange(FilmAdjustment.FlimWarmth, e.target.value)}
-              step={1}
-              value={adjustments.flimWarmth ?? 0}
-              onDragStateChange={onDragStateChange}
-            />
             <Slider
               defaultValue={0}
               label={t('editor.film.hiTint')}
@@ -729,6 +725,17 @@ export default function FilmPanel() {
           onToggle={() => setAdvancedOpen((v) => !v)}
           title={t('editor.film.advanced')}
         >
+          <div className="mb-3">
+            <Text variant={TextVariants.heading} className="mb-2">
+              {t('editor.film.preset')}
+            </Text>
+            <Dropdown
+              options={presetOptions}
+              value={resolvedPreset}
+              onChange={(value: number | string) => handlePresetSelect(value)}
+            />
+          </div>
+
           {ADV_SLIDERS.slice(0, 10).map(({ key, label, min, max, step }) => (
             <Slider
               key={key}
