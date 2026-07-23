@@ -1535,6 +1535,7 @@
         "toggle_metadata": "メタデータパネルの表示/非表示",
         "toggle_presets": "プリセットパネルの表示/非表示",
         "toggle_clean_view": "Toggle clean view",
+        "toggle_lights_off": "Toggle lights off",
         "toggle_proof_margin": "Toggle proof margin level",
         "undo": "操作を元に戻す",
         "zoom_100": "100%ズーム",

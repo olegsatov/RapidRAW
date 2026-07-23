@@ -1536,6 +1536,7 @@
         "toggle_metadata": "메타데이터 패널 전환",
         "toggle_presets": "프리셋 패널 전환",
         "toggle_clean_view": "Toggle clean view",
+        "toggle_lights_off": "Toggle lights off",
         "toggle_proof_margin": "Toggle proof margin level",
         "undo": "조정 실행 취소",
         "zoom_100": "100%로 확대/축소",

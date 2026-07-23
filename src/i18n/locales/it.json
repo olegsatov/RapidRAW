@@ -1536,6 +1536,7 @@
         "toggle_metadata": "Attiva/Disattiva pannello Metadati",
         "toggle_presets": "Attiva/Disattiva pannello Predefiniti",
         "toggle_clean_view": "Toggle clean view",
+        "toggle_lights_off": "Toggle lights off",
         "toggle_proof_margin": "Toggle proof margin level",
         "undo": "Annulla modifica",
         "zoom_100": "Zoom al 100%",

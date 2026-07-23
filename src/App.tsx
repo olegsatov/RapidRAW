@@ -111,6 +111,7 @@ function App() {
     leftBottomPanelHeightGallery,
     leftBottomPanelHeightEditor,
     activeRightPanel,
+    lightsOffActive,
     setUI,
     setRightPanel,
   } = useUIStore(
@@ -127,6 +128,7 @@ function App() {
       leftBottomPanelHeightGallery: state.leftBottomPanelHeightGallery,
       leftBottomPanelHeightEditor: state.leftBottomPanelHeightEditor,
       activeRightPanel: state.activeRightPanel,
+      lightsOffActive: state.lightsOffActive,
       setUI: state.setUI,
       setRightPanel: state.setRightPanel,
     })),
@@ -634,15 +636,15 @@ function App() {
       <div
         className={clsx(
           'flex flex-col h-screen font-sans text-text-primary overflow-hidden select-none',
-          useMacWindowShell && 'macos-window-shell',
-          isWgpuActive ? 'bg-transparent' : 'bg-bg-primary',
+          useMacWindowShell && !lightsOffActive && 'macos-window-shell',
+          isWgpuActive ? 'bg-transparent' : lightsOffActive ? 'bg-black' : 'bg-bg-primary',
         )}
       >
         <div
           className={clsx(
             'shrink-0 overflow-hidden z-50',
-            !isInstantTransition && 'transition-all duration-300 ease-in-out',
-            isFullScreen ? 'max-h-0 opacity-0 pointer-events-none' : 'max-h-[60px] opacity-100',
+            !isInstantTransition && !lightsOffActive && 'transition-all duration-300 ease-in-out',
+            isFullScreen || lightsOffActive ? 'max-h-0 opacity-0 pointer-events-none' : 'max-h-[60px] opacity-100',
           )}
         >
           {appSettings?.decorations || (!isWindowFullScreen && <TitleBar />)}
@@ -650,12 +652,16 @@ function App() {
         <div
           className={clsx(
             'flex-1 flex flex-col min-h-0',
-            isLayoutReady && hasMainContent && !isInstantTransition && 'transition-all duration-300 ease-in-out',
-            [hasMainContent && (isFullScreen ? 'p-0 gap-0' : 'p-px gap-px')],
+            isLayoutReady &&
+              hasMainContent &&
+              !isInstantTransition &&
+              !lightsOffActive &&
+              'transition-all duration-300 ease-in-out',
+            [hasMainContent && (isFullScreen || lightsOffActive ? 'p-0 gap-0' : 'p-px gap-px')],
           )}
         >
           <div className="flex flex-row grow h-full min-h-0">
-            {!shouldHideFolderTree && (hasRoots || selectedImage) && (
+            {!lightsOffActive && !shouldHideFolderTree && (hasRoots || selectedImage) && (
               <LeftSidebar
                 mode={leftSidebarMode}
                 isResizing={isResizing}
@@ -678,7 +684,7 @@ function App() {
               />
             )}
             <div className="relative flex-1 flex flex-col min-w-0">
-              {selectedImage && externalEditSession && (
+              {selectedImage && externalEditSession && !lightsOffActive && (
                 <ExternalEditBar
                   session={externalEditSession}
                   isFinishing={isExternalEditFinishing}

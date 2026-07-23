@@ -1695,6 +1695,7 @@
         "toggle_metadata": "Toggle Metadata panel",
         "toggle_presets": "Toggle Presets panel",
         "toggle_clean_view": "Toggle clean view",
+        "toggle_lights_off": "Toggle lights off",
         "toggle_proof_margin": "Toggle proof margin level",
         "undo": "Undo adjustment",
         "zoom_100": "Zoom to 100%",

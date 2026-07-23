@@ -30,8 +30,14 @@ export const useKeyboardShortcuts = ({
   handleToggleFullScreen,
   handleZoomChange,
 }: KeyboardShortcutsProps) => {
-  const { setAdjustments, handleRotate, handleCopyAdjustments, handlePasteAdjustments, handleLutSelect, handleResetAdjustments } =
-    useEditorActions();
+  const {
+    setAdjustments,
+    handleRotate,
+    handleCopyAdjustments,
+    handlePasteAdjustments,
+    handleLutSelect,
+    handleResetAdjustments,
+  } = useEditorActions();
   const { handleRate, handleSetColorLabel, handleSetFlag } = useLibraryActions();
   const sortedImageList = useSortedLibrary();
 
@@ -282,6 +288,13 @@ export const useKeyboardShortcuts = ({
           s.editor.setEditor({ showOriginal: !s.editor.showOriginal });
         },
       },
+      toggle_lights_off: {
+        shouldFire: (s: any) => !!s.editor.selectedImage,
+        execute: (e: any) => {
+          e.preventDefault();
+          useUIStore.getState().toggleLightsOff();
+        },
+      },
       toggle_adjustments: {
         shouldFire: (s: any) => !!s.editor.selectedImage,
         execute: (e: any, s: any) => {
@@ -529,6 +542,10 @@ export const useKeyboardShortcuts = ({
         match: (e: KeyboardEvent) => e.code === 'Escape',
         execute: (e: KeyboardEvent, s: any) => {
           e.preventDefault();
+          if (s.ui.lightsOffActive) {
+            s.ui.toggleLightsOff();
+            return;
+          }
           if (s.editor.isStraightenActive) s.editor.setEditor({ isStraightenActive: false });
           else if (s.ui.customEscapeHandler) s.ui.customEscapeHandler();
           else if (s.editor.activeAiSubMaskId) s.editor.setEditor({ activeAiSubMaskId: null });

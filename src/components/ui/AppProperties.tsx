@@ -17,6 +17,7 @@ export const GLOBAL_KEYS = [
   'm',
   'k',
   'p',
+  'l',
   'i',
   'e',
   '0',

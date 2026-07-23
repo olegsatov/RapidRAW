@@ -83,6 +83,7 @@ export default function Editor({ onBackToLibrary, onContextMenu, transformWrappe
   const appSettings = useSettingsStore((s) => s.appSettings);
   const osPlatform = useSettingsStore((s) => s.osPlatform);
   const isFullScreen = useUIStore((s) => s.isFullScreen);
+  const lightsOffActive = useUIStore((s) => s.lightsOffActive);
   const activeRightPanel = useUIStore((s) => s.activeRightPanel);
   const isInstantTransition = useUIStore((s) => s.isInstantTransition);
   const setUI = useUIStore((s) => s.setUI);
@@ -1106,15 +1107,18 @@ export default function Editor({ onBackToLibrary, onContextMenu, transformWrappe
     isCropping,
     uncroppedAdjustedPreviewUrl,
     showOriginal,
-    bgPrimary: [24 / 255, 24 / 255, 24 / 255, 1.0],
-    bgSecondary: [35 / 255, 35 / 255, 35 / 255, 1.0],
+    bgPrimary: lightsOffActive ? [0, 0, 0, 1] : [24 / 255, 24 / 255, 24 / 255, 1.0],
+    bgSecondary: lightsOffActive ? [0, 0, 0, 1] : [35 / 255, 35 / 255, 35 / 255, 1.0],
   });
 
   useEffect(() => {
     const rootStyle = getComputedStyle(document.documentElement);
-    const bgPrimaryStr = rootStyle.getPropertyValue('--app-bg-primary') || 'rgb(24, 24, 24)';
-    const bgSecondaryStr =
-      appSettings?.editorBackgroundColor || rootStyle.getPropertyValue('--app-bg-secondary') || 'rgb(35, 35, 35)';
+    const bgPrimaryStr = lightsOffActive
+      ? 'rgb(0, 0, 0)'
+      : rootStyle.getPropertyValue('--app-bg-primary') || 'rgb(24, 24, 24)';
+    const bgSecondaryStr = lightsOffActive
+      ? 'rgb(0, 0, 0)'
+      : appSettings?.editorBackgroundColor || rootStyle.getPropertyValue('--app-bg-secondary') || 'rgb(35, 35, 35)';
 
     wgpuStateRef.current = {
       useWgpuRenderer: appSettings?.useWgpuRenderer,
@@ -1136,6 +1140,7 @@ export default function Editor({ onBackToLibrary, onContextMenu, transformWrappe
     appSettings?.theme,
     appSettings?.editorBackgroundColor,
     finalPreviewUrl,
+    lightsOffActive,
   ]);
 
   useEffect(() => {
@@ -2041,8 +2046,8 @@ export default function Editor({ onBackToLibrary, onContextMenu, transformWrappe
     <div
       className={clsx(
         'flex-1 flex flex-col relative overflow-hidden min-h-0',
-        !isInstantTransition && 'transition-all duration-300 ease-in-out',
-        isFullScreen
+        !isInstantTransition && !lightsOffActive && 'transition-all duration-300 ease-in-out',
+        isFullScreen || lightsOffActive
           ? 'rounded-none p-0 gap-0'
           : clsx(
               'rounded-lg p-px gap-px',
@@ -2053,8 +2058,8 @@ export default function Editor({ onBackToLibrary, onContextMenu, transformWrappe
       <div
         className={clsx(
           'shrink-0 relative z-10',
-          !isInstantTransition && 'transition-all duration-300 ease-in-out',
-          isFullScreen ? 'max-h-0 opacity-0 m-0' : 'max-h-25 opacity-100',
+          !isInstantTransition && !lightsOffActive && 'transition-all duration-300 ease-in-out',
+          isFullScreen || lightsOffActive ? 'max-h-0 opacity-0 m-0' : 'max-h-25 opacity-100',
           toolbarOverflowVisible ? 'overflow-visible' : 'overflow-hidden',
         )}
       >
@@ -2083,16 +2088,18 @@ export default function Editor({ onBackToLibrary, onContextMenu, transformWrappe
       <div
         className={clsx(
           'flex-1 relative overflow-hidden touch-none',
-          isFullScreen ? 'rounded-none' : 'rounded-lg',
-          appSettings?.useWgpuRenderer !== false && !isFullScreen && 'ring-[9999px]',
-          !isWgpuActive && 'bg-bg-secondary',
+          isFullScreen || lightsOffActive ? 'rounded-none' : 'rounded-lg',
+          appSettings?.useWgpuRenderer !== false && !isFullScreen && !lightsOffActive && 'ring-[9999px]',
+          !isWgpuActive && (lightsOffActive ? 'bg-black' : 'bg-bg-secondary'),
         )}
         style={
           {
             cursor: cursorStyle,
-            backgroundColor: !isWgpuActive ? editorBackgroundColor : undefined,
+            backgroundColor: !isWgpuActive ? (lightsOffActive ? '#000000' : editorBackgroundColor) : undefined,
             '--tw-ring-color':
-              appSettings?.useWgpuRenderer !== false && !isFullScreen ? editorBackgroundColor : undefined,
+              appSettings?.useWgpuRenderer !== false && !isFullScreen && !lightsOffActive
+                ? editorBackgroundColor
+                : '#000000',
           } as React.CSSProperties
         }
         onContextMenu={onContextMenu}
@@ -2175,8 +2182,8 @@ export default function Editor({ onBackToLibrary, onContextMenu, transformWrappe
           />
         </div>
 
-        <GestureOverlay />
-        <LutStripOverlay />
+        {!lightsOffActive && <GestureOverlay />}
+        {!lightsOffActive && <LutStripOverlay />}
       </div>
     </div>
   );

@@ -111,6 +111,12 @@ export const KEYBIND_DEFINITIONS: KeybindDefinition[] = [
     section: 'view',
   },
   {
+    action: 'toggle_lights_off',
+    description: 'settings.keybinds.actions.toggle_lights_off',
+    defaultCombo: ['KeyL'],
+    section: 'view',
+  },
+  {
     action: 'show_original',
     description: 'settings.keybinds.actions.show_original',
     defaultCombo: ['KeyB'],

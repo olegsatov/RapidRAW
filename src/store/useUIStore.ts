@@ -164,6 +164,8 @@ interface UIState {
     isLibraryExportPanelVisible: boolean;
   } | null;
   toggleCleanView: () => void;
+  lightsOffActive: boolean;
+  toggleLightsOff: () => void;
 }
 
 export const useUIStore = create<UIState>((set, get) => ({
@@ -176,6 +178,7 @@ export const useUIStore = create<UIState>((set, get) => ({
   isLibraryExportPanelVisible: false,
   cleanViewActive: false,
   cleanViewSnapshot: null,
+  lightsOffActive: false,
 
   leftPanelWidth: 256,
   rightPanelWidth: 320,
@@ -326,5 +329,10 @@ export const useUIStore = create<UIState>((set, get) => ({
       });
       setTimeout(() => set({ isInstantTransition: false }), 400);
     }
+  },
+
+  toggleLightsOff: () => {
+    set((state) => ({ lightsOffActive: !state.lightsOffActive, isInstantTransition: true }));
+    setTimeout(() => set({ isInstantTransition: false }), 400);
   },
 }));

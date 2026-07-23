@@ -1536,6 +1536,7 @@
         "toggle_metadata": "Alternar panel de Metadatos",
         "toggle_presets": "Alternar panel de Ajustes preestablecidos",
         "toggle_clean_view": "Toggle clean view",
+        "toggle_lights_off": "Toggle lights off",
         "toggle_proof_margin": "Toggle proof margin level",
         "undo": "Deshacer ajuste",
         "zoom_100": "Hacer zoom al 100%",

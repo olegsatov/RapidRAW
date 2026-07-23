@@ -1536,6 +1536,7 @@
         "toggle_metadata": "切换元数据面板",
         "toggle_presets": "切换预设面板",
         "toggle_clean_view": "Toggle clean view",
+        "toggle_lights_off": "Toggle lights off",
         "toggle_proof_margin": "Toggle proof margin level",
         "undo": "撤销调整",
         "zoom_100": "缩放到 100%",

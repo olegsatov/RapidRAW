@@ -1536,6 +1536,7 @@
         "toggle_metadata": "Basculer le panneau des métadonnées",
         "toggle_presets": "Basculer le panneau des paramètres prédéfinis",
         "toggle_clean_view": "Toggle clean view",
+        "toggle_lights_off": "Toggle lights off",
         "toggle_proof_margin": "Toggle proof margin level",
         "undo": "Annuler l'ajustement",
         "zoom_100": "Zoomer à 100%",

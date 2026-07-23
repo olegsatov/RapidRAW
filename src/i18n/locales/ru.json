@@ -1693,6 +1693,7 @@
         "toggle_metadata": "Панель метаданных",
         "toggle_presets": "Панель пресетов",
         "toggle_clean_view": "Переключить чистый вид",
+        "toggle_lights_off": "Включить/выключить затемнение",
         "toggle_proof_margin": "Переключить уровень proof margin",
         "undo": "Отменить действие",
         "zoom_100": "Масштаб 100%",

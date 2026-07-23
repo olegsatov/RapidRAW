@@ -101,6 +101,7 @@ export default function EditorView({
     activeRightPanel,
     renderedRightPanel,
     slideDirection,
+    lightsOffActive,
     setUI,
   } = useUIStore(
     useShallow((state) => ({
@@ -112,6 +113,7 @@ export default function EditorView({
       activeRightPanel: state.activeRightPanel,
       renderedRightPanel: state.renderedRightPanel,
       slideDirection: state.slideDirection,
+      lightsOffActive: state.lightsOffActive,
       setUI: state.setUI,
     })),
   );
@@ -190,11 +192,11 @@ export default function EditorView({
     <div
       className={clsx(
         'flex flex-col w-full overflow-hidden shrink-0',
-        !isResizing && !isInstantTransition && 'transition-all duration-300 ease-in-out',
+        !isResizing && !isInstantTransition && !lightsOffActive && 'transition-all duration-300 ease-in-out',
       )}
       style={{
-        maxHeight: isFullScreen ? '0px' : '500px',
-        opacity: isFullScreen ? 0 : 1,
+        maxHeight: isFullScreen || lightsOffActive ? '0px' : '500px',
+        opacity: isFullScreen || lightsOffActive ? 0 : 1,
       }}
     >
       {!isCompactPortrait && (
@@ -250,19 +252,20 @@ export default function EditorView({
         className={clsx(
           'flex overflow-hidden shrink-0',
           isCompactPortrait ? 'flex-col bg-bg-secondary rounded-lg' : 'h-full bg-transparent',
-          !isResizing && !isInstantTransition && 'transition-all duration-300 ease-in-out',
+          !isResizing && !isInstantTransition && !lightsOffActive && 'transition-all duration-300 ease-in-out',
         )}
         style={
           isCompactPortrait
             ? {
-                height: isFullScreen
-                  ? '0px'
-                  : `${activeRightPanel ? compactEditorPanelHeight : compactEditorPanelCollapsedHeight}px`,
-                opacity: isFullScreen ? 0 : 1,
+                height:
+                  isFullScreen || lightsOffActive
+                    ? '0px'
+                    : `${activeRightPanel ? compactEditorPanelHeight : compactEditorPanelCollapsedHeight}px`,
+                opacity: isFullScreen || lightsOffActive ? 0 : 1,
               }
             : {
-                maxWidth: isFullScreen ? '0px' : '1000px',
-                opacity: isFullScreen ? 0 : 1,
+                maxWidth: isFullScreen || lightsOffActive ? '0px' : '1000px',
+                opacity: isFullScreen || lightsOffActive ? 0 : 1,
               }
         }
       >
