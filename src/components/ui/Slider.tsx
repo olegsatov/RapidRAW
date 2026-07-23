@@ -539,7 +539,7 @@ const Slider = ({
         />
         <input
           ref={rangeInputRef}
-          className="absolute top-1/2 left-0 w-full h-6 appearance-none bg-transparent cursor-pointer m-0 p-0 slider-input z-10"
+          className="absolute top-1/2 left-0 w-full h-6 -translate-y-1/2 appearance-none bg-transparent cursor-pointer m-0 p-0 slider-input z-10"
           style={{ margin: 0, touchAction: isDragging ? 'none' : 'pan-y' }}
           max={String(max)}
           min={String(min)}
