@@ -1,6 +1,7 @@
 import { useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import debounce from 'lodash.debounce';
+import i18n from 'i18next';
 import { toast } from 'react-toastify';
 import { useEditorStore } from '../store/useEditorStore';
 import { useLibraryStore } from '../store/useLibraryStore';
@@ -147,33 +148,37 @@ export function useEditorActions() {
     [setEditor],
   );
 
-  const handleResetAdjustments = useCallback(
-    (paths?: string[]) => {
-      const { multiSelectedPaths, libraryActivePath, setLibrary } = useLibraryStore.getState();
-      const { selectedImage, resetHistory } = useEditorStore.getState();
-      const pathsToReset = paths || multiSelectedPaths;
-      if (pathsToReset.length === 0) return;
+  const handleResetAdjustments = useCallback((paths?: string[]) => {
+    const { multiSelectedPaths, libraryActivePath, setLibrary } = useLibraryStore.getState();
+    const { selectedImage, pushHistory, pushNamedSnapshot } = useEditorStore.getState();
+    const pathsToReset = paths || multiSelectedPaths;
+    if (pathsToReset.length === 0) return;
 
-      pathsToReset.forEach((p) => globalImageCache.delete(p));
-      pathsToReset.forEach((p) => globalHistoryCache.delete(p));
-      debouncedSetHistory.cancel();
+    pathsToReset.forEach((p) => globalImageCache.delete(p));
+    pathsToReset.forEach((p) => {
+      if (!selectedImage || p !== selectedImage.path) {
+        globalHistoryCache.delete(p);
+      }
+    });
+    debouncedSetHistory.cancel();
 
-      invoke(Invokes.ResetAdjustmentsForPaths, { paths: pathsToReset })
-        .then(() => {
-          if (libraryActivePath && pathsToReset.includes(libraryActivePath))
-            setLibrary({ libraryActiveAdjustments: { ...INITIAL_ADJUSTMENTS } });
-          if (selectedImage && pathsToReset.includes(selectedImage.path)) {
-            const aspect =
-              selectedImage.width && selectedImage.height ? selectedImage.width / selectedImage.height : null;
-            const resetData = { ...INITIAL_ADJUSTMENTS, aspectRatio: aspect, aiPatches: [] };
-            resetHistory(resetData);
-            setEditor({ adjustments: resetData });
+    invoke(Invokes.ResetAdjustmentsForPaths, { paths: pathsToReset })
+      .then(() => {
+        if (libraryActivePath && pathsToReset.includes(libraryActivePath))
+          setLibrary({ libraryActiveAdjustments: { ...INITIAL_ADJUSTMENTS } });
+        if (selectedImage && pathsToReset.includes(selectedImage.path)) {
+          const aspect =
+            selectedImage.width && selectedImage.height ? selectedImage.width / selectedImage.height : null;
+          const resetData = { ...INITIAL_ADJUSTMENTS, aspectRatio: aspect, aiPatches: [] };
+          const historyIndexBefore = useEditorStore.getState().historyIndex;
+          pushHistory(resetData, null);
+          if (useEditorStore.getState().historyIndex !== historyIndexBefore) {
+            pushNamedSnapshot(i18n.t('editor.resetAdjustments', 'Reset Adjustments'));
           }
-        })
-        .catch((err) => toast.error(`Failed to reset adjustments: ${err}`));
-    },
-    [setEditor],
-  );
+        }
+      })
+      .catch((err) => toast.error(`Failed to reset adjustments: ${err}`));
+  }, []);
 
   const handleCopyAdjustments = useCallback(async (pathOrEvent?: string | any) => {
     const pathOverride = typeof pathOrEvent === 'string' ? pathOrEvent : undefined;

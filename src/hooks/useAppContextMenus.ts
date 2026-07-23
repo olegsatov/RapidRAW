@@ -179,7 +179,7 @@ export function useAppContextMenus(props: UseAppContextMenusProps) {
       event.preventDefault();
       event.stopPropagation();
 
-      const { selectedImage, history, historyIndex, undo, redo, resetHistory, copiedAdjustments, setEditor } =
+      const { selectedImage, history, historyIndex, undo, redo, copiedAdjustments, setEditor } =
         useEditorStore.getState();
       const { appSettings, handleSettingsChange } = useSettingsStore.getState();
       const { setRightPanel, setUI } = useUIStore.getState();
@@ -336,14 +336,7 @@ export function useAppContextMenus(props: UseAppContextMenusProps) {
               icon: Check,
               isDestructive: true,
               onClick: () => {
-                const originalAspectRatio =
-                  selectedImage.width && selectedImage.height ? selectedImage.width / selectedImage.height : null;
-                resetHistory({
-                  ...INITIAL_ADJUSTMENTS,
-                  aspectRatio: originalAspectRatio,
-                  aiPatches: [],
-                });
-                setEditor({ adjustments: { ...INITIAL_ADJUSTMENTS, aspectRatio: originalAspectRatio, aiPatches: [] } });
+                handleResetAdjustments([selectedImage.path]);
               },
             },
           ],
@@ -356,6 +349,7 @@ export function useAppContextMenus(props: UseAppContextMenusProps) {
       handleCopyAdjustments,
       handlePasteAdjustments,
       handleAutoAdjustments,
+      handleResetAdjustments,
       handleRate,
       handleSetColorLabel,
       handleSetFlag,
