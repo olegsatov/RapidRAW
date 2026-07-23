@@ -14,7 +14,9 @@ function easeInOutCubic(t: number): number {
 
 export default function LutStripOverlay() {
   const { lutStrip } = useGestureStore();
-  const lutsPanelVisible = useUIStore((s) => s.uiVisibility.folderTree && s.activeEditorToolsTab === 'luts');
+  const lutsPanelVisible = useUIStore(
+    (s) => s.uiVisibility.folderTree && s.activeEditorToolsTab === 'luts' && !s.isFullScreen && !s.cleanViewActive,
+  );
   const containerRef = useRef<HTMLDivElement>(null);
   const rafRef = useRef<number | null>(null);
   const lastSelectedIndexRef = useRef<number | null>(null);
