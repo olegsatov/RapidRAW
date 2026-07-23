@@ -361,13 +361,7 @@ function App() {
     handleStartImport,
     handleImportClick,
     handlePasteFiles,
-  } = useFileOperations(
-    handleLibraryRefresh,
-    refreshAllFolderTrees,
-    handleImageSelect,
-    handleBackToLibrary,
-    sortedImageList,
-  );
+  } = useFileOperations(handleLibraryRefresh, refreshAllFolderTrees, handleImageSelect, handleBackToLibrary);
 
   const {
     handleStartPanorama,
@@ -431,7 +425,6 @@ function App() {
   }, [isFullScreen, setUI]);
 
   useKeyboardShortcuts({
-    sortedImageList,
     handleBackToLibrary,
     handleDeleteSelected,
     handleImageSelect,

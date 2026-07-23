@@ -9,13 +9,13 @@ import { useProcessStore } from '../store/useProcessStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { Invokes } from '../components/ui/AppProperties';
 import { Status } from '../components/ui/ExportImportProperties';
+import { computeSortedLibrary } from './useSortedLibrary';
 
 export function useFileOperations(
   refreshImageList: () => Promise<void>,
   refreshAllFolderTrees: () => Promise<void>,
   handleImageSelect: (path: string) => void,
   handleBackToLibrary: () => void,
-  sortedImageList: any[],
 ) {
   const getParentDir = (filePath: string): string => {
     const separator = filePath.includes('/') ? '/' : '\\';
@@ -39,6 +39,9 @@ export function useFileOperations(
         const isActiveImageDeleted = pathsToDelete.some((p) => p === activePath || p === physicalPath);
 
         if (isActiveImageDeleted) {
+          // Derive the navigation order from the current store state so deletion
+          // advances to the next image using the same sort/filter as the gallery.
+          const sortedImageList = computeSortedLibrary(useLibraryStore.getState(), useSettingsStore.getState());
           const currentIndex = sortedImageList.findIndex((img) => img.path === activePath);
           if (currentIndex !== -1) {
             const nextCandidate = sortedImageList
@@ -91,7 +94,7 @@ export function useFileOperations(
         toast.error(`Failed to delete files: ${err}`);
       }
     },
-    [refreshImageList, handleBackToLibrary, sortedImageList, handleImageSelect],
+    [refreshImageList, handleBackToLibrary, handleImageSelect],
   );
 
   const handleDeleteSelected = useCallback(() => {

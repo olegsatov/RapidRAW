@@ -10,9 +10,9 @@ import { usePresetStore } from '../store/usePresetStore';
 import { getEffectivePresetAdjustments } from '../utils/presetUtils';
 import { useEditorActions, debouncedSetHistory } from './useEditorActions';
 import { useLibraryActions } from './useLibraryActions';
+import { useSortedLibrary } from './useSortedLibrary';
 
 interface KeyboardShortcutsProps {
-  sortedImageList: Array<ImageFile>;
   handleBackToLibrary(): void;
   handleDeleteSelected(): void;
   handleImageSelect(path: string): void;
@@ -22,7 +22,6 @@ interface KeyboardShortcutsProps {
 }
 
 export const useKeyboardShortcuts = ({
-  sortedImageList,
   handleBackToLibrary,
   handleDeleteSelected,
   handleImageSelect,
@@ -33,11 +32,12 @@ export const useKeyboardShortcuts = ({
   const { handleRotate, handleCopyAdjustments, handlePasteAdjustments, handleLutSelect, handleResetAdjustments } =
     useEditorActions();
   const { handleRate, handleSetColorLabel, handleSetFlag } = useLibraryActions();
+  const sortedImageList = useSortedLibrary();
 
+  // Keep the navigation list synchronously up to date with the gallery's
+  // current sort/filter/search so prev/next never uses a stale ordering.
   const sortedListRef = useRef(sortedImageList);
-  useEffect(() => {
-    sortedListRef.current = sortedImageList;
-  }, [sortedImageList]);
+  sortedListRef.current = sortedImageList;
 
   useEffect(() => {
     const getStoreState = () => ({
