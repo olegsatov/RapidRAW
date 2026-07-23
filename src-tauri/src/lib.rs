@@ -854,7 +854,7 @@ fn generate_uncropped_preview(
         // The uncropped crop preview is a CPU JPEG readback, while the main
         // editor is rendered straight to screen via WGPU. That path loses a
         // tiny bit of saturation; compensate with a small preview-only bump.
-        let saturation_boost = 1.5;
+        let saturation_boost = 10.0;
         adjustments_clone["saturation"] = serde_json::json!(
             adjustments_clone["saturation"].as_f64().unwrap_or(0.0) + saturation_boost
         );
