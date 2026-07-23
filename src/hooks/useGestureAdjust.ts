@@ -374,6 +374,38 @@ export function useGestureAdjust() {
       });
     };
 
+    const resetPanel = (panelIndex: number, valueMode: 'zero' | 'default') => {
+      const session = sessionRef.current;
+      if (!session) return;
+      const panel = session.overlayParams[panelIndex];
+      if (!panel) return;
+
+      setAdjustments((prev) => {
+        const next: Adjustments = { ...prev };
+        panel.axisLabels.forEach((key, axisIndex) => {
+          const defaultValue = (INITIAL_ADJUSTMENTS[key] as number | undefined) ?? 0;
+          const value = valueMode === 'zero' ? 0 : defaultValue;
+          next[key] = clamp(value, panel.min[axisIndex], panel.max[axisIndex]);
+        });
+        const updatedLutKeys = panel.axisLabels.filter((key) => prev.lutPath && LUT_GESTURE_PARAM_KEYS.has(key));
+        if (updatedLutKeys.length > 0 && prev.lutPath) {
+          const resolved: ResolvedLutParams = {
+            intensity: next.lutIntensity ?? DEFAULT_LUT_PARAMS.intensity,
+            timing: 'before',
+            inputRange: next.lutInputRange ?? DEFAULT_LUT_PARAMS.inputRange,
+            inputOffset: next.lutInputOffset ?? DEFAULT_LUT_PARAMS.inputOffset,
+            offsetCompensation: next.lutOffsetCompensation ?? DEFAULT_LUT_PARAMS.offsetCompensation,
+            wbTemperatureShift: next.lutWbTemperatureShift ?? DEFAULT_LUT_PARAMS.wbTemperatureShift,
+            wbTintShift: next.lutWbTintShift ?? DEFAULT_LUT_PARAMS.wbTintShift,
+          };
+          next.lutPerImageParams = { ...prev.lutPerImageParams, [prev.lutPath]: resolved };
+          refreshSelectedStripThumb();
+        }
+        updateOverlayValues(next);
+        return next;
+      });
+    };
+
     const cycleLut = async (delta: number) => {
       const strip = useGestureStore.getState().lutStrip;
       if (!strip || strip.entries.length === 0) return;
@@ -620,10 +652,27 @@ export function useGestureAdjust() {
       }
     };
 
+    const handleDblClick = (event: MouseEvent) => {
+      if (!sessionRef.current) return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      resetPanel(0, 'default');
+    };
+
+    const handleSecondaryAction = (event: MouseEvent) => {
+      if (!sessionRef.current) return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      resetPanel(1, 'default');
+    };
+
     window.addEventListener('keydown', handleKeyDown, true);
     window.addEventListener('keyup', handleKeyUp, true);
     window.addEventListener('pointermove', handlePointerMove, true);
     window.addEventListener('wheel', handleWheel, { capture: true, passive: false });
+    window.addEventListener('dblclick', handleDblClick, true);
+    window.addEventListener('contextmenu', handleSecondaryAction, true);
+    window.addEventListener('auxclick', handleSecondaryAction, true);
     window.addEventListener('blur', handleBlur, true);
     document.addEventListener('visibilitychange', handleVisibilityChange);
 
@@ -632,6 +681,9 @@ export function useGestureAdjust() {
       window.removeEventListener('keyup', handleKeyUp, true);
       window.removeEventListener('pointermove', handlePointerMove, true);
       window.removeEventListener('wheel', handleWheel, { capture: true });
+      window.removeEventListener('dblclick', handleDblClick, true);
+      window.removeEventListener('contextmenu', handleSecondaryAction, true);
+      window.removeEventListener('auxclick', handleSecondaryAction, true);
       window.removeEventListener('blur', handleBlur, true);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       if (pendingRef.current) {

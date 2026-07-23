@@ -8,6 +8,7 @@ import { useUIStore } from '../store/useUIStore';
 import { useProcessStore } from '../store/useProcessStore';
 import { usePresetStore } from '../store/usePresetStore';
 import { getEffectivePresetAdjustments } from '../utils/presetUtils';
+import { DEFAULT_LUT_PARAMS, lutParamsToAdjustments } from '../utils/lutSettings';
 import { useEditorActions, debouncedSetHistory } from './useEditorActions';
 import { useLibraryActions } from './useLibraryActions';
 import { useSortedLibrary } from './useSortedLibrary';
@@ -29,7 +30,7 @@ export const useKeyboardShortcuts = ({
   handleToggleFullScreen,
   handleZoomChange,
 }: KeyboardShortcutsProps) => {
-  const { handleRotate, handleCopyAdjustments, handlePasteAdjustments, handleLutSelect, handleResetAdjustments } =
+  const { setAdjustments, handleRotate, handleCopyAdjustments, handlePasteAdjustments, handleLutSelect, handleResetAdjustments } =
     useEditorActions();
   const { handleRate, handleSetColorLabel, handleSetFlag } = useLibraryActions();
   const sortedImageList = useSortedLibrary();
@@ -680,7 +681,18 @@ export const useKeyboardShortcuts = ({
       const lutPath = lutComboMap.get(normalized.join('+'));
       if (lutPath && state.editor.selectedImage) {
         event.preventDefault();
-        handleLutSelect(lutPath);
+        if (state.editor.adjustments.lutPath === lutPath) {
+          setAdjustments((prev) => ({
+            ...prev,
+            ...lutParamsToAdjustments(DEFAULT_LUT_PARAMS),
+            lutPath: null,
+            lutName: null,
+            lutData: null,
+            lutSize: 0,
+          }));
+        } else {
+          handleLutSelect(lutPath);
+        }
         return;
       }
     };
