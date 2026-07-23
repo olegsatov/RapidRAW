@@ -290,7 +290,7 @@ pub fn locate_folder(
 /// pages through these on `folder-import-catalog-ready` to restore a folder's
 /// listing without a rescan, and on `folder-import-complete` to refresh EXIF.
 #[tauri::command]
-pub fn load_folder_files(
+pub async fn load_folder_files(
     app_handle: AppHandle,
     path: String,
     recursive: bool,
@@ -306,15 +306,31 @@ pub fn load_folder_files(
         offset,
         limit
     );
-    library_db::load_folder_files_for_path(&app_handle, &path, recursive, offset, limit)
+    match tauri::async_runtime::spawn_blocking(move || {
+        library_db::load_folder_files_for_path(&app_handle, &path, recursive, offset, limit)
+    })
+    .await
+    {
+        Ok(Ok(files)) => Ok(files),
+        Ok(Err(e)) => Err(e),
+        Err(e) => Err(format!("Failed to execute load folder files task: {}", e)),
+    }
 }
 
 /// Returns whether the requested path is part of the catalog. Used by the
 /// frontend to decide whether selecting a folder can be served from the catalog
 /// or needs a manual import.
 #[tauri::command]
-pub fn is_folder_cataloged(app_handle: AppHandle, path: String) -> Result<bool, String> {
-    library_db::is_folder_cataloged(&app_handle, &path)
+pub async fn is_folder_cataloged(app_handle: AppHandle, path: String) -> Result<bool, String> {
+    match tauri::async_runtime::spawn_blocking(move || {
+        library_db::is_folder_cataloged(&app_handle, &path)
+    })
+    .await
+    {
+        Ok(Ok(result)) => Ok(result),
+        Ok(Err(e)) => Err(e),
+        Err(e) => Err(format!("Failed to execute folder catalog check task: {}", e)),
+    }
 }
 
 fn folder_key(path: &str, recursive: bool) -> String {

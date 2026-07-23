@@ -105,13 +105,16 @@ export async function loadFolderFromCatalog(
   const files: ImageFile[] = [];
   const seen = new Set<string>();
   const limit = 2000;
+  console.time(`[load-folder] ${path}`);
   while (true) {
+    const pageStart = performance.now();
     const batch = await invoke<ImageFile[]>('load_folder_files', {
       path,
       recursive,
       offset: files.length,
       limit,
     });
+    console.log(`[load-folder] ${path} page offset=${files.length} returned ${batch.length} files in ${(performance.now() - pageStart).toFixed(1)}ms`);
     if (batch.length === 0) {
       break;
     }
@@ -131,6 +134,7 @@ export async function loadFolderFromCatalog(
     files.push(...page);
     onPage?.(page, files.length);
   }
+  console.timeEnd(`[load-folder] ${path}`);
   return files;
 }
 

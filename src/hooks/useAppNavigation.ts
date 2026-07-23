@@ -429,10 +429,13 @@ export function useAppNavigation({ clearThumbnailQueue, refs }: AppNavigationPro
           });
         } else if (path) {
           const recursive = libraryViewMode === LibraryViewMode.Recursive;
+          console.time(`[select-folder] ${path}`);
           const cataloged = await invoke<boolean>(Invokes.IsFolderCataloged, { path });
+          console.timeLog(`[select-folder] ${path}`, 'IsFolderCataloged');
           if (cataloged) {
             // Catalog-only path: never touch the source disk.
             const files = await loadFolderFromCatalog(path, recursive);
+            console.timeLog(`[select-folder] ${path}`, `loadFolderFromCatalog (${files.length} files)`);
             const initialRatings: Record<string, number> = {};
             const initialFlags: Record<string, number> = {};
             files.forEach((f) => {
@@ -449,9 +452,11 @@ export function useAppNavigation({ clearThumbnailQueue, refs }: AppNavigationPro
               imageFlags: initialFlags,
               isViewLoading: false,
             });
+            console.timeEnd(`[select-folder] ${path}`);
           } else {
             // Folder not yet cataloged: this is a manual import/add-folder
             // action, so touching the source disk here is allowed.
+            console.timeEnd(`[select-folder] ${path}`);
             openFolder(path, recursive);
           }
         }

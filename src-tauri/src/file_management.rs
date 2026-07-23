@@ -797,21 +797,14 @@ struct CatalogFolderNode {
 ///      import that stores all files under the root folder_id still shows the
 ///      correct subfolder hierarchy instead of a flat root with all files.
 /// Returns `None` when the folder is not cataloged.
-fn build_folder_tree_from_catalog(
-    app_handle: &AppHandle,
+fn build_folder_tree_from_rows(
     root_path: &str,
-    _recursive: bool,
-) -> Result<Option<FolderNode>, String> {
-    let folder_rows = crate::library_db::get_folder_subtree_paths(app_handle, root_path)?;
+    folder_rows: Vec<(String, i64, i32)>,
+    file_rows: Vec<(String, Option<i64>)>,
+) -> Option<FolderNode> {
     if folder_rows.is_empty() {
-        log::debug!("[folder-tree] no catalog entry for {}", root_path);
-        return Ok(None);
+        return None;
     }
-    log::debug!(
-        "[folder-tree] building catalog tree for {} from {} folder rows",
-        root_path,
-        folder_rows.len()
-    );
 
     let root_normalized = root_path.trim_end_matches(|c| c == '/' || c == '\\').to_string();
     let mut nodes: BTreeMap<String, CatalogFolderNode> = BTreeMap::new();
@@ -846,7 +839,6 @@ fn build_folder_tree_from_catalog(
 
     // 2. Derive directory nodes and direct file counts from the actual file
     //    paths stored in the catalog under this subtree.
-    let file_rows = crate::library_db::get_files_under_folder_subtree(app_handle, root_path)?;
     for (file_path, modified) in file_rows {
         let mut ancestor = Path::new(&file_path)
             .parent()
@@ -892,13 +884,12 @@ fn build_folder_tree_from_catalog(
         }
     }
 
-    // 3. Attach children to their parents, processing shallower paths first so
-    //    parent nodes are guaranteed to exist.
+    // 3. Attach children to their parents, processing deeper paths first so
+    //    a node is still in the map when its own children look it up.
     let mut sorted_paths: Vec<String> = nodes.keys().cloned().collect();
     sorted_paths.sort_by(|a, b| {
-        let depth_a = a.chars().filter(|c| *c == '/').count();
-        let depth_b = b.chars().filter(|c| *c == '/').count();
-        depth_a.cmp(&depth_b).then_with(|| a.cmp(b))
+        let depth = |p: &str| p.chars().filter(|c| *c == '/' || *c == '\\').count();
+        depth(b).cmp(&depth(a)).then_with(|| a.cmp(b))
     });
 
     for path in sorted_paths {
@@ -936,7 +927,27 @@ fn build_folder_tree_from_catalog(
         }
     }
 
-    Ok(nodes.remove(&root_normalized).map(convert))
+    nodes.remove(&root_normalized).map(convert)
+}
+
+fn build_folder_tree_from_catalog(
+    app_handle: &AppHandle,
+    root_path: &str,
+    _recursive: bool,
+) -> Result<Option<FolderNode>, String> {
+    let folder_rows = crate::library_db::get_folder_subtree_paths(app_handle, root_path)?;
+    if folder_rows.is_empty() {
+        log::debug!("[folder-tree] no catalog entry for {}", root_path);
+        return Ok(None);
+    }
+    log::debug!(
+        "[folder-tree] building catalog tree for {} from {} folder rows",
+        root_path,
+        folder_rows.len()
+    );
+
+    let file_rows = crate::library_db::get_files_under_folder_subtree(app_handle, root_path)?;
+    Ok(build_folder_tree_from_rows(root_path, folder_rows, file_rows))
 }
 
 fn get_folder_tree_sync(
@@ -3926,5 +3937,60 @@ pub fn sync_metadata_to_xmp(source_path: &Path, metadata: &ImageMetadata, create
         }
 
         let _ = fs::write(&xmp_file, content);
+    }
+}
+
+#[cfg(test)]
+mod folder_tree_tests {
+    use super::*;
+
+    #[test]
+    fn test_build_folder_tree_deep_nesting() {
+        // Root is explicitly cataloged; files live three levels below it.
+        let folder_rows = vec![("/users/pics".to_string(), 1, 1)];
+        let file_rows = vec![
+            ("/users/pics/2026/july/photo.jpg".to_string(), Some(1)),
+            ("/users/pics/2026/june/photo.jpg".to_string(), Some(2)),
+            ("/users/pics/2025/december/photo.jpg".to_string(), Some(3)),
+            ("/users/pics/root_file.jpg".to_string(), Some(4)),
+        ];
+
+        let root = build_folder_tree_from_rows("/users/pics", folder_rows, file_rows).unwrap();
+
+        // Root contains one direct file and the "2026" / "2025" folders.
+        assert_eq!(root.image_count, 4);
+        assert_eq!(root.children.len(), 2);
+        let names: Vec<&str> = root.children.iter().map(|c| c.name.as_str()).collect();
+        assert_eq!(names, vec!["2025", "2026"]);
+
+        let year_2026 = root.children.iter().find(|c| c.name == "2026").unwrap();
+        assert_eq!(year_2026.children.len(), 2);
+        let month_names: Vec<&str> = year_2026.children.iter().map(|c| c.name.as_str()).collect();
+        assert_eq!(month_names, vec!["july", "june"]);
+
+        let july = year_2026.children.iter().find(|c| c.name == "july").unwrap();
+        assert_eq!(july.children.len(), 0);
+        assert_eq!(july.image_count, 1);
+
+        // Ensure the deep folders are not surfaced at the root level.
+        assert!(!root.children.iter().any(|c| c.name == "july"));
+        assert!(!root.children.iter().any(|c| c.name == "june"));
+        assert!(!root.children.iter().any(|c| c.name == "december"));
+    }
+
+    #[test]
+    fn test_build_folder_tree_explicit_empty_subfolder() {
+        // An empty cataloged subfolder with no files should still nest correctly.
+        let folder_rows = vec![
+            ("/users/pics".to_string(), 1, 1),
+            ("/users/pics/empty".to_string(), 2, 0),
+        ];
+        let file_rows = vec![("/users/pics/empty/nested/file.jpg".to_string(), Some(1))];
+
+        let root = build_folder_tree_from_rows("/users/pics", folder_rows, file_rows).unwrap();
+        assert_eq!(root.children.len(), 1);
+        assert_eq!(root.children[0].name, "empty");
+        assert_eq!(root.children[0].children.len(), 1);
+        assert_eq!(root.children[0].children[0].name, "nested");
     }
 }

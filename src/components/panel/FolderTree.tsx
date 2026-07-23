@@ -511,44 +511,42 @@ function TreeNode({
 
   const tooltip = [statusLabel, syncTooltip].filter(Boolean).join('\n');
 
-  const handleFolderIconClick = (e: any) => {
-    e.stopPropagation();
+  const selectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (selectTimeoutRef.current !== null) {
+        clearTimeout(selectTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    // Cancel a pending delayed selection if the user picked a different folder
+    // (or unmounted this branch) before the timeout fired.
+    if (selectTimeoutRef.current !== null && selectedPath !== node.path) {
+      clearTimeout(selectTimeoutRef.current);
+      selectTimeoutRef.current = null;
+    }
+  }, [selectedPath, node.path]);
+
+  const handleRowClick = () => {
     if (hasChildren) {
       onToggle(node.path);
+      if (!isSelected) {
+        if (selectTimeoutRef.current !== null) {
+          clearTimeout(selectTimeoutRef.current);
+        }
+        // Give the folder tree time to render/animate before the heavy
+        // catalog/thumbnail load starts and blocks the UI thread.
+        selectTimeoutRef.current = setTimeout(() => {
+          selectTimeoutRef.current = null;
+          onFolderSelect(node.path);
+        }, 200);
+      }
+    } else if (!isSelected) {
+      onFolderSelect(node.path);
     }
-  };
-
-  const handleNameClick = () => {
-    onFolderSelect(node.path);
-  };
-
-  const handleNameDoubleClick = () => {
-    if (hasChildren) {
-      onToggle(node.path);
-    }
-  };
-
-  const containerVariants: any = {
-    closed: {
-      height: 0,
-      opacity: 0,
-      transition: isInstantTransition ? { duration: 0 } : { duration: 0.2, ease: 'easeInOut' },
-    },
-    open: {
-      height: 'auto',
-      opacity: 1,
-      transition: isInstantTransition ? { duration: 0 } : { duration: 0.25, ease: 'easeInOut' },
-    },
-  };
-
-  const itemVariants = {
-    hidden: { opacity: 0, x: -15 },
-    visible: ({ index, total }: VisibleProps) => ({
-      opacity: 1,
-      x: 0,
-      transition: isInstantTransition ? { duration: 0 } : { duration: 0.25, delay: total < 8 ? index * 0.05 : 0 },
-    }),
-    exit: { opacity: 0, x: -15, transition: isInstantTransition ? { duration: 0 } : { duration: 0.2 } },
   };
 
   const currentFolderIconKey = folderIcons[node.path];
@@ -565,7 +563,7 @@ function TreeNode({
           'bg-surface': isSelected,
           'hover:bg-card-active': !isSelected,
         })}
-        onClick={handleNameClick}
+        onClick={handleRowClick}
         onContextMenu={(e: any) => onContextMenu(e, node.path, isPinned)}
         data-tooltip={tooltip || undefined}
       >
@@ -577,7 +575,6 @@ function TreeNode({
               'hover:bg-surface-hover': !isSelected && hasChildren,
             },
           )}
-          onClick={handleFolderIconClick}
         >
           <AnimatePresence mode="wait" initial={false}>
             <motion.div
@@ -593,7 +590,7 @@ function TreeNode({
           </AnimatePresence>
         </div>
 
-        <span onDoubleClick={handleNameDoubleClick} className="truncate select-none flex-1">
+        <span className="truncate select-none flex-1">
           <span className="truncate">{node.name}</span>
           {typeof node.imageCount === 'number' && node.imageCount > 0 && (
             <Text
@@ -624,59 +621,34 @@ function TreeNode({
         )}
 
         {hasChildren && (
-          <Text
-            as="div"
-            color={TextColors.secondary}
-            className="p-0.5 rounded-sm hover:bg-surface/50"
-            onClick={handleFolderIconClick}
-          >
+          <Text as="div" color={TextColors.secondary} className="p-0.5 rounded-sm hover:bg-surface/50">
             {isExpanded ? <ChevronUp size={16} className="shrink-0" /> : <ChevronDown size={16} className="shrink-0" />}
           </Text>
         )}
       </div>
 
-      <AnimatePresence initial={false}>
-        {hasChildren && isExpanded && node.children && node.children.length > 0 && (
-          <motion.div
-            animate="open"
-            className="pl-1 border-l-[1.5px] border-border-color/50 ml-3.75 overflow-hidden"
-            exit="closed"
-            initial={isInstantTransition ? 'open' : 'closed'}
-            key="children-container"
-            variants={containerVariants}
-          >
-            <div className="py-1">
-              <AnimatePresence>
-                {node?.children?.map((childNode: any, index: number) => (
-                  <motion.div
-                    animate="visible"
-                    custom={{ index, total: node.children.length }}
-                    exit="exit"
-                    initial={isInstantTransition ? 'visible' : 'hidden'}
-                    key={childNode.path}
-                    layout={isInstantTransition ? false : 'position'}
-                    variants={itemVariants}
-                  >
-                    <TreeNode
-                      expandedFolders={expandedFolders}
-                      isExpanded={expandedFolders.has(childNode.path)}
-                      node={childNode}
-                      onContextMenu={onContextMenu}
-                      onFolderSelect={onFolderSelect}
-                      onToggle={onToggle}
-                      selectedPath={selectedPath}
-                      pinnedFolders={pinnedFolders}
-                      showImageCounts={showImageCounts}
-                      isInstantTransition={isInstantTransition}
-                      folderIcons={folderIcons}
-                    />
-                  </motion.div>
-                ))}
-              </AnimatePresence>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      {hasChildren && isExpanded && node.children && node.children.length > 0 && (
+        <div className="pl-1 border-l-[1.5px] border-border-color/50 ml-3.75 overflow-hidden">
+          <div className="py-1">
+            {node.children.map((childNode: any) => (
+              <TreeNode
+                key={childNode.path}
+                expandedFolders={expandedFolders}
+                isExpanded={expandedFolders.has(childNode.path)}
+                node={childNode}
+                onContextMenu={onContextMenu}
+                onFolderSelect={onFolderSelect}
+                onToggle={onToggle}
+                selectedPath={selectedPath}
+                pinnedFolders={pinnedFolders}
+                showImageCounts={showImageCounts}
+                isInstantTransition={isInstantTransition}
+                folderIcons={folderIcons}
+              />
+            ))}
+          </div>
+        </div>
+      )}
     </Text>
   );
 }
