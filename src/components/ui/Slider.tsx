@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
+import clsx from 'clsx';
 import { useGestureStore } from '../../store/useGestureStore';
 import { GLOBAL_KEYS } from './AppProperties';
 
@@ -523,14 +524,14 @@ const Slider = ({
         </div>
       </div>
 
-      <div className="relative w-full h-5">
+      <div className="relative w-full h-6">
         <div
-          className={`absolute top-1/2 left-0 w-full h-1.5 -translate-y-1/4 rounded-full pointer-events-none ${
+          className={`absolute top-1/2 left-0 w-full h-1.5 -translate-y-1/2 rounded-full pointer-events-none ${
             trackClassName || 'bg-card-active'
           }`}
         />
         <div
-          className="absolute top-1/2 h-1.5 -translate-y-1/4 rounded-full pointer-events-none bg-accent/25"
+          className="absolute top-1/2 h-1.5 -translate-y-1/2 rounded-full pointer-events-none bg-accent/25"
           style={{
             left: `${Math.min(fillPercentage, originPercentage)}%`,
             width: `${Math.abs(fillPercentage - originPercentage)}%`,
@@ -538,9 +539,7 @@ const Slider = ({
         />
         <input
           ref={rangeInputRef}
-          className={`absolute top-1/2 left-0 w-full h-1.5 appearance-none bg-transparent cursor-pointer m-0 p-0 slider-input z-10 ${
-            isDragging ? 'slider-thumb-active' : ''
-          }`}
+          className="absolute top-1/2 left-0 w-full h-6 appearance-none bg-transparent cursor-pointer m-0 p-0 slider-input z-10"
           style={{ margin: 0, touchAction: isDragging ? 'none' : 'pan-y' }}
           max={String(max)}
           min={String(min)}
@@ -555,6 +554,13 @@ const Slider = ({
           step={String(step)}
           type="range"
           value={displayValue}
+        />
+        <div
+          className={clsx(
+            'absolute top-1/2 -translate-y-1/2 -translate-x-1/2 h-5 w-1.5 rounded-full bg-accent pointer-events-none z-20 transition-transform duration-150 ease-in-out',
+            isDragging && 'scale-110',
+          )}
+          style={{ left: `${fillPercentage}%` }}
         />
       </div>
     </div>
