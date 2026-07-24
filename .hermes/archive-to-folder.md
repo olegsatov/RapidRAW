@@ -39,15 +39,33 @@ project's catalog/disk-access rules (see `AGENTS.md`).
 
 Files are grouped by the `date_taken` value stored in the SQLite catalog during
 import (EXIF `DateTimeOriginal`). If the catalog has no `date_taken`, the file is
-skipped with a log warning. The target path is:
+skipped with a log warning.
+
+The default layout under the chosen archive root is:
 
 ```
 <archive_root>/YYYY/YYYY-MM/YYYY-MM-DD/<filename>
 ```
 
-The format is fixed as `YYYY/YYYY-MM/YYYY-MM-DD`.
+If the archive root itself is named with a four-digit year (for example
+`/Pictures/2026`), that folder is treated as the year level and photos from that
+year are placed directly inside it using month/day folders:
 
-## Conflict handling
+```
+<archive_root>/MM/DD/<filename>
+```
+
+Photos from a different year still get the full `YYYY/YYYY-MM/YYYY-MM-DD` path
+(so a 2025 photo archived into `/Pictures/2026` lands at
+`/Pictures/2026/2025/2025-MM/2025-MM-DD/<filename>`).
+
+## Year offset
+
+If the camera's clock was set to the wrong year, the archive dialog can shift all
+photo dates for this operation without touching the catalog or EXIF. When the
+chosen archive root is a four-digit year, a prompt asks how many years to add or
+subtract (for example `+1` to archive 2025-dated photos inside a `/Pictures/2026`
+folder as `MM/DD`). The offset applies only to the current archive job.
 
 If a file with the same name already exists in the target day folder, the copied
 file is auto-renamed:
@@ -56,13 +74,50 @@ file is auto-renamed:
 DSC_0001.NEF  →  DSC_0001_1.NEF  →  DSC_0001_2.NEF  …
 ```
 
+## Resume support
+
+The archive job can be interrupted (for example the app loses focus, the process
+is suspended, or the destination volume disconnects). Re-running the same
+**Archive to…** operation on the same source/target resumes where it left off:
+
+- Before copying a file, the backend checks whether a file with the same name
+  already exists in the target day folder.
+- If it exists and its **size and modification time** both match the source file,
+  the copy is skipped and the existing destination path is used for the catalog
+  update.
+- If it exists but differs in size or mtime, the copied file is auto-renamed
+  (`_1`, `_2`, …) exactly like before.
+- When a file is actually copied, the source modification time is preserved on
+  the destination file so the skip check remains reliable.
+
+This means a partially copied day folder can be completed safely without
+re-copying the files that already arrived intact.
+
+## Catalog update optimization
+
+To avoid keeping the SQLite write transaction open while files are being copied
+from the source volume, the archive job now:
+
+- Copies/skips files **outside** of any database transaction.
+- Opens a short per-file transaction only to update the catalog entry for the
+  file that just succeeded.
+- Caches destination folder IDs so the `folders` table is only upserted once per
+  target day folder.
+- Updates each file with direct `UPDATE ... WHERE path = ?` and
+  `UPDATE ... WHERE path LIKE ?` statements instead of fetching every matching
+  row first.
+
+This keeps the `database locked` window tiny and lets the rest of the app keep
+reading/writing the catalog while archiving runs.
+
 ## Verification
 
-After each file copy the destination size is compared to the source size. If they
-mismatch the destination file is removed and the file is recorded as failed. The
-SQLite catalog is only updated for files whose copy succeeded. The entire catalog
-update runs inside a single transaction; if no files were archived successfully
-the transaction is rolled back.
+After each actual file copy the destination size is compared to the source size.
+If they mismatch the destination file is removed and the file is recorded as
+failed. Skipped files do not run the size check. The SQLite catalog is only
+updated for files whose destination path succeeded (copied or skipped). The
+entire catalog update runs inside a single transaction; if no files were archived
+successfully the transaction is rolled back.
 
 ## Sidecars / associated files
 
@@ -88,7 +143,7 @@ Two helpers were added to `library_db.rs`:
 Registered in `src-tauri/src/lib.rs`:
 
 - `archive_folder_to(source_path, target_root)` → `ArchiveResult { archived,
-  failed }`. Runs in `tauri::async_runtime::spawn_blocking`, emits
+failed }`. Runs in `tauri::async_runtime::spawn_blocking`, emits
   `archive-progress` events.
 - `delete_archived_sources(paths)` → list of `(path, error)` for files that could
   not be deleted.

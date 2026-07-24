@@ -30,7 +30,10 @@ pub(crate) fn open_connection<R: Runtime>(app_handle: &AppHandle<R>) -> Result<C
 }
 
 fn column_exists(conn: &Connection, table: &str, column: &str) -> Result<bool, String> {
-    let sql = format!("SELECT 1 FROM pragma_table_info('{}') WHERE name = ?1", table);
+    let sql = format!(
+        "SELECT 1 FROM pragma_table_info('{}') WHERE name = ?1",
+        table
+    );
     let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
     let exists: Option<i32> = stmt
         .query_row([column], |row| row.get(0))
@@ -79,11 +82,8 @@ fn migrate(conn: &Connection) -> Result<(), String> {
             .map_err(|e| e.to_string())?;
         }
         if !column_exists(conn, "files", "history_index")? {
-            conn.execute(
-                "ALTER TABLE files ADD COLUMN history_index INTEGER",
-                [],
-            )
-            .map_err(|e| e.to_string())?;
+            conn.execute("ALTER TABLE files ADD COLUMN history_index INTEGER", [])
+                .map_err(|e| e.to_string())?;
         }
         conn.execute_batch(SCHEMA_V3).map_err(|e| e.to_string())?;
         conn.pragma_update(None, "user_version", 3)
@@ -342,12 +342,20 @@ fn try_init_catalog(app_handle: &AppHandle) -> Result<(), String> {
     migrate(&conn)
 }
 
-pub fn upsert_folder<R: Runtime>(app_handle: &AppHandle<R>, path: &str, recursive: bool) -> Result<i64, String> {
+pub fn upsert_folder<R: Runtime>(
+    app_handle: &AppHandle<R>,
+    path: &str,
+    recursive: bool,
+) -> Result<i64, String> {
     let conn = open_connection(app_handle)?;
     upsert_folder_in_conn(&conn, path, recursive)
 }
 
-fn upsert_folder_in_conn(conn: &Connection, path: &str, recursive: bool) -> Result<i64, String> {
+pub fn upsert_folder_in_conn(
+    conn: &Connection,
+    path: &str,
+    recursive: bool,
+) -> Result<i64, String> {
     // RETURNING id: on the conflict-update path last_insert_rowid() is not
     // set to the conflicting row (it returns 0 on a fresh connection).
     conn.query_row(
@@ -688,7 +696,10 @@ fn get_files_needing_exif_in_conn(
 /// Resolves the catalog id for one (possibly virtual) path. `None` means the
 /// file is not cataloged; callers fall back to path-keyed behavior in that
 /// case — a missing row is never an error.
-pub fn get_file_id_by_path<R: Runtime>(app_handle: &AppHandle<R>, file_path: &str) -> Result<Option<i64>, String> {
+pub fn get_file_id_by_path<R: Runtime>(
+    app_handle: &AppHandle<R>,
+    file_path: &str,
+) -> Result<Option<i64>, String> {
     let conn = open_connection(app_handle)?;
     get_file_id_by_path_in_conn(&conn, file_path)
 }
@@ -776,7 +787,10 @@ pub fn save_edit_history<R: Runtime>(
     history_index: i64,
     current_adjustments_json: &str,
 ) -> Result<(), String> {
-    log::info!("[history-persistence] library_db::save_edit_history opening connection for file_id={}", file_id);
+    log::info!(
+        "[history-persistence] library_db::save_edit_history opening connection for file_id={}",
+        file_id
+    );
     let mut conn = open_connection(app_handle)?;
     log::info!("[history-persistence] connection opened, starting transaction");
     let tx = conn.transaction().map_err(|e| e.to_string())?;
@@ -789,9 +803,15 @@ pub fn save_edit_history<R: Runtime>(
         history_index,
         current_adjustments_json,
     )?;
-    log::info!("[history-persistence] committing transaction for file_id={}", file_id);
+    log::info!(
+        "[history-persistence] committing transaction for file_id={}",
+        file_id
+    );
     tx.commit().map_err(|e| e.to_string())?;
-    log::info!("[history-persistence] transaction committed for file_id={}", file_id);
+    log::info!(
+        "[history-persistence] transaction committed for file_id={}",
+        file_id
+    );
     Ok(())
 }
 
@@ -1005,7 +1025,10 @@ pub fn reconstruct_history(
 
 /// Returns whether a catalog row has already completed its EXIF scan. Used by
 /// lazy EXIF caching to avoid racing the folder import's EXIF phase.
-pub fn is_file_exif_scanned<R: Runtime>(app_handle: &AppHandle<R>, file_id: i64) -> Result<bool, String> {
+pub fn is_file_exif_scanned<R: Runtime>(
+    app_handle: &AppHandle<R>,
+    file_id: i64,
+) -> Result<bool, String> {
     let conn = open_connection(app_handle)?;
     is_file_exif_scanned_in_conn(&conn, file_id)
 }
@@ -1196,7 +1219,10 @@ pub fn update_file_thumbnail_hash(
 
 /// Returns the source-file `modified` timestamp stored in the catalog for one
 /// file row. Used by the thumbnail worker to avoid re-statting source files.
-pub fn get_file_modified_by_id(app_handle: &AppHandle, file_id: i64) -> Result<Option<u64>, String> {
+pub fn get_file_modified_by_id(
+    app_handle: &AppHandle,
+    file_id: i64,
+) -> Result<Option<u64>, String> {
     let conn = open_connection(app_handle)?;
     let modified: Option<i64> = conn
         .query_row(
@@ -1279,7 +1305,10 @@ pub fn load_folder_files_for_path(
 ) -> Result<Vec<ImageFile>, String> {
     let conn = open_connection(app_handle)?;
     let files = load_folder_files_for_path_in_conn(&conn, path, recursive, offset, limit)?;
-    log::info!("[catalog] load_folder_files_for_path returned {} files", files.len());
+    log::info!(
+        "[catalog] load_folder_files_for_path returned {} files",
+        files.len()
+    );
     Ok(files)
 }
 
@@ -1787,45 +1816,41 @@ pub fn update_file_path_in_conn(
     new_folder_id: i64,
     new_modified: Option<i64>,
 ) -> Result<usize, String> {
+    let new_name = PathBuf::from(new_path)
+        .file_name()
+        .unwrap_or_default()
+        .to_string_lossy()
+        .to_string();
     let old_vc_pattern = format!("{}?vc=%", old_path);
-    let mut stmt = conn
-        .prepare("SELECT id, path FROM files WHERE path = ?1 OR path LIKE ?2")
-        .map_err(|e| e.to_string())?;
-    let rows: Vec<(i64, String)> = stmt
-        .query_map(params![old_path, old_vc_pattern], |row| {
-            Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?))
-        })
-        .and_then(|iter| iter.collect::<Result<Vec<_>, _>>())
-        .map_err(|e| e.to_string())?;
-    drop(stmt);
 
-    let mut updated = 0;
-    for (file_id, current_path) in rows {
-        let updated_path = if current_path == old_path {
-            new_path.to_string()
-        } else {
-            current_path.replacen(old_path, new_path, 1)
-        };
-        let new_name = PathBuf::from(&updated_path)
-            .file_name()
-            .unwrap_or_default()
-            .to_string_lossy()
-            .to_string();
-        if let Some(m) = new_modified {
-            conn.execute(
-                "UPDATE files SET path = ?1, name = ?2, folder_id = ?3, modified = ?4 WHERE id = ?5",
-                params![updated_path, new_name, new_folder_id, m, file_id],
-            )
-            .map_err(|e| e.to_string())?;
-        } else {
-            conn.execute(
-                "UPDATE files SET path = ?1, name = ?2, folder_id = ?3 WHERE id = ?4",
-                params![updated_path, new_name, new_folder_id, file_id],
-            )
-            .map_err(|e| e.to_string())?;
-        }
-        updated += 1;
-    }
+    let mut updated = if let Some(m) = new_modified {
+        conn.execute(
+            "UPDATE files SET path = ?1, name = ?2, folder_id = ?3, modified = ?4 WHERE path = ?5",
+            params![new_path, new_name, new_folder_id, m, old_path],
+        )
+        .map_err(|e| e.to_string())?
+    } else {
+        conn.execute(
+            "UPDATE files SET path = ?1, name = ?2, folder_id = ?3 WHERE path = ?4",
+            params![new_path, new_name, new_folder_id, old_path],
+        )
+        .map_err(|e| e.to_string())?
+    };
+
+    updated += if let Some(m) = new_modified {
+        conn.execute(
+            "UPDATE files SET path = REPLACE(path, ?1, ?2), name = ?3, folder_id = ?4, modified = ?5 WHERE path LIKE ?6",
+            params![old_path, new_path, new_name, new_folder_id, m, old_vc_pattern],
+        )
+        .map_err(|e| e.to_string())?
+    } else {
+        conn.execute(
+            "UPDATE files SET path = REPLACE(path, ?1, ?2), name = ?3, folder_id = ?4 WHERE path LIKE ?5",
+            params![old_path, new_path, new_name, new_folder_id, old_vc_pattern],
+        )
+        .map_err(|e| e.to_string())?
+    };
+
     Ok(updated)
 }
 
@@ -2488,8 +2513,7 @@ mod tests {
     #[test]
     fn test_update_and_get_file_metadata_round_trip() {
         let (mut conn, folder_id) = setup_conn();
-        upsert_files_in_conn(&mut conn, folder_id, std::slice::from_ref(&sample_file()))
-            .unwrap();
+        upsert_files_in_conn(&mut conn, folder_id, std::slice::from_ref(&sample_file())).unwrap();
         let file_id: i64 = conn
             .query_row(
                 "SELECT id FROM files WHERE path = '/tmp/x/a.jpg'",
@@ -2537,8 +2561,7 @@ mod tests {
     fn test_update_file_rating_flag_tags() {
         let (mut conn, folder_id) = setup_conn();
         conn.execute_batch("PRAGMA foreign_keys = ON").unwrap();
-        upsert_files_in_conn(&mut conn, folder_id, std::slice::from_ref(&sample_file()))
-            .unwrap();
+        upsert_files_in_conn(&mut conn, folder_id, std::slice::from_ref(&sample_file())).unwrap();
         let file_id: i64 = conn
             .query_row(
                 "SELECT id FROM files WHERE path = '/tmp/x/a.jpg'",
@@ -2829,16 +2852,12 @@ mod tests {
         .unwrap();
 
         let history = load_edit_history_in_conn(&conn, file_id).unwrap().unwrap();
-        assert_eq!(
-            history.snapshot.adjustments_json,
-            snapshot.adjustments_json
-        );
+        assert_eq!(history.snapshot.adjustments_json, snapshot.adjustments_json);
         assert_eq!(history.deltas.len(), 3);
         assert_eq!(history.history_index, 1);
 
         let (states, active_index) =
-            reconstruct_history(&history.snapshot, &history.deltas, history.history_index)
-                .unwrap();
+            reconstruct_history(&history.snapshot, &history.deltas, history.history_index).unwrap();
         assert_eq!(states.len(), 4);
         assert_eq!(active_index, 1);
         assert_eq!(
@@ -2887,26 +2906,21 @@ mod tests {
             source: "history".to_string(),
         }];
 
-        save_edit_history_in_conn(
-            &conn,
-            file_id,
-            &snapshot,
-            &deltas,
-            1,
-            r#"{"exposure":0.5}"#,
-        )
-        .unwrap();
+        save_edit_history_in_conn(&conn, file_id, &snapshot, &deltas, 1, r#"{"exposure":0.5}"#)
+            .unwrap();
 
         let history = load_edit_history_in_conn(&conn, file_id).unwrap().unwrap();
         let (states, active_index) =
-            reconstruct_history(&history.snapshot, &history.deltas, history.history_index)
-                .unwrap();
+            reconstruct_history(&history.snapshot, &history.deltas, history.history_index).unwrap();
         assert_eq!(states.len(), 2);
         assert_eq!(active_index, 1);
 
         // Base snapshot label and per-step label must round-trip.
         assert_eq!(history.snapshot.description, Some("base".to_string()));
-        assert_eq!(history.deltas[0].description, Some("after edit".to_string()));
+        assert_eq!(
+            history.deltas[0].description,
+            Some("after edit".to_string())
+        );
     }
 
     #[test]
@@ -3040,10 +3054,7 @@ mod tests {
             base_history.snapshot.adjustments_json,
             r#"{"exposure":0.5}"#
         );
-        assert_eq!(
-            vc_history.snapshot.adjustments_json,
-            r#"{"exposure":2.0}"#
-        );
+        assert_eq!(vc_history.snapshot.adjustments_json, r#"{"exposure":2.0}"#);
     }
 
     #[test]
