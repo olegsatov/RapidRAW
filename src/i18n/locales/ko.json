@@ -1819,7 +1819,7 @@
       "auto": "자동",
       "clearLut": "LUT 지우기",
       "empty": "아직 LUT가 없습니다 — 가져오기를 수행하세요",
-      "filterLabel": "LUT 파일",
+      "filterLabel": "LUT & HALD 파일",
       "import": "Import LUTs",
       "importFailed": "LUT 가져오기 실패",
       "intensity": "강도",

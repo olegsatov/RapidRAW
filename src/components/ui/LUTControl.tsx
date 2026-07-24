@@ -211,7 +211,7 @@ export default function LUTControl({
 
       const selected = await open({
         multiple: true,
-        filters: isAndroid ? [] : [{ name: t('ui.lut.filterLabel'), extensions: ['cube', '3dl', 'CUBE', '3DL'] }],
+        filters: isAndroid ? [] : [{ name: t('ui.lut.filterLabel'), extensions: ['cube', '3dl', 'CUBE', '3DL', 'tiff', 'tif', 'png', 'TIFF', 'TIF', 'PNG'] }],
       });
       const sourcePaths = Array.isArray(selected) ? selected : selected ? [selected] : [];
       if (sourcePaths.length === 0) return;
@@ -228,7 +228,7 @@ export default function LUTControl({
             }
           }),
         );
-        const allowedExtensions = new Set(['cube', '3dl']);
+        const allowedExtensions = new Set(['cube', '3dl', 'tiff', 'tif', 'png']);
         validPaths = sourcePaths.filter((_, index) => {
           const resolvedName = resolvedNames[index];
           const ext = resolvedName.split('.').pop()?.toLowerCase() || '';

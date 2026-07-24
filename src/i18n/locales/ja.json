@@ -1818,7 +1818,7 @@
       "auto": "自動",
       "clearLut": "LUTをクリア",
       "empty": "LUTはまだありません — インポートしてください",
-      "filterLabel": "LUTファイル",
+      "filterLabel": "LUT & HALDファイル",
       "import": "Import LUTs",
       "importFailed": "LUTのインポートに失敗しました",
       "intensity": "適用度",

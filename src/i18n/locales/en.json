@@ -1987,7 +1987,7 @@
       "clearLut": "Clear LUT",
       "configureHotkey": "Configure hotkey",
       "empty": "No LUTs yet — import some",
-      "filterLabel": "LUT Files",
+      "filterLabel": "LUT & HALD Files",
       "import": "Import LUTs",
       "importFailed": "Failed to import LUTs",
       "inputOffset": "Input offset",

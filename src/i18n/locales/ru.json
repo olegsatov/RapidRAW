@@ -1979,7 +1979,7 @@
       "auto": "Авто",
       "clearLut": "Удалить LUT",
       "empty": "Пока нет LUT — импортируйте их",
-      "filterLabel": "Файлы LUT",
+      "filterLabel": "Файлы LUT и HALD",
       "import": "Import LUTs",
       "importFailed": "Не удалось импортировать LUT",
       "inputOffset": "Смещение входа",

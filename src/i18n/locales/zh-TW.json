@@ -1819,7 +1819,7 @@
       "auto": "自動",
       "clearLut": "清除 LUT",
       "empty": "暫無 LUT — 請匯入一些",
-      "filterLabel": "LUT 檔案",
+      "filterLabel": "LUT & HALD 檔案",
       "import": "Import LUTs",
       "importFailed": "匯入 LUT 失敗",
       "intensity": "強度",

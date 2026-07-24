@@ -107,6 +107,24 @@ fn unique_lut_destination(dir: &Path, stem: &str, extension: &str) -> PathBuf {
 
 pub fn import_luts_to_dir(dir: &Path, source_paths: &[String]) -> anyhow::Result<Vec<LutEntry>> {
     for source in source_paths {
+        let source_path = Path::new(source);
+        let extension = source_path
+            .extension()
+            .and_then(|s| s.to_str())
+            .unwrap_or("")
+            .to_lowercase();
+
+        // HALD image formats: extract .cube LUT instead of copying raw image
+        if extension == "tiff" || extension == "tif" || extension == "png" {
+            match import_hald_to_lut_dir(dir, source) {
+                Ok(()) => continue,
+                Err(error) => {
+                    log::warn!("Skipping invalid HALD image '{}': {}", source, error);
+                    continue;
+                }
+            }
+        }
+
         if let Err(error) = parse_lut_file(source) {
             log::warn!("Skipping invalid LUT '{}': {}", source, error);
             continue;
@@ -120,22 +138,99 @@ pub fn import_luts_to_dir(dir: &Path, source_paths: &[String]) -> anyhow::Result
             continue;
         }
 
-        let source_path = Path::new(source);
         let stem = source_path
             .file_stem()
             .and_then(|s| s.to_str())
             .unwrap_or("LUT");
-        let extension = source_path
-            .extension()
-            .and_then(|s| s.to_str())
-            .unwrap_or("cube")
-            .to_lowercase();
         let destination = unique_lut_destination(dir, stem, &extension);
         if let Err(error) = copy(source_path, &destination) {
             log::error!("Failed to copy LUT '{}': {}", source, error);
         }
     }
     list_luts_in_dir(dir)
+}
+
+/// Import a standard square HALD image (TIFF/PNG) by extracting a .cube 3D LUT.
+///
+/// Uses the standard HALD layout: pixel at scanline index i = y*width + x
+/// encodes the output colour for input (i/N², (i/N)%N, i%N).
+/// The resulting .cube uses R-fastest (innermost) order, matching the Python
+/// reference in hald_extract.py.
+fn import_hald_to_lut_dir(dir: &Path, source: &str) -> anyhow::Result<()> {
+    let img = image::open(source).map_err(|e| anyhow!("Failed to open HALD image: {}", e))?;
+    let (width, height) = img.dimensions();
+
+    if width == 0 || height == 0 {
+        return Err(anyhow!("Empty HALD image"));
+    }
+
+    let total = (width as usize).saturating_mul(height as usize);
+
+    // Find the largest cube N³ that fits (same algorithm as hald_extract.py)
+    let n = {
+        let cbrt = (total as f64).cbrt();
+        let mut n = cbrt.floor() as usize;
+        while (n + 1).saturating_pow(3) <= total {
+            n += 1;
+        }
+        n
+    };
+    let used = n.saturating_pow(3);
+
+    if n < 2 {
+        return Err(anyhow!(
+            "HALD image too small: {width}×{height} pixels, need at least a 2³ cube"
+        ));
+    }
+
+    let rgb = img.to_rgb8();
+    let raw = rgb.as_raw();
+    let n_sq = n * n;
+
+    let stem = Path::new(source)
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or("HALD LUT");
+
+    let mut out = String::with_capacity(used * 30); // ~30 bytes per line
+    out.push_str(&format!("TITLE \"{stem}\"\n"));
+    out.push_str(&format!("LUT_3D_SIZE {n}\n"));
+    out.push_str("DOMAIN_MIN 0.0 0.0 0.0\n");
+    out.push_str("DOMAIN_MAX 1.0 1.0 1.0\n\n");
+
+    let max_pixel_idx = raw.len().saturating_sub(3);
+
+    // Write .cube in R-fastest order: for B→G→R, look up HALD pixel at
+    // index R*N² + G*N + B (inverse of the standard HALD encoding where
+    // pixel index = R_in * N² + G_in * N + B_in).
+    for b in 0..n {
+        for g in 0..n {
+            for r in 0..n {
+                let hald_idx = r * n_sq + g * n + b;
+                let px = hald_idx * 3;
+                if px <= max_pixel_idx {
+                    let ro = raw[px] as f32 / 255.0;
+                    let go = raw[px + 1] as f32 / 255.0;
+                    let bo = raw[px + 2] as f32 / 255.0;
+                    out.push_str(&format!("{ro:.6} {go:.6} {bo:.6}\n"));
+                } else {
+                    // Padding: identity fallback for pixels beyond image bounds
+                    let ro = r as f32 / (n - 1) as f32;
+                    let go = g as f32 / (n - 1) as f32;
+                    let bo = b as f32 / (n - 1) as f32;
+                    out.push_str(&format!("{ro:.6} {go:.6} {bo:.6}\n"));
+                }
+            }
+        }
+    }
+
+    let destination = unique_lut_destination(dir, stem, "cube");
+    std::fs::write(&destination, out.as_bytes())?;
+    log::info!(
+        "Extracted {n}³ LUT from HALD image ({width}×{height}) → {}",
+        destination.display()
+    );
+    Ok(())
 }
 
 #[cfg(target_os = "android")]

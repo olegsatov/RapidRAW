@@ -1819,7 +1819,7 @@
       "auto": "Automático",
       "clearLut": "Borrar LUT",
       "empty": "Aún no hay LUTs — importa algunos",
-      "filterLabel": "Archivos LUT",
+      "filterLabel": "Archivos LUT y HALD",
       "import": "Import LUTs",
       "importFailed": "Error al importar LUTs",
       "intensity": "Intensidad",
