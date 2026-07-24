@@ -447,13 +447,8 @@ pub(crate) fn build_image_files(
     sidecars: Vec<Option<String>>,
     enable_xmp_sync: bool,
     settings: &AppSettings,
+    modified: u64,
 ) -> Vec<ImageFile> {
-    let modified = fs::metadata(path_buf)
-        .ok()
-        .and_then(|m| m.modified().ok())
-        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
-        .map(|d| d.as_secs())
-        .unwrap_or(0);
 
     let is_cloud_placeholder = is_cloud_placeholder(path_buf);
 
@@ -1991,7 +1986,7 @@ pub fn duplicate_file(
     Ok(dest_path_str)
 }
 
-fn find_all_associated_files(source_image_path: &Path) -> Result<Vec<PathBuf>, String> {
+pub(crate) fn find_all_associated_files(source_image_path: &Path) -> Result<Vec<PathBuf>, String> {
     let mut associated_files = vec![source_image_path.to_path_buf()];
 
     let mut rrexif_name = source_image_path

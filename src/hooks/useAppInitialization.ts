@@ -8,6 +8,7 @@ import { useEditorStore } from '../store/useEditorStore';
 import { useProcessStore, type ExternalEditSession } from '../store/useProcessStore';
 import { usePresetStore } from '../store/usePresetStore';
 import { useFolderImportStore } from '../store/useFolderImportStore';
+import { deduplicateNestedPaths } from './useFolderImport';
 import { THEMES, DEFAULT_THEME_ID, ThemeProps } from '../utils/themes';
 import { COPYABLE_ADJUSTMENT_KEYS } from '../utils/adjustments';
 import {
@@ -234,11 +235,12 @@ export const useAppInitialization = ({
           }
         }
 
-        const rootFolders = settings.rootFolders?.length
+        const rawRootFolders = settings.rootFolders?.length
           ? settings.rootFolders
           : settings.lastRootPath
             ? [settings.lastRootPath]
             : [];
+        const rootFolders = deduplicateNestedPaths(rawRootFolders);
 
         if (!isAndroid && rootFolders.length > 0) {
           const currentPath = settings.lastFolderState?.currentFolderPath || rootFolders[0];
@@ -462,12 +464,13 @@ export const useAppInitialization = ({
     if (prevImageCountsNeed.current !== needsImageCounts) {
       prevImageCountsNeed.current = needsImageCounts;
 
-      const rootFolders = appSettings.rootFolders?.length
+      const rawRootFolders = appSettings.rootFolders?.length
         ? appSettings.rootFolders
         : appSettings.lastRootPath
           ? [appSettings.lastRootPath]
           : [];
-      const pinnedFolders = appSettings.pinnedFolders || [];
+      const rootFolders = deduplicateNestedPaths(rawRootFolders);
+      const pinnedFolders = deduplicateNestedPaths(appSettings.pinnedFolders || []);
 
       const currentExpanded = Array.from(useLibraryStore.getState().expandedFolders);
 

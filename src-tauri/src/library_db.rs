@@ -375,6 +375,40 @@ pub fn get_folder_id(
     .map_err(|e| e.to_string())
 }
 
+/// Deletes catalog folder rows under `root_path` (excluding the root itself)
+/// that have zero files — orphan folders left behind when a parent-folder
+/// import reassigns every file to the parent's `folder_id` via
+/// `ON CONFLICT(path) DO UPDATE SET folder_id=excluded.folder_id`.
+/// Returns the number of deleted rows.
+pub fn delete_orphan_folders_under(
+    app_handle: &AppHandle,
+    root_path: &str,
+    root_folder_id: i64,
+) -> Result<usize, String> {
+    let conn = open_connection(app_handle)?;
+    let normalized = root_path.trim_end_matches(|c| c == '/' || c == '\\');
+    let pattern = format!("{}/%", normalized);
+    let deleted = conn
+        .execute(
+            "DELETE FROM folders WHERE id IN (\
+             SELECT f.id FROM folders f \
+             LEFT JOIN files fl ON fl.folder_id = f.id \
+             WHERE f.path LIKE ?1 AND f.id != ?2 \
+             GROUP BY f.id \
+             HAVING COUNT(fl.id) = 0)",
+            params![pattern, root_folder_id],
+        )
+        .map_err(|e| e.to_string())?;
+    if deleted > 0 {
+        log::info!(
+            "[catalog] deleted {} orphan folder(s) under {}",
+            deleted,
+            normalized
+        );
+    }
+    Ok(deleted)
+}
+
 #[derive(Debug, Clone)]
 pub struct FileRowInput {
     pub path: String,
@@ -1703,6 +1737,96 @@ pub fn get_files_under_folder_subtree(
         result.push(row.map_err(|e| e.to_string())?);
     }
     Ok(result)
+}
+
+/// Files eligible for archiving from a source folder subtree. Returns rows for
+/// real (non-virtual-copy) imported images together with their folder and date.
+pub fn get_files_for_archive<R: Runtime>(
+    app_handle: &AppHandle<R>,
+    source_path: &str,
+) -> Result<Vec<(i64, String, Option<String>, i64)>, String> {
+    let conn = open_connection(app_handle)?;
+    let normalized = source_path.trim_end_matches(|c| c == '/' || c == '\\');
+    let pattern = format!("{}/%", normalized);
+    let mut stmt = conn
+        .prepare(
+            "SELECT files.id, files.path, files.date_taken, files.folder_id \
+             FROM files \
+             JOIN folders f ON f.id = files.folder_id \
+             WHERE (f.path = ?1 OR f.path LIKE ?2) \
+               AND files.is_virtual_copy = 0 \
+               AND files.is_cloud_placeholder = 0 \
+             ORDER BY files.path",
+        )
+        .map_err(|e| e.to_string())?;
+    let rows = stmt
+        .query_map(params![normalized, pattern], |row| {
+            Ok((
+                row.get::<_, i64>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, Option<String>>(2)?,
+                row.get::<_, i64>(3)?,
+            ))
+        })
+        .map_err(|e| e.to_string())?;
+    let mut result = Vec::new();
+    for row in rows {
+        result.push(row.map_err(|e| e.to_string())?);
+    }
+    Ok(result)
+}
+
+/// Updates the catalog for one physical file that was moved to a new location.
+/// Both the master row and any virtual-copy rows (`old_path?vc=...`) are
+/// rewritten to point at `new_path`. The caller is responsible for the
+/// surrounding transaction.
+pub fn update_file_path_in_conn(
+    conn: &Connection,
+    old_path: &str,
+    new_path: &str,
+    new_folder_id: i64,
+    new_modified: Option<i64>,
+) -> Result<usize, String> {
+    let old_vc_pattern = format!("{}?vc=%", old_path);
+    let mut stmt = conn
+        .prepare("SELECT id, path FROM files WHERE path = ?1 OR path LIKE ?2")
+        .map_err(|e| e.to_string())?;
+    let rows: Vec<(i64, String)> = stmt
+        .query_map(params![old_path, old_vc_pattern], |row| {
+            Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?))
+        })
+        .and_then(|iter| iter.collect::<Result<Vec<_>, _>>())
+        .map_err(|e| e.to_string())?;
+    drop(stmt);
+
+    let mut updated = 0;
+    for (file_id, current_path) in rows {
+        let updated_path = if current_path == old_path {
+            new_path.to_string()
+        } else {
+            current_path.replacen(old_path, new_path, 1)
+        };
+        let new_name = PathBuf::from(&updated_path)
+            .file_name()
+            .unwrap_or_default()
+            .to_string_lossy()
+            .to_string();
+        if let Some(m) = new_modified {
+            conn.execute(
+                "UPDATE files SET path = ?1, name = ?2, folder_id = ?3, modified = ?4 WHERE id = ?5",
+                params![updated_path, new_name, new_folder_id, m, file_id],
+            )
+            .map_err(|e| e.to_string())?;
+        } else {
+            conn.execute(
+                "UPDATE files SET path = ?1, name = ?2, folder_id = ?3 WHERE id = ?4",
+                params![updated_path, new_name, new_folder_id, file_id],
+            )
+            .map_err(|e| e.to_string())?;
+        }
+        updated += 1;
+    }
+    Ok(updated)
 }
 
 #[cfg(test)]

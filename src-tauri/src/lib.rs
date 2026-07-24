@@ -8,6 +8,7 @@ static GLOBAL: MiMalloc = MiMalloc;
 mod adjustment_utils;
 mod ai_commands;
 mod ai_connector;
+mod archive_operations;
 mod ai_processing;
 mod android_integration;
 mod app_settings;
@@ -2619,6 +2620,8 @@ pub fn run() {
             folder_import::is_folder_cataloged,
             folder_import::check_path_exists,
             folder_import::get_folder_last_synced,
+            archive_operations::archive_folder_to,
+            archive_operations::delete_archived_sources,
             history_commands::load_edit_history,
             history_commands::save_edit_history,
         ])

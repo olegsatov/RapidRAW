@@ -4,6 +4,7 @@ import { useLibraryStore } from '../store/useLibraryStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { folderJobKey, useFolderImportStore, type FolderImportJob } from '../store/useFolderImportStore';
 import { LibraryViewMode, type ImageFile, type AppSettings } from '../components/ui/AppProperties';
+import type { FolderTree } from '../components/panel/FolderTree';
 
 // A job in one of these phases no longer receives events and only lingers
 // for the auto-dismiss window, so it is safe to drop before a fresh import.
@@ -49,7 +50,7 @@ function rehomeJob(returnedKey: string, optimisticKey: string, recursive: boolea
       changed = true;
     }
 
-    const newRootPaths = rootPaths.map((p) => (p === optimisticPath ? canonicalPath : p));
+    const newRootPaths = deduplicateNestedPaths(rootPaths.map((p) => (p === optimisticPath ? canonicalPath : p)));
     if (newRootPaths.some((p, i) => p !== rootPaths[i])) {
       changed = true;
     }
@@ -114,7 +115,9 @@ export async function loadFolderFromCatalog(
       offset: files.length,
       limit,
     });
-    console.log(`[load-folder] ${path} page offset=${files.length} returned ${batch.length} files in ${(performance.now() - pageStart).toFixed(1)}ms`);
+    console.log(
+      `[load-folder] ${path} page offset=${files.length} returned ${batch.length} files in ${(performance.now() - pageStart).toFixed(1)}ms`,
+    );
     if (batch.length === 0) {
       break;
     }
@@ -168,7 +171,7 @@ export function applyFolderRelocation(oldPath: string, newPath: string): boolean
   const { rootPaths, currentFolderPath, expandedFolders, setLibrary } = useLibraryStore.getState();
   const folderImportStore = useFolderImportStore.getState();
 
-  const newRootPaths = rootPaths.map((p) => replacePathPrefix(p, oldPath, newPath));
+  const newRootPaths = deduplicateNestedPaths(rootPaths.map((p) => replacePathPrefix(p, oldPath, newPath)));
   const newCurrentFolderPath = currentFolderPath ? replacePathPrefix(currentFolderPath, oldPath, newPath) : null;
   const newExpandedFolders = new Set(Array.from(expandedFolders).map((p) => replacePathPrefix(p, oldPath, newPath)));
 
@@ -182,8 +185,12 @@ export function applyFolderRelocation(oldPath: string, newPath: string): boolean
 
   if (appSettings) {
     const newSettings: AppSettings = { ...appSettings };
-    newSettings.rootFolders = (appSettings.rootFolders || []).map((p) => replacePathPrefix(p, oldPath, newPath));
-    newSettings.pinnedFolders = (appSettings.pinnedFolders || []).map((p) => replacePathPrefix(p, oldPath, newPath));
+    newSettings.rootFolders = deduplicateNestedPaths(
+      (appSettings.rootFolders || []).map((p) => replacePathPrefix(p, oldPath, newPath)),
+    );
+    newSettings.pinnedFolders = deduplicateNestedPaths(
+      (appSettings.pinnedFolders || []).map((p) => replacePathPrefix(p, oldPath, newPath)),
+    );
     newSettings.lastRootPath = appSettings.lastRootPath
       ? replacePathPrefix(appSettings.lastRootPath, oldPath, newPath)
       : null;
@@ -239,8 +246,9 @@ export function useFolderImport() {
     try {
       // Returns the canonical job key immediately; progress and file batches
       // arrive as folder-import-* events. For an already-cataloged folder the
-      // backend emits folder-import-catalog-ready and runs no job — the
-      // listener loads the file list from the catalog instead.
+      // backend starts a delta sync instead of a full import, so the same
+      // event stream is used and the listener loads the final file list from
+      // the catalog when the sync completes.
       const key = await invoke<string>('start_folder_import', { path, recursive });
       rehomeJob(key, optimisticKey, recursive, 'import');
     } catch (err) {
@@ -276,6 +284,53 @@ export function useFolderImport() {
   }, []);
 
   return { openFolder, syncFolder, cancelFolderImport };
+}
+
+// Removes paths that are strict children of another path in the list.
+// E.g. ["/a", "/a/b", "/c"] -> ["/a", "/c"]. Keeps the shortest root for
+// each tree so a relocated subfolder does not stay as a duplicate root.
+export function deduplicateNestedPaths(paths: string[]): string[] {
+  if (paths.length <= 1) return paths;
+  const normalized = paths.map((p) => p.replace(/[/\\]+$/, ''));
+  const sorted = normalized.map((p, i) => ({ p, i })).sort((a, b) => a.p.length - b.p.length || a.p.localeCompare(b.p));
+  const kept = new Set<number>();
+  for (let i = 0; i < sorted.length; i++) {
+    const { p, i: idx } = sorted[i];
+    let isNested = false;
+    for (let j = 0; j < i; j++) {
+      const parent = sorted[j].p;
+      if (p === parent || p.startsWith(`${parent}/`) || p.startsWith(`${parent}\\`)) {
+        isNested = true;
+        break;
+      }
+    }
+    if (!isNested) {
+      kept.add(idx);
+    }
+  }
+  return paths.filter((_, i) => kept.has(i));
+}
+
+function collectRootPaths(trees: FolderTree[]): string[] {
+  // Availability is checked only for top-level (root) folders. Subfolders
+  // inherit the online/offline state conceptually, but we never stat them:
+  // a root path existing on disk means the whole volume is reachable.
+  return (trees || []).map((node) => node.path).filter(Boolean);
+}
+
+// Monitors the root folder trees and refreshes the online/offline availability
+// badge for root folders only. Mount exactly once at the App root.
+export function useFolderAvailability() {
+  const folderTrees = useLibraryStore((state) => state.folderTrees);
+  const pinnedFolderTrees = useLibraryStore((state) => state.pinnedFolderTrees);
+
+  useEffect(() => {
+    const rootPaths = Array.from(new Set([...collectRootPaths(folderTrees), ...collectRootPaths(pinnedFolderTrees)]));
+    if (rootPaths.length === 0) {
+      return;
+    }
+    useFolderImportStore.getState().checkAvailability(rootPaths);
+  }, [folderTrees, pinnedFolderTrees]);
 }
 
 // Mirrors the current folder job's streamed file list into the library store.

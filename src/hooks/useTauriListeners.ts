@@ -6,6 +6,7 @@ import { toast } from 'react-toastify';
 import { Status } from '../components/ui/ExportImportProperties';
 import { LibraryViewMode } from '../components/ui/AppProperties';
 import { useProcessStore } from '../store/useProcessStore';
+import { useArchiveStore } from '../store/useArchiveStore';
 import { useEditorStore } from '../store/useEditorStore';
 import { useUIStore } from '../store/useUIStore';
 import { useLibraryStore } from '../store/useLibraryStore';
@@ -201,6 +202,15 @@ export function useTauriListeners({
       }),
       listen('batch-export-progress', (event: any) => {
         if (isEffectActive) useProcessStore.getState().setExportState({ progress: event.payload });
+      }),
+      listen('archive-progress', (event: any) => {
+        if (!isEffectActive) return;
+        const payload = event.payload as { current: number; total: number; current_file?: string | null };
+        useArchiveStore.getState().setProgress({
+          current: payload.current,
+          total: payload.total,
+          currentFile: payload.current_file ?? null,
+        });
       }),
       listen('export-complete', () => {
         if (isEffectActive) useProcessStore.getState().setExportState({ status: Status.Success });

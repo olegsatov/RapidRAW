@@ -112,10 +112,19 @@ with extra care, and keep this list current as features are added:
   `src-tauri/src/lib.rs` (command registration + init_catalog),
   `src/store/useFolderImportStore.ts`, `src/hooks/useFolderImport.ts`
   (exports `useFolderImportMirror`), `src/hooks/useTauriListeners.ts`
-  (folder-import-* events), `src/hooks/useAppNavigation.ts` (openFolder wiring),
+  (folder-import-* events), `src/hooks/useAppNavigation.ts` (openFolder wiring; selecting a cataloged
+  folder must stay catalog-only and never auto-sync),
   `src/hooks/useAppContextMenus.ts` (sync/locate),
   `src/hooks/useAppInitialization.ts` (availability checks),
   `src/components/ui/ImportJobsIndicator.tsx`, `src/i18n/locales/*.json`.
+- Archive-to-folder operation (context-menu "Archive to..." that moves imported
+  images from an inbox/temporary folder into a date-structured archive,
+  `YYYY/YYYY-MM/YYYY-MM-DD`, preserving catalog metadata and virtual-copy
+  paths): `src-tauri/src/archive_operations.rs`, `src-tauri/src/library_db.rs`
+  (archive helpers), `src/hooks/useArchiveToFolder.ts`,
+  `src/store/useArchiveStore.ts`, `src/components/ui/ArchiveProgressIndicator.tsx`,
+  archive parts of `src/hooks/useAppContextMenus.ts` /
+  `src/hooks/useTauriListeners.ts` / `src/App.tsx`, `src/i18n/locales/*.json`.
 - Gesture adjustment engine + overlay (hold-to-adjust image parameters directly
   with mouse/trackpad, visual overlay for A/S/D gestures):
   `src/utils/gestureEngine.ts`, `src/utils/gestureBindings.ts`,
@@ -124,6 +133,30 @@ with extra care, and keep this list current as features are added:
   `src/components/panel/Editor.tsx`, `gesture.*` / `gesture.overlay.*` keys in
   `src/i18n/locales/*.json`.
 - Locale strings for the above: `src/i18n/locales/*.json`.
+
+## Catalog and disk-access rules
+
+The SQLite catalog is the source of truth for the library. The app must not
+assume that a cataloged folder's source disk is online, fast, or even reachable.
+To keep the UI responsive and to avoid hammering network volumes, touching the
+source filesystem is allowed only in these cases:
+
+1. **Manual import / sync / relocate** — the user explicitly chose
+   "Import", "Sync folder", or "Locate folder" from the UI or context menu.
+2. **Opening an image in the editor** — the user selected an image for editing,
+   so the source file must be read to produce the preview and develop the RAW.
+3. **Background root-folder availability probe** — a lightweight, async
+   `path_exists` check is allowed for **root-level folders only**, to update the
+   online/offline badge. It must not recurse into subfolders or read directory
+   contents; a root path existing on disk means the volume is reachable.
+
+In particular, **selecting a cataloged folder in the folder tree must not scan
+disk or start a background sync**. It loads the known file list from the catalog
+and nothing more. Any "auto-sync on select" behavior is a bug and must be
+removed.
+
+When implementing features that need source-disk access, gate them behind an
+explicit user action and keep the catalog-only path as the default.
 
 ## Process management
 

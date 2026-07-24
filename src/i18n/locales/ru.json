@@ -275,6 +275,9 @@
       "showExplorer": "Показать в проводнике",
       "unpin": "Открепить папку",
       "syncFolder": "Синхронизировать папку",
+      "archiveTo": "Архивировать в...",
+      "archiveTo.confirm": "Архивировать папку «{{folderName}}» в {{targetRoot}}?",
+      "archiveTo.deleteSources": "Успешно архивировано {{count}} файлов. Удалить исходные файлы из папки «{{folderName}}»?",
       "locateFolder": "Найти папку...",
       "lastSyncedAt": "Last synced {{time}}",
       "neverSynced": "Never synced",
@@ -346,7 +349,14 @@
       "failedMove": "Не удалось переместить файлы: {{err}}",
       "failedMoveError": "Не удалось переместить: {{err}}",
       "failedMoveInvalid": "Не удалось переместить: целевая группа не найдена или недействительна.",
-      "failedRemoveImages": "Не удалось удалить изображения: {{err}}"
+      "failedRemoveImages": "Не удалось удалить изображения: {{err}}",
+      "archiveSuccess": "Архивировано {{count}} файлов.",
+      "archivePartial": "Архивировано {{archived}} файлов, {{failed}} не удалось.",
+      "archiveFailed": "Архивация не удалась: файлы не перенесены.",
+      "archiveError": "Архивация не удалась: {{err}}",
+      "archiveDeleted": "Удалено {{count}} исходных файлов.",
+      "archiveDeletePartial": "Не удалось удалить {{count}} исходных файлов.",
+      "archiveSameFolder": "Исходная и целевая папки совпадают."
     }
   },
   "editor": {
@@ -2049,5 +2059,12 @@
     },
     "dismiss": "Закрыть задачу импорта",
     "cancel": "Отменить импорт"
+  },
+  "archive": {
+    "progress": {
+      "title": "Архивация {{folderName}}",
+      "status": "{{current}}/{{total}} в {{targetName}}",
+      "dismiss": "Закрыть задачу архивации"
+    }
   }
 }

@@ -10,6 +10,7 @@ import { useSettingsStore } from '../store/useSettingsStore';
 import { Invokes } from '../components/ui/AppProperties';
 import { Status } from '../components/ui/ExportImportProperties';
 import { computeSortedLibrary } from './useSortedLibrary';
+import { deduplicateNestedPaths } from './useFolderImport';
 
 export function useFileOperations(
   refreshImageList: () => Promise<void>,
@@ -178,7 +179,7 @@ export function useFileOperations(
           let settingsChanged = false;
 
           if (rootPaths.includes(oldPath)) {
-            const newRoots = rootPaths.map((r) => (r === oldPath ? newPath : r));
+            const newRoots = deduplicateNestedPaths(rootPaths.map((r) => (r === oldPath ? newPath : r)));
             setLibrary({ rootPaths: newRoots });
             newAppSettings.rootFolders = newRoots;
             settingsChanged = true;

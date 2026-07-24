@@ -148,7 +148,14 @@ export const useFolderImportStore = create<FolderImportState>((set) => {
 
     setPhase: (key, phase) => updateJob(key, () => ({ phase })),
 
-    setScanProgress: (key, discovered) => updateJob(key, () => ({ phase: 'scan', discovered })),
+    setScanProgress: (key, discovered) =>
+      updateJob(key, (job) => ({
+        phase: 'scan',
+        discovered,
+        // Show the full walk size as the scan total once it is known,
+        // so the indicator does not sit at 0/0 while the delta is computed.
+        total: job.total > 0 ? job.total : discovered,
+      })),
 
     setExifProgress: (key, current, total) =>
       updateJob(key, () => ({ phase: 'exif', exifCurrent: current, exifTotal: total })),

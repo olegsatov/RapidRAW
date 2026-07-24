@@ -86,17 +86,14 @@ pub fn start_folder_import(
         }
     }
 
-    // If catalog already has this folder, do not rescan on open.
-    if let Some(folder_id) = library_db::get_folder_id(&app_handle, &normalized, recursive)? {
-        let _ = app_handle.emit(
-            "folder-import-catalog-ready",
-            serde_json::json!({
-                "path": normalized,
-                "recursive": recursive,
-                "folderId": folder_id,
-            }),
-        );
-        return Ok(key);
+    // If the catalog already has this folder, start a delta sync instead
+    // of a full import. Sync discovers new files added since the last
+    // import, re-scans changed files, and removes deleted ones — exactly
+    // what the user expects when re-opening a folder. The event stream is
+    // identical to a fresh import (folder-import-*), so the frontend
+    // needs no changes.
+    if library_db::get_folder_id(&app_handle, &normalized, recursive)?.is_some() {
+        return sync_folder(app_handle, state, path, recursive);
     }
 
     start_job(
@@ -142,9 +139,11 @@ fn start_job(
     {
         let jobs = state.folder_import_jobs.lock().map_err(|e| e.to_string())?;
         if jobs.contains_key(&key) {
+            log::info!("[sync] start_job check: key={} already in map, reusing", key);
             return Ok(key);
         }
     }
+    log::info!("[sync] start_job check: key={} not in map, spawning new", key);
 
     let cancel = Arc::new(AtomicBool::new(false));
     let processed = Arc::new(AtomicUsize::new(0));
@@ -380,6 +379,8 @@ struct ScanEntry {
     file_name: String,
     path_buf: PathBuf,
     sidecars: Vec<Option<String>>,
+    modified: u64,
+    size: u64,
 }
 
 fn is_hidden_name(name: &str) -> bool {
@@ -436,7 +437,17 @@ fn collect_image_paths(
                     .map(|n| !is_hidden_name(n))
                     .unwrap_or(true)
             })
-            .filter_map(Result::ok)
+            .filter_map(|entry_result| match entry_result {
+                Ok(entry) => Some(entry),
+                Err(err) => {
+                    // A single unreadable directory (permissions, stale
+                    // network mount) must not abort the entire import.
+                    // Log it so the user can investigate instead of
+                    // silently missing whole subtrees.
+                    log::warn!("[folder-import] walk error (skipping entry): {}", err);
+                    None
+                }
+            })
         {
             if cancel.load(Ordering::Relaxed) {
                 break;
@@ -450,7 +461,17 @@ fn collect_image_paths(
     } else {
         for entry in fs::read_dir(root)
             .map_err(|e| e.to_string())?
-            .filter_map(Result::ok)
+            .filter_map(|entry_result| match entry_result {
+                Ok(entry) => Some(entry),
+                Err(err) => {
+                    log::warn!(
+                        "[folder-import] read_dir error in {} (skipping entry): {}",
+                        root,
+                        err
+                    );
+                    None
+                }
+            })
         {
             if cancel.load(Ordering::Relaxed) {
                 break;
@@ -471,11 +492,21 @@ fn collect_image_paths(
                 .to_string_lossy()
                 .into_owned();
             let path_str = path_buf.to_string_lossy().into_owned();
+            let metadata = fs::metadata(&path_buf).ok();
+            let modified = metadata
+                .as_ref()
+                .and_then(|m| m.modified().ok())
+                .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                .map(|d| d.as_secs())
+                .unwrap_or(0);
+            let size = metadata.map(|m| m.len()).unwrap_or(0);
             ScanEntry {
                 path_str,
                 file_name,
                 path_buf,
                 sidecars,
+                modified,
+                size,
             }
         })
         .collect())
@@ -484,10 +515,8 @@ fn collect_image_paths(
 /// Builds the catalog row for one scanned `ImageFile`. The catalog key is the
 /// (possibly virtual) path, so each virtual copy gets its own row with
 /// `is_virtual_copy = 1` while `name`/`extension`/`size` describe the real file.
-fn file_row_input(image_file: &ImageFile) -> Result<FileRowInput, String> {
+fn file_row_input(image_file: &ImageFile, size: Option<u64>) -> Result<FileRowInput, String> {
     let source_path = file_management::parse_virtual_path(&image_file.path).0;
-
-    let size = fs::metadata(&source_path).ok().map(|m| m.len());
 
     let name = source_path
         .file_name()
@@ -548,6 +577,12 @@ async fn process_scan_chunk(
     let chunk = chunk.to_vec();
     let cancel = cancel.clone();
 
+    // Size lookup is built before the chunk is moved into the blocking closure.
+    let size_by_base_path: HashMap<String, u64> = chunk
+        .iter()
+        .map(|e| (e.path_str.clone(), e.size))
+        .collect();
+
     let (image_files, entries_processed) = tauri::async_runtime::spawn_blocking(move || {
         let settings = load_settings(app_handle_clone.clone()).unwrap_or_default();
         let enable_xmp_sync = settings.enable_xmp_sync.unwrap_or(false);
@@ -566,6 +601,7 @@ async fn process_scan_chunk(
                 entry.sidecars.clone(),
                 enable_xmp_sync,
                 &settings,
+                entry.modified,
             ));
             processed += 1;
         }
@@ -576,7 +612,15 @@ async fn process_scan_chunk(
 
     let rows = image_files
         .iter()
-        .map(file_row_input)
+        .map(|img| {
+            let base_path = img
+                .path
+                .split_once("?vc=")
+                .map(|(base, _)| base)
+                .unwrap_or(&img.path);
+            let size = size_by_base_path.get(base_path).copied();
+            file_row_input(img, size)
+        })
         .collect::<Result<Vec<_>, _>>()?;
     library_db::upsert_files(app_handle, folder_id, &rows)?;
 
@@ -1000,6 +1044,13 @@ async fn run_import_job(
     // Phase 2: thumbnail generation with stable file_id-keyed cache entries.
     // Thumbs are produced from the embedded JPEG preview first, so the UI
     // populates quickly; the slower full RAW development path is a fallback.
+
+    // Clean up orphan sub-folder rows that were left with zero files after
+    // the ON CONFLICT reassignment above. This is a best-effort housekeeping
+    // step: if it fails the import still proceeds with the scan tally intact.
+    if let Err(e) = library_db::delete_orphan_folders_under(&app_handle, &path, folder_id) {
+        log::warn!("[catalog] orphan cleanup failed for {}: {}", path, e);
+    }
     if cancel.load(Ordering::SeqCst) {
         emit_cancelled(&app_handle, &path, recursive, scanned);
         return;
@@ -1066,14 +1117,8 @@ fn compute_sync_delta(
         if cancel.load(Ordering::Relaxed) {
             break;
         }
-        let source_meta = fs::metadata(&entry.path_buf).ok();
-        let modified = source_meta
-            .as_ref()
-            .and_then(|m| m.modified().ok())
-            .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
-            .map(|d| d.as_secs())
-            .unwrap_or(0);
-        let size = source_meta.map(|m| m.len());
+        let modified = entry.modified;
+        let size = Some(entry.size);
 
         let mut needs_upsert = false;
         for sidecar in &entry.sidecars {
@@ -1102,8 +1147,9 @@ fn compute_sync_delta(
         }
         if path.contains("?vc=") {
             let (source_path, sidecar_path) = file_management::parse_virtual_path(path);
-            let is_vc = path.contains("?vc=");
-            let keep = source_path.exists() && (is_vc || sidecar_path.exists());
+            // A virtual copy needs both its source file and its sidecar to
+            // survive the sync. If either is gone the VC row is an orphan.
+            let keep = source_path.exists() && sidecar_path.exists();
             if keep {
                 continue;
             }
@@ -1128,6 +1174,7 @@ async fn run_sync_job(
     cancel: Arc<AtomicBool>,
 ) {
     let key = folder_key(&path, recursive);
+    log::info!("[sync] run_sync_job starting for {} (recursive={})", path, recursive);
 
     // A missing root (e.g. an unplugged external drive) must never reach the
     // delta: the recursive walk silently yields an empty set for a
@@ -1150,6 +1197,7 @@ async fn run_sync_job(
             return;
         }
     };
+    log::info!("[sync] folder_id={} upserted, starting walk", folder_id);
 
     let entries = match tauri::async_runtime::spawn_blocking({
         let path = path.clone();
@@ -1168,6 +1216,7 @@ async fn run_sync_job(
             return;
         }
     };
+    log::info!("[sync] walk complete: {} entries found", entries.len());
 
     // The walk may have stopped early on cancel; don't sync a partial set.
     if cancel.load(Ordering::SeqCst) {
@@ -1188,6 +1237,12 @@ async fn run_sync_job(
     }
 
     let total = entries.len();
+    log::info!(
+        "[sync] emitting folder-import-scan for {} (recursive={}) with discovered={}",
+        path,
+        recursive,
+        total
+    );
     let _ = app_handle.emit(
         "folder-import-scan",
         serde_json::json!({
@@ -1204,9 +1259,31 @@ async fn run_sync_job(
             return;
         }
     };
+    let cataloged_count = fingerprints.len();
+
+    // Guard against a disconnected or unreadable volume: if the walk returned
+    // empty but the catalog has files, the delta below would mark every
+    // cataloged file as removed. Abort when the walk finds nothing while the
+    // catalog still has rows — a disconnected network share returns 0 entries
+    // while `Path::is_dir()` may still report true on macOS.
+    if entries.is_empty() && cataloged_count > 0 {
+        log::warn!(
+            "[sync] walk returned 0 entries but catalog has {} files — \
+             volume may be disconnected; aborting sync to prevent data loss",
+            cataloged_count
+        );
+        emit_error(
+            &app_handle,
+            &path,
+            recursive,
+            "folder appears empty or unreadable; sync aborted to prevent data loss",
+        );
+        return;
+    }
 
     // The delta stats every file and sidecar; run it off the async executor
     // like the walk itself.
+    log::info!("[sync] computing delta for {} ({} catalog rows)", path, cataloged_count);
     let delta = tauri::async_runtime::spawn_blocking({
         let cancel = cancel.clone();
         move || compute_sync_delta(entries, &fingerprints, &cancel)
@@ -1219,6 +1296,12 @@ async fn run_sync_job(
             return;
         }
     };
+    log::info!(
+        "[sync] delta computed for {}: {} to upsert, {} to remove",
+        path,
+        to_upsert.len(),
+        removed.len()
+    );
 
     // A cancelled partial delta must not be applied.
     if cancel.load(Ordering::SeqCst) {
@@ -1236,6 +1319,7 @@ async fn run_sync_job(
     // entries to (re-)process — not the whole folder — so batch progress
     // still runs 0 → 100%.
     let upsert_total = to_upsert.len();
+    log::info!("[sync] starting upsert phase for {}: {} entries", path, upsert_total);
     let mut scanned = 0usize;
     for chunk in to_upsert.chunks(SCAN_CHUNK_SIZE) {
         if cancel.load(Ordering::SeqCst) {
@@ -1272,6 +1356,7 @@ async fn run_sync_job(
         emit_cancelled(&app_handle, &path, recursive, scanned);
         return;
     }
+    log::info!("[sync] starting thumbnail phase for {}", path);
     // A systemic phase failure already emitted `folder-import-error`; stop
     // here so the job never reports a false `folder-import-complete`.
     let Some(thumbs_failed) =
@@ -1286,6 +1371,7 @@ async fn run_sync_job(
         emit_cancelled(&app_handle, &path, recursive, scanned);
         return;
     }
+    log::info!("[sync] starting EXIF phase for {}", path);
     let Some(exif_failed) = run_exif_phase(&app_handle, &path, recursive, folder_id, &cancel).await
     else {
         return;
@@ -1299,6 +1385,7 @@ async fn run_sync_job(
             emit_error(&app_handle, &path, recursive, &e);
             return;
         }
+        log::info!("[sync] completed for {} (errors={})", path, errors);
         emit_complete(&app_handle, &path, recursive, total, errors);
     }
 }
@@ -1426,6 +1513,29 @@ mod tests {
         let (to_upsert, removed) = compute_sync_delta(Vec::new(), &fingerprints, &cancel);
         assert!(to_upsert.is_empty());
         assert_eq!(removed, vec![gone, gone_vc, orphan_vc]);
+    }
+
+    #[test]
+    fn sync_delta_removes_virtual_copy_with_missing_sidecar() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        // Source file exists, but the VC sidecar was deleted. The base row
+        // must survive while the VC row is treated as an orphan.
+        fs::write(root.join("source.jpg"), b"x").unwrap();
+        let base = root.join("source.jpg").to_string_lossy().into_owned();
+        let missing_vc = format!("{}?vc=deadbeef", base);
+
+        let fingerprints: HashMap<String, library_db::FileFingerprint> = [
+            (base.clone(), (Some(1), Some(1), Some(0))),
+            (missing_vc.clone(), (Some(1), Some(1), Some(0))),
+        ]
+        .into_iter()
+        .collect();
+
+        let cancel = Arc::new(AtomicBool::new(false));
+        let (to_upsert, removed) = compute_sync_delta(Vec::new(), &fingerprints, &cancel);
+        assert!(to_upsert.is_empty());
+        assert_eq!(removed, vec![missing_vc]);
     }
 
     /// Regression test: `start_job` is called from sync Tauri commands

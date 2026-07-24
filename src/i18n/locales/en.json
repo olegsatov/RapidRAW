@@ -275,6 +275,9 @@
       "renameFolder": "Rename Folder",
       "showExplorer": "Show in File Explorer",
       "syncFolder": "Sync Folder",
+      "archiveTo": "Archive to...",
+      "archiveTo.confirm": "Archive folder \"{{folderName}}\" to {{targetRoot}}?",
+      "archiveTo.deleteSources": "Successfully archived {{count}} files. Delete the original files from \"{{folderName}}\"?",
       "unpin": "Unpin Folder",
       "lastSynced": "Synced {{time}} ago",
       "lastSyncedAt": "Last synced {{time}}",
@@ -347,7 +350,14 @@
       "failedMove": "Failed to move files: {{err}}",
       "failedMoveError": "Failed to move: {{err}}",
       "failedMoveInvalid": "Failed to move: Target group not found or invalid.",
-      "failedRemoveImages": "Failed to remove images: {{err}}"
+      "failedRemoveImages": "Failed to remove images: {{err}}",
+      "archiveSuccess": "Archived {{count}} files.",
+      "archivePartial": "Archived {{archived}} files, {{failed}} failed.",
+      "archiveFailed": "Archive failed: no files were moved.",
+      "archiveError": "Archive failed: {{err}}",
+      "archiveDeleted": "Deleted {{count}} original files.",
+      "archiveDeletePartial": "Failed to delete {{count}} original files.",
+      "archiveSameFolder": "Source and target folders are the same."
     }
   },
   "editor": {
@@ -2051,5 +2061,12 @@
     },
     "dismiss": "Dismiss import job",
     "cancel": "Cancel import"
+  },
+  "archive": {
+    "progress": {
+      "title": "Archiving {{folderName}}",
+      "status": "{{current}}/{{total}} to {{targetName}}",
+      "dismiss": "Dismiss archive job"
+    }
   }
 }

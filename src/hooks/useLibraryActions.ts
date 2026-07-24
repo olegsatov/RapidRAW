@@ -8,6 +8,7 @@ import { Invokes, ImageFile, AlbumItem, Album, AlbumGroup } from '../components/
 import { globalImageCache } from '../utils/ImageLRUCache';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { computeSortedLibrary } from './useSortedLibrary';
+import { deduplicateNestedPaths } from './useFolderImport';
 
 export function useLibraryActions(handleImageSelect?: (path: string) => void) {
   const handleRate = useCallback((newRating: number, paths?: string[]) => {
@@ -257,7 +258,7 @@ export function useLibraryActions(handleImageSelect?: (path: string) => void) {
       const updates: any = {};
 
       if (rootPaths && rootPaths.length > 0) {
-        const treesData = await invoke(Invokes.GetPinnedFolderTrees, {
+        const treesData = await invoke<FolderTree[]>(Invokes.GetPinnedFolderTrees, {
           paths: rootPaths,
           expandedFolders: expandedArray,
           showImageCounts,
@@ -268,7 +269,7 @@ export function useLibraryActions(handleImageSelect?: (path: string) => void) {
       }
 
       if (pinnedFolders && pinnedFolders.length > 0) {
-        const pinnedTreesData = await invoke(Invokes.GetPinnedFolderTrees, {
+        const pinnedTreesData = await invoke<FolderTree[]>(Invokes.GetPinnedFolderTrees, {
           paths: pinnedFolders,
           expandedFolders: expandedArray,
           showImageCounts,
@@ -297,11 +298,12 @@ export function useLibraryActions(handleImageSelect?: (path: string) => void) {
       ? currentPins.filter((p: string) => p !== path)
       : [...currentPins, path].sort((a, b) => a.localeCompare(b));
 
-    handleSettingsChange({ ...appSettings, pinnedFolders: newPins });
+    const dedupedPins = deduplicateNestedPaths(newPins);
+    handleSettingsChange({ ...appSettings, pinnedFolders: dedupedPins });
 
     try {
       const trees = await invoke(Invokes.GetPinnedFolderTrees, {
-        paths: newPins,
+        paths: dedupedPins,
         expandedFolders: Array.from(expandedFolders),
         showImageCounts: appSettings.enableFolderImageCounts ?? false,
       });

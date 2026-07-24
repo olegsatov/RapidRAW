@@ -14,7 +14,13 @@ import { globalImageCache } from '../utils/ImageLRUCache';
 import { globalHistoryCache } from '../utils/historyCache';
 import { flushHistoryPersistence } from '../utils/historyPersistence';
 import { debouncedSave, debouncedSetHistory } from './useEditorActions';
-import { loadFolderFromCatalog, useFolderImport, useFolderImportMirror } from './useFolderImport';
+import {
+  loadFolderFromCatalog,
+  useFolderImport,
+  useFolderImportMirror,
+  useFolderAvailability,
+  deduplicateNestedPaths,
+} from './useFolderImport';
 
 export interface AppNavigationProps {
   clearThumbnailQueue: () => void;
@@ -46,6 +52,7 @@ export function useAppNavigation({ clearThumbnailQueue, refs }: AppNavigationPro
 
   const { openFolder } = useFolderImport();
   useFolderImportMirror();
+  useFolderAvailability();
 
   const handleGoHome = useCallback(() => {
     useLibraryStore.getState().setLibrary({
@@ -433,7 +440,9 @@ export function useAppNavigation({ clearThumbnailQueue, refs }: AppNavigationPro
           const cataloged = await invoke<boolean>(Invokes.IsFolderCataloged, { path });
           console.timeLog(`[select-folder] ${path}`, 'IsFolderCataloged');
           if (cataloged) {
-            // Catalog-only path: never touch the source disk.
+            // Cataloged folders are served from the database only. We do NOT
+            // touch the source disk here: disk access is allowed only on a
+            // manual import/sync action or when opening an image in the editor.
             const files = await loadFolderFromCatalog(path, recursive);
             console.timeLog(`[select-folder] ${path}`, `loadFolderFromCatalog (${files.length} files)`);
             const initialRatings: Record<string, number> = {};
@@ -534,11 +543,11 @@ export function useAppNavigation({ clearThumbnailQueue, refs }: AppNavigationPro
 
       if (selectedPath) {
         if (!rootPaths.includes(selectedPath)) {
-          const newRootPaths = [...rootPaths, selectedPath];
+          const newRootPaths = deduplicateNestedPaths([...rootPaths, selectedPath]);
           setLibrary({ rootPaths: newRootPaths });
 
           if (appSettings) {
-            handleSettingsChange({ ...appSettings, rootFolders: newRootPaths } as any);
+            await handleSettingsChange({ ...appSettings, rootFolders: newRootPaths } as any);
           }
 
           setLibrary({ isTreeLoading: true });
@@ -569,11 +578,12 @@ export function useAppNavigation({ clearThumbnailQueue, refs }: AppNavigationPro
       const { appSettings } = useSettingsStore.getState();
       const { setLibrary } = useLibraryStore.getState();
 
-      const rootFolders = appSettings?.rootFolders?.length
+      const rawRootFolders = appSettings?.rootFolders?.length
         ? appSettings.rootFolders
         : appSettings?.lastRootPath
           ? [appSettings.lastRootPath]
           : [];
+      const rootFolders = deduplicateNestedPaths(rawRootFolders);
 
       if (rootFolders.length === 0) return;
 
@@ -582,7 +592,7 @@ export function useAppNavigation({ clearThumbnailQueue, refs }: AppNavigationPro
       try {
         const catalogedFolders = await invoke<string[]>(Invokes.GetCatalogedFolderPaths);
         const catalogedSet = new Set(catalogedFolders);
-        activeRoots = rootFolders.filter((p) => catalogedSet.has(p));
+        activeRoots = deduplicateNestedPaths(rootFolders.filter((p) => catalogedSet.has(p)));
       } catch (err) {
         console.error('Failed to load cataloged folders, falling back to settings list:', err);
         activeRoots = rootFolders;

@@ -11,6 +11,7 @@ import {
   FileEdit,
   FileInput,
   Flag,
+  Archive,
   Folder,
   FolderInput,
   FolderPlus,
@@ -69,7 +70,7 @@ import TaggingSubMenu from '../context/TaggingSubMenu';
 import { useEditorActions } from './useEditorActions';
 import { useLibraryActions } from './useLibraryActions';
 import { useFolderImport, applyFolderRelocation } from './useFolderImport';
-import { useFolderImportStore } from '../store/useFolderImportStore';
+import { useArchiveToFolder } from './useArchiveToFolder';
 import { globalImageCache } from '../utils/ImageLRUCache';
 import { globalHistoryCache } from '../utils/historyCache';
 import { EDITOR_BACKGROUND_OPTIONS } from '../utils/editorBackground';
@@ -90,6 +91,10 @@ export function useAppContextMenus(props: UseAppContextMenusProps) {
   const { t } = useTranslation();
   const { showContextMenu } = useContextMenu();
   const { syncFolder } = useFolderImport();
+  const { archiveFolder } = useArchiveToFolder({
+    refreshAllFolderTrees: props.refreshAllFolderTrees,
+    refreshImageList: props.refreshImageList,
+  });
 
   const { handleAutoAdjustments, handleResetAdjustments, handleCopyAdjustments, handlePasteAdjustments } =
     useEditorActions();
@@ -1018,31 +1023,32 @@ export function useAppContextMenus(props: UseAppContextMenusProps) {
           label: t('contextMenus.folders.syncFolder'),
           onClick: () => syncFolder(targetPath, appSettings?.libraryViewMode === LibraryViewMode.Recursive),
         },
-        ...(useFolderImportStore.getState().availability[targetPath] === 'offline'
-          ? [
-              {
-                icon: MapPin,
-                label: t('contextMenus.folders.locateFolder'),
-                onClick: async () => {
-                  try {
-                    const newPath = await open({ directory: true, multiple: false });
-                    if (!newPath || typeof newPath !== 'string') {
-                      return;
-                    }
-                    await invoke('locate_folder', { oldPath: targetPath, newPath });
-                    const currentFolderAffected = applyFolderRelocation(targetPath, newPath);
-                    await props.refreshAllFolderTrees();
-                    if (currentFolderAffected) {
-                      await props.refreshImageList();
-                    }
-                  } catch (err) {
-                    console.error('Failed to locate folder:', err);
-                    toast.error(t('contextMenus.toasts.failedLocateFolder', { err }));
-                  }
-                },
-              },
-            ]
-          : []),
+        {
+          icon: Archive,
+          label: t('contextMenus.folders.archiveTo'),
+          onClick: () => archiveFolder(targetPath),
+        },
+        {
+          icon: MapPin,
+          label: t('contextMenus.folders.locateFolder'),
+          onClick: async () => {
+            try {
+              const newPath = await open({ directory: true, multiple: false });
+              if (!newPath || typeof newPath !== 'string') {
+                return;
+              }
+              await invoke('locate_folder', { oldPath: targetPath, newPath });
+              const currentFolderAffected = applyFolderRelocation(targetPath, newPath);
+              await props.refreshAllFolderTrees();
+              if (currentFolderAffected) {
+                await props.refreshImageList();
+              }
+            } catch (err) {
+              console.error('Failed to locate folder:', err);
+              toast.error(t('contextMenus.toasts.failedLocateFolder', { err }));
+            }
+          },
+        },
         { type: OPTION_SEPARATOR },
         {
           icon: Folder,
@@ -1104,7 +1110,7 @@ export function useAppContextMenus(props: UseAppContextMenusProps) {
       ];
       showContextMenu(event.clientX, event.clientY, options);
     },
-    [props, showContextMenu, albumIcons, t, syncFolder],
+    [props, showContextMenu, albumIcons, t, syncFolder, archiveFolder],
   );
 
   const handleAlbumTreeContextMenu = useCallback(
