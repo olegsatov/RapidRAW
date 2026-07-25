@@ -8,20 +8,21 @@ static GLOBAL: MiMalloc = MiMalloc;
 mod adjustment_utils;
 mod ai_commands;
 mod ai_connector;
-mod archive_operations;
 mod ai_processing;
 mod android_integration;
 mod app_settings;
 mod app_state;
+mod archive_operations;
 mod bw_decolor;
 mod cache_utils;
+pub mod crystal_grain;
 mod culling;
+mod availability_watch;
 mod denoising;
 mod exif_processing;
 mod export_processing;
-pub mod crystal_grain;
-pub mod film_grain;
 mod file_management;
+pub mod film_grain;
 mod folder_import;
 mod formats;
 mod gpu_processing;
@@ -78,6 +79,7 @@ use tauri::{Emitter, Manager, ipc::Response};
 use tempfile::NamedTempFile;
 use tokio::sync::Mutex as TokioMutex;
 
+use crate::availability_watch::AvailabilityWatchers;
 use crate::cache_utils::{
     DecodedImageCache, GEOMETRY_KEYS, calculate_full_job_hash, calculate_geometry_hash,
     calculate_transform_hash, calculate_visual_hash,
@@ -2510,6 +2512,7 @@ pub fn run() {
             decoded_image_cache: Mutex::new(DecodedImageCache::new(5)),
             thumbnail_manager: ThumbnailManager::new(),
             metadata_manager: MetadataManager::new(),
+            availability_watchers: Arc::new(AvailabilityWatchers::new()),
         })
         .invoke_handler(tauri::generate_handler![
             apply_adjustments,
@@ -2630,6 +2633,7 @@ pub fn run() {
             folder_import::load_folder_files,
             folder_import::is_folder_cataloged,
             folder_import::check_path_exists,
+            folder_import::update_availability_watchers,
             folder_import::get_folder_last_synced,
             archive_operations::archive_folder_to,
             archive_operations::delete_archived_sources,

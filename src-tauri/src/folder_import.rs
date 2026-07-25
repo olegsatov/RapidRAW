@@ -33,6 +33,15 @@ pub async fn check_path_exists(path: String) -> Result<bool, String> {
         .map_err(|e| e.to_string())
 }
 
+#[tauri::command]
+pub async fn update_availability_watchers(
+    paths: Vec<String>,
+    app_handle: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    state.availability_watchers.update(&app_handle, paths)
+}
+
 /// Normalizes a folder path the same way for every command: canonicalized
 /// when it exists, raw otherwise, with trailing separators stripped so a
 /// user-supplied "/photos/2024/" matches the stored "/photos/2024".

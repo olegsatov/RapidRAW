@@ -330,6 +330,9 @@ export function useFolderAvailability() {
       return;
     }
     useFolderImportStore.getState().checkAvailability(rootPaths);
+    invoke('update_availability_watchers', { paths: rootPaths }).catch((err) => {
+      console.error('Failed to update availability watchers:', err);
+    });
   }, [folderTrees, pinnedFolderTrees]);
 }
 

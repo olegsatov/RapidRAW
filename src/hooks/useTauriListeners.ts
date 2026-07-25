@@ -556,6 +556,13 @@ export function useTauriListeners({
             useFolderImportStore.getState().clearJob(key);
           });
       }),
+      listen('folder-availability-changed', (event: any) => {
+        if (!isEffectActive) return;
+        const { path, status } = event.payload;
+        if (path && status) {
+          useFolderImportStore.getState().setAvailability(path, status);
+        }
+      }),
     ];
 
     return () => {
