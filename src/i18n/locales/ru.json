@@ -278,6 +278,7 @@
       "archiveTo": "Архивировать в...",
       "archiveTo.confirm": "Архивировать папку «{{folderName}}» в {{targetRoot}}?",
       "archiveTo.deleteSources": "Успешно архивировано {{count}} файлов. Удалить исходные файлы из папки «{{folderName}}»?",
+      "archiveTo.yearOffsetPrompt": "Целевая папка — {{targetYear}}. На сколько лет сдвинуть даты всех фото? (например +1, -2, 0 — без изменений)",
       "locateFolder": "Найти папку...",
       "lastSyncedAt": "Last synced {{time}}",
       "neverSynced": "Never synced",
@@ -356,7 +357,8 @@
       "archiveError": "Архивация не удалась: {{err}}",
       "archiveDeleted": "Удалено {{count}} исходных файлов.",
       "archiveDeletePartial": "Не удалось удалить {{count}} исходных файлов.",
-      "archiveSameFolder": "Исходная и целевая папки совпадают."
+      "archiveSameFolder": "Исходная и целевая папки совпадают.",
+      "archiveInvalidYearOffset": "Введите корректное число лет (например +1, -2)."
     }
   },
   "editor": {
@@ -1411,6 +1413,13 @@
       "sourceFiles": "Исходные файлы",
       "startImport": "Начать импорт",
       "title": "Параметры импорта"
+    },
+    "archiveYearOffset": {
+      "cancel": "Отмена",
+      "confirm": "Архивировать",
+      "description": "Целевая папка — {{targetYear}}. Введите сдвиг дат всех фото в годах для этой архивации (например +1, -2 или 0 без изменений).",
+      "placeholder": "например +1",
+      "title": "Коррекция года фото"
     },
     "lensCorrection": {
       "amount": "Интенсивность",

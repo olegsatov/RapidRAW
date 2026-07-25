@@ -531,21 +531,24 @@ function TreeNode({
   }, [selectedPath, node.path]);
 
   const handleRowClick = () => {
-    if (hasChildren) {
-      onToggle(node.path);
-      if (!isSelected) {
-        if (selectTimeoutRef.current !== null) {
-          clearTimeout(selectTimeoutRef.current);
-        }
-        // Give the folder tree time to render/animate before the heavy
-        // catalog/thumbnail load starts and blocks the UI thread.
-        selectTimeoutRef.current = setTimeout(() => {
-          selectTimeoutRef.current = null;
-          onFolderSelect(node.path);
-        }, 200);
-      }
-    } else if (!isSelected) {
+    if (!isSelected) {
       onFolderSelect(node.path);
+    }
+  };
+
+  const handleChevronClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    onToggle(node.path);
+    if (!isSelected) {
+      if (selectTimeoutRef.current !== null) {
+        clearTimeout(selectTimeoutRef.current);
+      }
+      // Give the folder tree time to render/animate before the heavy
+      // catalog/thumbnail load starts and blocks the UI thread.
+      selectTimeoutRef.current = setTimeout(() => {
+        selectTimeoutRef.current = null;
+        onFolderSelect(node.path);
+      }, 200);
     }
   };
 
@@ -621,7 +624,12 @@ function TreeNode({
         )}
 
         {hasChildren && (
-          <Text as="div" color={TextColors.secondary} className="p-0.5 rounded-sm hover:bg-surface/50">
+          <Text
+            as="div"
+            color={TextColors.secondary}
+            className="p-0.5 rounded-sm hover:bg-surface/50"
+            onClick={handleChevronClick}
+          >
             {isExpanded ? <ChevronUp size={16} className="shrink-0" /> : <ChevronDown size={16} className="shrink-0" />}
           </Text>
         )}

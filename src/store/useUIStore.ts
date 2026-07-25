@@ -87,6 +87,13 @@ export interface CullingModalState {
   pathsToCull: Array<string>;
 }
 
+export interface ArchiveYearOffsetModalState {
+  isOpen: boolean;
+  targetYear: string;
+  onSubmit?: (offset: number) => void;
+  onCancel?: () => void;
+}
+
 export interface CropSessionSnapshot {
   imagePath: string | null;
   adjustments: Partial<Adjustments>;
@@ -151,6 +158,7 @@ interface UIState {
   denoiseModalState: DenoiseModalState;
   cullingModalState: CullingModalState;
   collageModalState: CollageModalState;
+  archiveYearOffsetModalState: ArchiveYearOffsetModalState;
 
   // Actions
   setUI: (updater: Partial<UIState> | ((state: UIState) => Partial<UIState>)) => void;
@@ -251,6 +259,7 @@ export const useUIStore = create<UIState>((set, get) => ({
   },
   cullingModalState: { isOpen: false, suggestions: null, progress: null, error: null, pathsToCull: [] },
   collageModalState: { isOpen: false, sourceImages: [] },
+  archiveYearOffsetModalState: { isOpen: false, targetYear: '' },
 
   setUI: (updater) => set((state) => (typeof updater === 'function' ? updater(state) : updater)),
 

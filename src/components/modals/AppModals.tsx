@@ -19,6 +19,7 @@ import ConfirmModal from './ConfirmModal';
 import ImportSettingsModal from './ImportSettingsModal';
 import CullingModal from './CullingModal';
 import CollageModal from './CollageModal';
+import ArchiveYearOffsetModal from './ArchiveYearOffsetModal';
 import { AppSettings, Invokes, AlbumItem, Album, AlbumGroup } from '../ui/AppProperties';
 import { CopyPasteSettings } from '../../utils/adjustments';
 
@@ -74,6 +75,7 @@ export default function AppModals(props: AppModalsProps) {
     denoiseModalState,
     cullingModalState,
     collageModalState,
+    archiveYearOffsetModalState,
     setUI,
   } = useUIStore(
     useShallow((state) => ({
@@ -96,6 +98,7 @@ export default function AppModals(props: AppModalsProps) {
       denoiseModalState: state.denoiseModalState,
       cullingModalState: state.cullingModalState,
       collageModalState: state.collageModalState,
+      archiveYearOffsetModalState: state.archiveYearOffsetModalState,
       setUI: state.setUI,
     })),
   );
@@ -323,6 +326,21 @@ export default function AppModals(props: AppModalsProps) {
         onSave={props.handleSaveCollage}
         sourceImages={collageModalState.sourceImages}
         thumbnails={thumbnails}
+      />
+      <ArchiveYearOffsetModal
+        isOpen={archiveYearOffsetModalState.isOpen}
+        targetYear={archiveYearOffsetModalState.targetYear}
+        onClose={() =>
+          setUI({
+            archiveYearOffsetModalState: { isOpen: false, targetYear: '', onSubmit: undefined, onCancel: undefined },
+          })
+        }
+        onSubmit={(offset) => {
+          archiveYearOffsetModalState.onSubmit?.(offset);
+          setUI({
+            archiveYearOffsetModalState: { isOpen: false, targetYear: '', onSubmit: undefined, onCancel: undefined },
+          });
+        }}
       />
     </>
   );

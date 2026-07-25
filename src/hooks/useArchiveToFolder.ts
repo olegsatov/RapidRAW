@@ -6,6 +6,7 @@ import { toast } from 'react-toastify';
 
 import { useArchiveStore } from '../store/useArchiveStore';
 import { useLibraryStore } from '../store/useLibraryStore';
+import { useUIStore } from '../store/useUIStore';
 
 export interface ArchiveResult {
   archived: string[];
@@ -21,39 +22,18 @@ export function useArchiveToFolder({ refreshAllFolderTrees, refreshImageList }: 
   const { t } = useTranslation();
   const { startArchive, setError, finishArchive } = useArchiveStore();
 
-  const archiveFolder = useCallback(
-    async (sourcePath: string) => {
-      const targetRoot = await open({ directory: true, multiple: false });
-      if (!targetRoot || typeof targetRoot !== 'string') {
-        return;
-      }
-
-      const normalizedSource = sourcePath.replace(/\\/g, '/').replace(/\/$/, '');
-      const normalizedTarget = targetRoot.replace(/\\/g, '/').replace(/\/$/, '');
-
-      if (normalizedSource === normalizedTarget) {
-        toast.error(t('contextMenus.toasts.archiveSameFolder'));
-        return;
-      }
-
-      const sourceName = normalizedSource.split('/').filter(Boolean).pop() ?? normalizedSource;
-      const confirmed = window.confirm(
-        t('contextMenus.folders.archiveTo.confirm', {
-          folderName: sourceName,
-          targetRoot: normalizedTarget,
-        }),
-      );
-      if (!confirmed) {
-        return;
-      }
-
+  const runArchive = useCallback(
+    async (sourcePath: string, targetRoot: string, sourceName: string, yearOffset: number) => {
       startArchive(sourcePath, targetRoot, 0);
 
       try {
+        console.log('[archive] invoking archive_folder_to with yearOffset:', yearOffset);
         const result = await invoke<ArchiveResult>('archive_folder_to', {
           sourcePath,
           targetRoot,
+          yearOffset,
         });
+        console.log('[archive] result:', result);
 
         if (result.failed.length > 0) {
           console.error('[archive] failed files:', result.failed);
@@ -109,6 +89,57 @@ export function useArchiveToFolder({ refreshAllFolderTrees, refreshImageList }: 
       }
     },
     [t, startArchive, setError, finishArchive, refreshAllFolderTrees, refreshImageList],
+  );
+
+  const archiveFolder = useCallback(
+    async (sourcePath: string) => {
+      const targetRoot = await open({ directory: true, multiple: false });
+      if (!targetRoot || typeof targetRoot !== 'string') {
+        return;
+      }
+
+      const normalizedSource = sourcePath.replace(/\\/g, '/').replace(/\/$/, '');
+      const normalizedTarget = targetRoot.replace(/\\/g, '/').replace(/\/$/, '');
+
+      if (normalizedSource === normalizedTarget) {
+        toast.error(t('contextMenus.toasts.archiveSameFolder'));
+        return;
+      }
+
+      const sourceName = normalizedSource.split('/').filter(Boolean).pop() ?? normalizedSource;
+
+      const targetBasename = normalizedTarget.split('/').filter(Boolean).pop() ?? '';
+      const isYearRoot = /^\d{4}$/.test(targetBasename);
+      console.log('[archive] targetRoot:', targetRoot, 'basename:', targetBasename, 'isYearRoot:', isYearRoot);
+
+      const proceed = async (yearOffset: number) => {
+        const confirmed = window.confirm(
+          t('contextMenus.folders.archiveTo.confirm', {
+            folderName: sourceName,
+            targetRoot: normalizedTarget,
+          }),
+        );
+        if (!confirmed) {
+          return;
+        }
+        await runArchive(sourcePath, targetRoot, sourceName, yearOffset);
+      };
+
+      if (isYearRoot) {
+        useUIStore.getState().setUI({
+          archiveYearOffsetModalState: {
+            isOpen: true,
+            targetYear: targetBasename,
+            onSubmit: (offset) => proceed(offset),
+            onCancel: () => {},
+          },
+        });
+        return;
+      }
+
+      await proceed(0);
+    },
+    [t, runArchive],
   );
 
   return { archiveFolder };

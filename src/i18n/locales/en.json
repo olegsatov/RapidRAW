@@ -278,6 +278,7 @@
       "archiveTo": "Archive to...",
       "archiveTo.confirm": "Archive folder \"{{folderName}}\" to {{targetRoot}}?",
       "archiveTo.deleteSources": "Successfully archived {{count}} files. Delete the original files from \"{{folderName}}\"?",
+      "archiveTo.yearOffsetPrompt": "Destination folder is {{targetYear}}. Shift all photo dates by how many years? (e.g. +1, -2, 0 for no change)",
       "unpin": "Unpin Folder",
       "lastSynced": "Synced {{time}} ago",
       "lastSyncedAt": "Last synced {{time}}",
@@ -357,7 +358,8 @@
       "archiveError": "Archive failed: {{err}}",
       "archiveDeleted": "Deleted {{count}} original files.",
       "archiveDeletePartial": "Failed to delete {{count}} original files.",
-      "archiveSameFolder": "Source and target folders are the same."
+      "archiveSameFolder": "Source and target folders are the same.",
+      "archiveInvalidYearOffset": "Please enter a valid number of years (e.g. +1, -2)."
     }
   },
   "editor": {
@@ -1422,6 +1424,13 @@
       "sourceFiles": "Source Files",
       "startImport": "Start Import",
       "title": "Import Settings"
+    },
+    "archiveYearOffset": {
+      "cancel": "Cancel",
+      "confirm": "Archive",
+      "description": "Destination folder is {{targetYear}}. Enter the number of years to shift all photo dates for this archive (e.g. +1, -2, or 0 for no change).",
+      "placeholder": "e.g. +1",
+      "title": "Adjust Photo Year"
     },
     "lensCorrection": {
       "amount": "Amount",

@@ -206,6 +206,7 @@ export function useTauriListeners({
       listen('archive-progress', (event: any) => {
         if (!isEffectActive) return;
         const payload = event.payload as { current: number; total: number; current_file?: string | null };
+        console.log('[archive-progress]', payload);
         useArchiveStore.getState().setProgress({
           current: payload.current,
           total: payload.total,

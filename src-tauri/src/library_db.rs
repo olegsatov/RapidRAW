@@ -1348,19 +1348,32 @@ fn load_folder_files_for_path_in_conn(
     Ok(files)
 }
 
-/// Returns true when `path` is exactly a cataloged folder or lies under one.
+/// Returns true when `path` is a cataloged folder, lies under one, or has
+/// cataloged files directly underneath it. The last case covers subfolders
+/// that are derived from file paths (e.g. a recursive import where only the
+/// root has a `folders` row) so selecting them stays catalog-only.
 pub fn is_folder_cataloged(app_handle: &AppHandle, path: &str) -> Result<bool, String> {
     let conn = open_connection(app_handle)?;
     let normalized = path.trim_end_matches(|c| c == '/' || c == '\\');
     let pattern = format!("{}/%", normalized);
-    let count: i64 = conn
+    let folder_count: i64 = conn
         .query_row(
             "SELECT COUNT(*) FROM folders WHERE path = ?1 OR path LIKE ?2",
             params![normalized, pattern],
             |row| row.get(0),
         )
         .map_err(|e| e.to_string())?;
-    Ok(count > 0)
+    if folder_count > 0 {
+        return Ok(true);
+    }
+    let file_count: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM files WHERE path LIKE ?1 || '/%'",
+            params![normalized],
+            |row| row.get(0),
+        )
+        .map_err(|e| e.to_string())?;
+    Ok(file_count > 0)
 }
 
 /// Sets the `exif` field of the serialized `ImageFile` stored in
