@@ -2218,8 +2218,19 @@ pub fn run() {
             }
 
             if crash_flag_path.exists() {
-                log::warn!("GPU Driver crash detected on last run! Falling back to OpenGL backend.");
-                settings.processing_backend = Some("gl".to_string());
+                // On macOS wgpu is not compiled with OpenGL support, so falling
+                // back to "gl" leaves the app unable to create any adapter. Use
+                // "auto" (Metal) instead. Keep the GL fallback for Windows/Linux
+                // where it may actually help recover from a driver crash.
+                #[cfg(target_os = "macos")]
+                let fallback_backend = "auto";
+                #[cfg(not(target_os = "macos"))]
+                let fallback_backend = "gl";
+                log::warn!(
+                    "GPU Driver crash detected on last run! Falling back to {} backend.",
+                    fallback_backend
+                );
+                settings.processing_backend = Some(fallback_backend.to_string());
                 let _ = crate::save_settings(settings.clone(), app_handle.clone());
                 let _ = std::fs::remove_file(&crash_flag_path);
             }

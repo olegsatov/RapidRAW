@@ -173,6 +173,16 @@ pub fn get_or_init_gpu_context(
     #[allow(unused_mut)]
     let mut instance_desc = wgpu::InstanceDescriptor::new_without_display_handle_from_env();
 
+    // wgpu 30.0 + naga 30.0 can hang or panic during validation-shader
+    // compilation on macOS (the internal validation pipelines trigger a
+    // Typifier::grow panic / GPU driver stall). Keep debug logging but disable
+    // the validation flags so startup stays reliable until a fixed wgpu lands.
+    #[cfg(target_os = "macos")]
+    {
+        instance_desc.flags &= !wgpu::InstanceFlags::VALIDATION;
+        instance_desc.flags &= !wgpu::InstanceFlags::GPU_BASED_VALIDATION;
+    }
+
     #[cfg(target_os = "windows")]
     if std::env::var("WGPU_BACKEND").is_err() {
         instance_desc.backends = wgpu::Backends::PRIMARY;
