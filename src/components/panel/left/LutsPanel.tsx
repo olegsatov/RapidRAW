@@ -13,6 +13,7 @@ import type { LutFileSettings } from '../../ui/AppProperties';
 import { useContextMenu } from '../../../context/ContextMenuContext';
 import { useEditorActions } from '../../../hooks/useEditorActions';
 import { useEditorStore } from '../../../store/useEditorStore';
+import { useLutStore } from '../../../store/useLutStore';
 import { useSettingsStore } from '../../../store/useSettingsStore';
 import { useUIStore } from '../../../store/useUIStore';
 import ConfigureLutHotkeyModal from '../../modals/ConfigureLutHotkeyModal';
@@ -73,9 +74,8 @@ export default function LutsPanel({ isVisible, panelWidth }: LutsPanelProps) {
   const appSettings = useSettingsStore((state) => state.appSettings);
   const osPlatform = useSettingsStore((state) => state.osPlatform);
 
-  const [entries, setEntries] = useState<LutEntry[]>([]);
+  const { entries, order, loadLuts, isLoading: isLoadingEntries } = useLutStore();
   const [previews, setPreviews] = useState<Record<string, string | null>>({});
-  const [isLoadingEntries, setIsLoadingEntries] = useState(false);
   const [isLoadingPreviews, setIsLoadingPreviews] = useState(false);
   const [hotkeyModalState, setHotkeyModalState] = useState<{ isOpen: boolean; entry: LutEntry | null }>({
     isOpen: false,
@@ -130,21 +130,9 @@ export default function LutsPanel({ isVisible, panelWidth }: LutsPanelProps) {
     [setEditor],
   );
 
-  const refreshList = useCallback(async () => {
-    setIsLoadingEntries(true);
-    try {
-      const list = await invoke<LutEntry[]>('list_luts');
-      setEntries(list);
-    } catch (err) {
-      toast.error(`Failed to list LUTs: ${err}`);
-    } finally {
-      setIsLoadingEntries(false);
-    }
-  }, []);
-
   useEffect(() => {
-    refreshList();
-  }, [refreshList]);
+    loadLuts();
+  }, [loadLuts]);
 
   useEffect(() => {
     useUIStore.getState().setUI({ isConfigureLutHotkeyModalOpen: hotkeyModalState.isOpen });
@@ -278,9 +266,9 @@ export default function LutsPanel({ isVisible, panelWidth }: LutsPanelProps) {
         if (validPaths.length === 0) return;
       }
 
-      const list = await invoke<LutEntry[]>('import_luts', { sourcePaths: validPaths });
+      await invoke('import_luts', { sourcePaths: validPaths });
       previewCache.current.clear();
-      setEntries(list);
+      loadLuts();
       setPreviews({});
     } catch (err) {
       toast.error(`Failed to import LUTs: ${err}`);
@@ -348,7 +336,7 @@ export default function LutsPanel({ isVisible, panelWidth }: LutsPanelProps) {
                       lutSize: 0,
                     }));
                   }
-                  refreshList();
+                  loadLuts();
                 } catch (err) {
                   toast.error(`Failed to delete LUT: ${err}`);
                 }
@@ -452,6 +440,13 @@ export default function LutsPanel({ isVisible, panelWidth }: LutsPanelProps) {
     [entries, selectedLutPath],
   );
 
+  const orderedEntries = useMemo(() => {
+    const map = new Map(entries.map((e) => [e.path, e]));
+    const ordered = order.map((path) => map.get(path)).filter((e): e is LutEntry => !!e);
+    const remaining = entries.filter((e) => !order.includes(e.path));
+    return [...ordered, ...remaining];
+  }, [entries, order]);
+
   return (
     <div className="flex flex-col h-full">
       <div className="p-4 flex justify-between items-center shrink-0 border-b border-surface">
@@ -467,7 +462,7 @@ export default function LutsPanel({ isVisible, panelWidth }: LutsPanelProps) {
       </div>
 
       <div className="grow min-h-0 overflow-y-auto p-4">
-        {isLoadingEntries && entries.length === 0 ? (
+        {isLoadingEntries && orderedEntries.length === 0 ? (
           <Text
             as="div"
             variant={TextVariants.heading}
@@ -477,7 +472,7 @@ export default function LutsPanel({ isVisible, panelWidth }: LutsPanelProps) {
           >
             <Loader2 size={14} className="animate-spin inline-block mr-2" /> {t('ui.lut.loading')}
           </Text>
-        ) : entries.length === 0 ? (
+        ) : orderedEntries.length === 0 ? (
           <button
             onClick={handleImport}
             className="w-full flex items-center justify-center gap-1.5 py-4 rounded-md bg-bg-tertiary hover:bg-surface border-2 border-dashed border-text-secondary/20 hover:border-text-secondary/40 text-sm text-text-primary transition-colors"
@@ -487,11 +482,11 @@ export default function LutsPanel({ isVisible, panelWidth }: LutsPanelProps) {
           </button>
         ) : (
           <>
-            {Array.from({ length: Math.ceil(entries.length / (isWide ? 2 : 1)) }).map((_, rowIndex) => {
+            {Array.from({ length: Math.ceil(orderedEntries.length / (isWide ? 2 : 1)) }).map((_, rowIndex) => {
               const columns = isWide ? 2 : 1;
               const start = rowIndex * columns;
-              const rowEntries = entries.slice(start, start + columns);
-              const isLastRow = rowIndex === Math.ceil(entries.length / columns) - 1;
+              const rowEntries = orderedEntries.slice(start, start + columns);
+              const isLastRow = rowIndex === Math.ceil(orderedEntries.length / columns) - 1;
               return (
                 <div
                   key={rowIndex}
@@ -615,7 +610,7 @@ export default function LutsPanel({ isVisible, panelWidth }: LutsPanelProps) {
                 </div>
               );
             })}
-            {(entries.length === 0 || !isWide || entries.length % 2 === 0) && (
+            {(orderedEntries.length === 0 || !isWide || orderedEntries.length % 2 === 0) && (
               <button
                 onClick={handleImport}
                 className="w-full aspect-square rounded-md bg-bg-tertiary border-2 border-text-secondary/25 hover:border-accent flex items-center justify-center text-text-secondary hover:text-text-primary transition-all duration-150 mt-3"
@@ -638,7 +633,7 @@ export default function LutsPanel({ isVisible, panelWidth }: LutsPanelProps) {
           lutName={hotkeyModalState.entry.name}
           osPlatform={osPlatform}
           onSaved={({ newPath, newName }) => {
-            refreshList();
+            loadLuts();
             if (newPath && selectedLutPath === hotkeyModalState.entry?.path) {
               setAdjustments((prev) => ({
                 ...prev,
