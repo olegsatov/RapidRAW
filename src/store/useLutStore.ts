@@ -150,10 +150,14 @@ export const useLutStore = create<LutState>((set) => ({
       const children = folder?.children ?? [];
       const remainingFolders = state.folders.filter((f) => f.id !== id);
       let order = state.order;
-      // Folder children are not in root order; moving them to root makes them
-      // ordered root items, otherwise they remain visible as unordered entries.
       if (moveChildrenToRoot) {
+        // Folder children are not in root order; moving them to root makes them
+        // ordered root items.
         order = [...order, ...children.filter((p) => !state.order.includes(p))];
+      } else {
+        // Children are being deleted; make sure their paths do not leak into
+        // the root order.
+        order = state.order.filter((p) => !children.includes(p));
       }
       saveSettings({ lutFolders: remainingFolders, lutOrder: order });
       return { folders: remainingFolders, order };

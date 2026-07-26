@@ -329,8 +329,8 @@ export default function LutsPanel({ isVisible, panelWidth }: LutsPanelProps) {
         const importedPaths = result.map((e) => e.path).filter((p) => !existingPaths.has(p));
 
         previewCache.current.clear();
-        loadLuts();
         setPreviews({});
+        await loadLuts();
 
         if (folderId && importedPaths.length > 0) {
           importedPaths.forEach((path) => moveLutToFolder(path, folderId));
@@ -482,6 +482,35 @@ export default function LutsPanel({ isVisible, panelWidth }: LutsPanelProps) {
     ],
   );
 
+  const handleDeleteFolder = useCallback(
+    async (folder: LutFolder, moveChildrenToRoot: boolean) => {
+      if (moveChildrenToRoot) {
+        deleteFolder(folder.id, true);
+        return;
+      }
+
+      try {
+        for (const path of folder.children) {
+          await invoke('remove_lut', { path });
+          previewCache.current.delete(path);
+        }
+        setPreviews((prev) => {
+          const next = { ...prev };
+          folder.children.forEach((path) => delete next[path]);
+          return next;
+        });
+        if (selectedLutPath && folder.children.includes(selectedLutPath)) {
+          handleClear();
+        }
+        await loadLuts();
+        deleteFolder(folder.id, false);
+      } catch (err) {
+        toast.error(`Failed to delete folder: ${err}`);
+      }
+    },
+    [deleteFolder, handleClear, loadLuts, selectedLutPath],
+  );
+
   const handleFolderContextMenu = useCallback(
     (event: React.MouseEvent, folder: LutFolder) => {
       event.preventDefault();
@@ -505,19 +534,19 @@ export default function LutsPanel({ isVisible, panelWidth }: LutsPanelProps) {
             {
               label: t('ui.lut.deleteFolderKeepChildren'),
               icon: Check,
-              onClick: () => deleteFolder(folder.id, true),
+              onClick: () => handleDeleteFolder(folder, true),
             },
             {
               label: t('ui.lut.deleteFolderRemoveChildren'),
               icon: Trash2,
               isDestructive: true,
-              onClick: () => deleteFolder(folder.id, false),
+              onClick: () => handleDeleteFolder(folder, false),
             },
           ],
         },
       ]);
     },
-    [showContextMenu, t, deleteFolder, handleImport],
+    [showContextMenu, t, deleteFolder, handleImport, handleDeleteFolder],
   );
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 10 } }));
