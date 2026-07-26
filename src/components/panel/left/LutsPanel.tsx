@@ -7,6 +7,8 @@ import { AnimatePresence, motion } from 'framer-motion';
 import {
   Check,
   ChevronRight,
+  Folder as FolderIcon,
+  FolderOpen,
   ImageOff,
   LayoutGrid,
   List,
@@ -22,11 +24,11 @@ import { toast } from 'react-toastify';
 
 import Slider from '../../ui/Slider';
 import Text from '../../ui/Text';
-import type { LutFileSettings } from '../../ui/AppProperties';
+import type { LutFileSettings, LutFolder } from '../../ui/AppProperties';
 import { useContextMenu } from '../../../context/ContextMenuContext';
 import { useEditorActions } from '../../../hooks/useEditorActions';
 import { useEditorStore } from '../../../store/useEditorStore';
-import { useLutStore, type LutEntry } from '../../../store/useLutStore';
+import { useLutStore, type LutEntry, type LutListItem, LutListType } from '../../../store/useLutStore';
 import { useSettingsStore } from '../../../store/useSettingsStore';
 import { useUIStore } from '../../../store/useUIStore';
 import ConfigureLutHotkeyModal from '../../modals/ConfigureLutHotkeyModal';
@@ -82,13 +84,14 @@ export default function LutsPanel({ isVisible, panelWidth }: LutsPanelProps) {
   const appSettings = useSettingsStore((state) => state.appSettings);
   const osPlatform = useSettingsStore((state) => state.osPlatform);
 
-  const { entries, order, loadLuts, isLoading: isLoadingEntries, viewMode, setViewMode } = useLutStore();
+  const { entries, folders, order, loadLuts, isLoading: isLoadingEntries, viewMode, setViewMode } = useLutStore();
   const [previews, setPreviews] = useState<Record<string, string | null>>({});
   const [isLoadingPreviews, setIsLoadingPreviews] = useState(false);
   const [hotkeyModalState, setHotkeyModalState] = useState<{ isOpen: boolean; entry: LutEntry | null }>({
     isOpen: false,
     entry: null,
   });
+  const [expandedFolders, setExpandedFolders] = useState(new Set<string>());
   const previewCache = useRef<Map<string, { key: string; thumb: string | null }>>(new Map());
   const previewTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -312,6 +315,20 @@ export default function LutsPanel({ isVisible, panelWidth }: LutsPanelProps) {
     [selectedLutPath, handleClear, handleLutSelect],
   );
 
+  const toggleFolder = useCallback((id: string) => {
+    setExpandedFolders((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, []);
+
+  const handleFolderContextMenu = useCallback((event: React.MouseEvent, folder: LutFolder) => {
+    event.preventDefault();
+    event.stopPropagation();
+  }, []);
+
   const handleContextMenu = useCallback(
     (event: React.MouseEvent, entry: LutEntry) => {
       event.preventDefault();
@@ -463,6 +480,17 @@ export default function LutsPanel({ isVisible, panelWidth }: LutsPanelProps) {
     return [...ordered, ...remaining];
   }, [entries, order]);
 
+  const mixedItems = useMemo<LutListItem[]>(() => {
+    const rootPaths = new Set(orderedEntries.map((e) => e.path));
+    folders.forEach((f) => f.children.forEach((p) => rootPaths.delete(p)));
+    const rootEntries = orderedEntries.filter((e) => rootPaths.has(e.path));
+
+    const items: LutListItem[] = [];
+    folders.forEach((folder) => items.push({ type: LutListType.Folder, folder }));
+    rootEntries.forEach((entry) => items.push({ type: LutListType.Lut, entry }));
+    return items;
+  }, [folders, orderedEntries]);
+
   return (
     <div className="flex flex-col h-full">
       <div className="p-4 flex justify-between items-center shrink-0 border-b border-surface">
@@ -508,7 +536,98 @@ export default function LutsPanel({ isVisible, panelWidth }: LutsPanelProps) {
           </button>
         ) : viewMode === 'compact' ? (
           <div className="space-y-2">
-            {orderedEntries.map((entry) => {
+            {mixedItems.map((item) => {
+              if (item.type === LutListType.Folder) {
+                const folder = item.folder;
+                const isExpanded = expandedFolders.has(folder.id);
+                return (
+                  <div key={folder.id}>
+                    <FolderHeader
+                      folder={folder}
+                      isExpanded={isExpanded}
+                      onToggle={toggleFolder}
+                      onContextMenu={handleFolderContextMenu}
+                    />
+                    <AnimatePresence initial={false}>
+                      {isExpanded && (
+                        <motion.div
+                          initial={{ height: 0, opacity: 0 }}
+                          animate={{ height: 'auto', opacity: 1 }}
+                          exit={{ height: 0, opacity: 0 }}
+                          transition={{ duration: 0.25, ease: 'easeInOut' }}
+                          className="ml-5 pl-4 border-l-[1.5px] border-border-color/50 space-y-2 pt-2"
+                        >
+                          {folder.children
+                            .map((path) => orderedEntries.find((e) => e.path === path))
+                            .filter((e): e is LutEntry => !!e)
+                            .map((entry) => {
+                              const isSelected = entry.path === selectedLutPath;
+                              return (
+                                <div key={entry.path} className="flex flex-col">
+                                  <CompactLutRow
+                                    entry={entry}
+                                    thumb={previews[entry.path] ?? null}
+                                    isSelected={isSelected}
+                                    isLoading={isLoadingPreviews}
+                                    hotkey={appSettings?.lutSettings?.[entry.path]?.hotkey ?? null}
+                                    osPlatform={osPlatform}
+                                    onSelect={handleSelect}
+                                    onContextMenu={handleContextMenu}
+                                    onMouseEnter={() => setLutPreviewOverride(entry.path)}
+                                    onMouseLeave={() => setLutPreviewOverride(null)}
+                                  />
+                                  <AnimatePresence initial={false}>
+                                    {isSelected && (
+                                      <motion.div
+                                        initial={{ height: 0, opacity: 0 }}
+                                        animate={{ height: 'auto', opacity: 1 }}
+                                        exit={{ height: 0, opacity: 0 }}
+                                        transition={{ duration: 0.25, ease: 'easeInOut' }}
+                                        className="w-full cursor-auto overflow-hidden"
+                                        onClick={(e) => e.stopPropagation()}
+                                        onPointerDown={(e) => e.stopPropagation()}
+                                      >
+                                        <div className="mt-3 px-2 pb-2">
+                                          <LutDetailPanel
+                                            lutIntensity={lutIntensity}
+                                            lutInputOffset={lutInputOffset}
+                                            lutInputRange={lutInputRange}
+                                            lutWbTemperatureShift={lutWbTemperatureShift}
+                                            lutWbTintShift={lutWbTintShift}
+                                            lutFlimContrast={lutFlimContrast}
+                                            lutFlimLights={lutFlimLights}
+                                            lutFlimShadows={lutFlimShadows}
+                                            lutSaturation={lutSaturation}
+                                            lutVibrance={lutVibrance}
+                                            defaultIntensity={defaultParams.intensity}
+                                            defaultInputOffset={defaultParams.inputOffset}
+                                            defaultInputRange={defaultParams.inputRange}
+                                            defaultWbTemperatureShift={defaultWbTemperatureShift}
+                                            defaultWbTintShift={defaultWbTintShift}
+                                            defaultFlimContrast={defaultFlimContrast}
+                                            defaultFlimLights={defaultFlimLights}
+                                            defaultFlimShadows={defaultFlimShadows}
+                                            defaultSaturation={defaultSaturation}
+                                            defaultVibrance={defaultVibrance}
+                                            onDragStateChange={handleDragStateChange}
+                                            onUpdate={updateLutAdjustment}
+                                            onSaveAsDefault={handleSaveAsDefault}
+                                            onResetToDefault={handleResetToDefault}
+                                          />
+                                        </div>
+                                      </motion.div>
+                                    )}
+                                  </AnimatePresence>
+                                </div>
+                              );
+                            })}
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                  </div>
+                );
+              }
+              const entry = item.entry;
               const isSelected = entry.path === selectedLutPath;
               return (
                 <div key={entry.path} className="flex flex-col">
@@ -734,6 +853,47 @@ export default function LutsPanel({ isVisible, panelWidth }: LutsPanelProps) {
           }}
         />
       )}
+    </div>
+  );
+}
+
+interface FolderHeaderProps {
+  folder: LutFolder;
+  isExpanded: boolean;
+  onToggle: (id: string) => void;
+  onContextMenu: (event: React.MouseEvent, folder: LutFolder) => void;
+}
+
+function FolderHeader({ folder, isExpanded, onToggle, onContextMenu }: FolderHeaderProps) {
+  return (
+    <div
+      className="flex items-center gap-2 p-2 rounded-lg bg-surface cursor-pointer"
+      onContextMenu={(e) => onContextMenu(e, folder)}
+    >
+      <div
+        className="p-1"
+        onClick={(e) => {
+          e.stopPropagation();
+          onToggle(folder.id);
+        }}
+      >
+        {isExpanded ? (
+          <FolderOpen className="text-primary" size={18} />
+        ) : (
+          <FolderIcon className="text-text-secondary" size={18} />
+        )}
+      </div>
+      <Text
+        color={TextColors.primary}
+        weight={TextWeights.medium}
+        className="grow truncate select-none"
+        onClick={() => onToggle(folder.id)}
+      >
+        {folder.name}
+      </Text>
+      <Text as="span" variant={TextVariants.small} color={TextColors.secondary} className="ml-auto pr-1">
+        {folder.children.length}
+      </Text>
     </div>
   );
 }
