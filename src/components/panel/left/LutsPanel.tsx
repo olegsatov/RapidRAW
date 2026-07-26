@@ -125,9 +125,7 @@ export default function LutsPanel({ isVisible, panelWidth }: LutsPanelProps) {
     entry: null,
   });
   const [folderModalState, setFolderModalState] = useState<
-    | { type: 'create' }
-    | { type: 'rename'; folder: LutFolder }
-    | null
+    { type: 'create' } | { type: 'rename'; folder: LutFolder } | null
   >(null);
   const [activeDragItem, setActiveDragItem] = useState<{ type: LutListType; path?: string; folder?: LutFolder } | null>(
     null,
@@ -365,10 +363,31 @@ export default function LutsPanel({ isVisible, panelWidth }: LutsPanelProps) {
     });
   }, []);
 
+  const handleBackgroundContextMenu = useCallback(
+    (event: React.MouseEvent) => {
+      event.preventDefault();
+      showContextMenu(event.clientX, event.clientY, [
+        {
+          icon: FolderPlus,
+          label: t('ui.lut.createFolder'),
+          onClick: () => setFolderModalState({ type: 'create' }),
+        },
+        {
+          icon: viewMode === 'expanded' ? List : LayoutGrid,
+          label: t(viewMode === 'expanded' ? 'ui.lut.compactView' : 'ui.lut.expandedView'),
+          onClick: () => setViewMode(viewMode === 'expanded' ? 'compact' : 'expanded'),
+        },
+      ]);
+    },
+    [showContextMenu, t, viewMode, setViewMode],
+  );
+
   const handleContextMenu = useCallback(
     (event: React.MouseEvent, entry: LutEntry) => {
       event.preventDefault();
       event.stopPropagation();
+
+      const containingFolder = folders.find((f) => f.children.includes(entry.path));
 
       showContextMenu(event.clientX, event.clientY, [
         {
@@ -392,11 +411,20 @@ export default function LutsPanel({ isVisible, panelWidth }: LutsPanelProps) {
             { label: t('ui.lut.newFolder'), icon: Plus, onClick: () => setFolderModalState({ type: 'create' }) },
           ],
         },
+        ...(containingFolder
+          ? [
+              {
+                icon: X,
+                label: t('ui.lut.removeFromFolder'),
+                onClick: () => moveLutToFolder(entry.path, null),
+              },
+            ]
+          : []),
         {
           icon: Trash2,
           label: t('ui.lut.deleteLut'),
           submenu: [
-            { label: t('contextMenus.editor.cancel'), icon: X, onClick: () => {} },
+            { label: t('ui.lut.cancelDelete'), icon: X, onClick: () => {} },
             {
               label: t('ui.lut.confirmDelete'),
               icon: Check,
@@ -430,7 +458,17 @@ export default function LutsPanel({ isVisible, panelWidth }: LutsPanelProps) {
         },
       ]);
     },
-    [showContextMenu, t, favorites, toggleFavorite, folders, moveLutToFolder, selectedLutPath, setAdjustments, loadLuts],
+    [
+      showContextMenu,
+      t,
+      favorites,
+      toggleFavorite,
+      folders,
+      moveLutToFolder,
+      selectedLutPath,
+      setAdjustments,
+      loadLuts,
+    ],
   );
 
   const handleFolderContextMenu = useCallback(
@@ -636,26 +674,7 @@ export default function LutsPanel({ isVisible, panelWidth }: LutsPanelProps) {
         </div>
       </div>
 
-      <div
-        className="grow min-h-0 overflow-y-auto p-4"
-        onContextMenu={(e) => {
-          if (e.target === e.currentTarget) {
-            e.preventDefault();
-            showContextMenu(e.clientX, e.clientY, [
-              {
-                icon: FolderPlus,
-                label: t('ui.lut.createFolder'),
-                onClick: () => setFolderModalState({ type: 'create' }),
-              },
-              {
-                icon: viewMode === 'expanded' ? List : LayoutGrid,
-                label: t(viewMode === 'expanded' ? 'ui.lut.compactView' : 'ui.lut.expandedView'),
-                onClick: () => setViewMode(viewMode === 'expanded' ? 'compact' : 'expanded'),
-              },
-            ]);
-          }
-        }}
-      >
+      <div className="grow min-h-0 overflow-y-auto p-4" onContextMenu={handleBackgroundContextMenu}>
         {isLoadingEntries && orderedEntries.length === 0 ? (
           <Text
             as="div"
