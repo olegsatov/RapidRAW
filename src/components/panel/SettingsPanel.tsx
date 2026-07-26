@@ -18,6 +18,7 @@ import {
   Image as ImageIcon,
   Mouse,
   Touchpad,
+  HardDrive,
 } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 import { getCurrentWindow } from '@tauri-apps/api/window';
@@ -46,7 +47,8 @@ import {
 import Text from '../ui/Text';
 import { TextColors, TextVariants, TextWeights } from '../../types/typography';
 import { useOsPlatform } from '../../hooks/useOsPlatform';
-import { open } from '@tauri-apps/plugin-shell';
+import { open as openUrl } from '@tauri-apps/plugin-shell';
+import { open as openDialog } from '@tauri-apps/plugin-dialog';
 import HotkeyCapture from '../ui/HotkeyCapture';
 import { usePresetStore } from '../../store/usePresetStore';
 import type { HotkeyCaptureConflict } from '../ui/HotkeyCapture';
@@ -351,7 +353,7 @@ const CloudDashboard = () => {
           <Button
             variant="ghost"
             className="bg-transparent text-text-secondary hover:text-text-primary hover:bg-surface border-none shadow-none"
-            onClick={() => open('https://www.getrapidraw.com/dashboard')}
+            onClick={() => openUrl('https://www.getrapidraw.com/dashboard')}
           >
             {t('settings.processing.ai.cloud.signedIn.manage')} <ExternalLinkIcon size={14} className="ml-1" />
           </Button>
@@ -387,7 +389,7 @@ const CloudDashboard = () => {
       ) : (
         <div className="bg-red-900/10 border border-red-500/50 p-4 rounded-md text-center">
           <Text className="mb-3">{t('settings.processing.ai.cloud.signedOut.upgradeDesc')}</Text>
-          <Button onClick={() => open('https://www.getrapidraw.com/cloud')}>
+          <Button onClick={() => openUrl('https://www.getrapidraw.com/cloud')}>
             {t('settings.processing.ai.cloud.signedOut.upgradeBtn')}
           </Button>
         </div>
@@ -556,12 +558,14 @@ export default function SettingsPanel({
   const [logPathLoading, setLogPathLoading] = useState(true);
   const [logPathError, setLogPathError] = useState(false);
   const [dpr, setDpr] = useState(() => (typeof window !== 'undefined' ? window.devicePixelRatio : 1));
+  const [isBackingUp, setIsBackingUp] = useState(false);
 
   const settingCategories = useMemo(
     () => [
       { id: 'general', label: t('settings.categories.general'), icon: SlidersHorizontal },
       { id: 'processing', label: t('settings.categories.processing'), icon: Cpu },
       { id: 'shortcuts', label: t('settings.categories.shortcuts'), icon: Keyboard },
+      { id: 'backup', label: t('settings.categories.backup'), icon: HardDrive },
     ],
     [t],
   );
@@ -2366,7 +2370,7 @@ export default function SettingsPanel({
                                   <Text variant={TextVariants.small}>
                                     {t('settings.processing.ai.cloud.signedOut.noAccount')}{' '}
                                     <button
-                                      onClick={() => open('https://www.getrapidraw.com/dashboard')}
+                                      onClick={() => openUrl('https://www.getrapidraw.com/dashboard')}
                                       className="text-accent hover:underline focus:outline-none"
                                     >
                                       {t('settings.processing.ai.cloud.signedOut.signup')}
@@ -2556,6 +2560,122 @@ export default function SettingsPanel({
                         {t('settings.controls.resetDefaults')}
                       </Button>
                     </div>
+                  </div>
+                </div>
+              </motion.div>
+            )}
+
+            {activeCategory === 'backup' && (
+              <motion.div
+                key="backup"
+                initial={{ opacity: 0, x: 10 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -10 }}
+                transition={{ duration: 0.2 }}
+                className="space-y-10"
+              >
+                <div className="p-6 bg-surface rounded-xl shadow-md">
+                  <Text variant={TextVariants.title} color={TextColors.accent} className="mb-8">
+                    {t('settings.backup.title')}
+                  </Text>
+                  <div className="space-y-8">
+                    <SettingItem
+                      label={t('settings.backup.destination')}
+                      description={t('settings.backup.destinationDesc')}
+                    >
+                      <div className="flex items-center gap-3">
+                        <Text
+                          variant={TextVariants.small}
+                          color={appSettings?.catalogBackupFolder ? TextColors.primary : TextColors.secondary}
+                          className="flex-1 px-3 py-2 bg-bg-primary rounded-md border border-border-color truncate"
+                        >
+                          {appSettings?.catalogBackupFolder || t('settings.backup.destinationNotSet')}
+                        </Text>
+                        <Button
+                          variant="secondary"
+                          onClick={async () => {
+                            const path = await openDialog({ directory: true, multiple: false });
+                            if (path && typeof path === 'string') {
+                              await invoke('set_catalog_backup_destination', { path });
+                              await onSettingsChange({ ...appSettings, catalogBackupFolder: path });
+                            }
+                          }}
+                        >
+                          {t('settings.backup.chooseFolder')}
+                        </Button>
+                      </div>
+                    </SettingItem>
+
+                    <SettingItem
+                      label={t('settings.backup.threshold')}
+                      description={t('settings.backup.thresholdDesc')}
+                    >
+                      <Input
+                        type="number"
+                        min={1}
+                        max={10000}
+                        value={String(appSettings?.catalogBackupThreshold ?? 50)}
+                        onChange={(e) => {
+                          const value = parseInt(e.target.value, 10);
+                          const clamped = Number.isNaN(value) ? 50 : Math.max(1, Math.min(10000, value));
+                          onSettingsChange({ ...appSettings, catalogBackupThreshold: clamped });
+                        }}
+                        bgClassName="bg-bg-primary"
+                      />
+                    </SettingItem>
+
+                    <SettingItem
+                      label={t('settings.backup.bannerInterval')}
+                      description={t('settings.backup.bannerIntervalDesc')}
+                    >
+                      <Input
+                        type="number"
+                        min={5}
+                        max={10080}
+                        value={String(appSettings?.catalogBackupBannerIntervalMinutes ?? 60)}
+                        onChange={(e) => {
+                          const value = parseInt(e.target.value, 10);
+                          const clamped = Number.isNaN(value) ? 60 : Math.max(5, Math.min(10080, value));
+                          onSettingsChange({ ...appSettings, catalogBackupBannerIntervalMinutes: clamped });
+                        }}
+                        bgClassName="bg-bg-primary"
+                      />
+                    </SettingItem>
+
+                    <SettingItem
+                      label={t('settings.backup.keepCount')}
+                      description={t('settings.backup.keepCountDesc')}
+                    >
+                      <Input
+                        type="number"
+                        min={1}
+                        max={100}
+                        value={String(appSettings?.catalogBackupKeepCount ?? 10)}
+                        onChange={(e) => {
+                          const value = parseInt(e.target.value, 10);
+                          const clamped = Number.isNaN(value) ? 10 : Math.max(1, Math.min(100, value));
+                          onSettingsChange({ ...appSettings, catalogBackupKeepCount: clamped });
+                        }}
+                        bgClassName="bg-bg-primary"
+                      />
+                    </SettingItem>
+
+                    <SettingItem label={t('settings.backup.manual')} description={t('settings.backup.manualDesc')}>
+                      <Button
+                        variant="secondary"
+                        disabled={isBackingUp}
+                        onClick={async () => {
+                          setIsBackingUp(true);
+                          try {
+                            await invoke('create_catalog_backup', { destination: null });
+                          } finally {
+                            setIsBackingUp(false);
+                          }
+                        }}
+                      >
+                        {isBackingUp ? t('settings.backup.backupNow') + '...' : t('settings.backup.backupNow')}
+                      </Button>
+                    </SettingItem>
                   </div>
                 </div>
               </motion.div>
