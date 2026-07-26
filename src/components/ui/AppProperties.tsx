@@ -275,6 +275,7 @@ export interface AppSettings {
   lutFolders?: LutFolder[];
   lutOrder?: string[];
   lutFavorites?: string[];
+  lutViewMode?: 'compact' | 'expanded';
 }
 
 export interface BrushSettings {

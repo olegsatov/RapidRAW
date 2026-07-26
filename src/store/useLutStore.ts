@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { invoke } from '@tauri-apps/api/core';
 import debounce from 'lodash.debounce';
-import { LutFolder, Invokes } from '../components/ui/AppProperties';
+import { AppSettings, LutFolder } from '../components/ui/AppProperties';
 import { useSettingsStore } from './useSettingsStore';
 
 export interface LutEntry {
@@ -52,12 +52,24 @@ interface LutState {
   viewMode: 'compact' | 'expanded';
 }
 
-const saveSettings = debounce((patch: Partial<NonNullable<unknown>>) => {
+let pendingPatch: Partial<AppSettings> = {};
+
+const flushSettings = debounce(() => {
   const current = useSettingsStore.getState().appSettings;
   if (!current) return;
+  const patch = pendingPatch;
+  pendingPatch = {};
   const next = { ...current, ...patch };
-  useSettingsStore.getState().handleSettingsChange(next).catch((err) => console.error('Failed to save LUT settings:', err));
+  useSettingsStore
+    .getState()
+    .handleSettingsChange(next)
+    .catch((err) => console.error('Failed to save LUT settings:', err));
 }, 500);
+
+const saveSettings = (patch: Partial<AppSettings>) => {
+  pendingPatch = { ...pendingPatch, ...patch };
+  flushSettings();
+};
 
 export const useLutStore = create<LutState>((set, get) => ({
   entries: [],
@@ -89,7 +101,7 @@ export const useLutStore = create<LutState>((set, get) => ({
         folders,
         order,
         favorites,
-        viewMode: (settings as any)?.lutViewMode ?? 'expanded',
+        viewMode: settings?.lutViewMode ?? 'expanded',
         isLoading: false,
       });
 
@@ -107,7 +119,7 @@ export const useLutStore = create<LutState>((set, get) => ({
   },
 
   addFolder: (name: string) => {
-    const { folders, entries, order } = get();
+    const { folders, order } = get();
     const newFolder: LutFolder = { id: crypto.randomUUID(), name, children: [] };
     const firstLutIndex = order.length > 0 ? 0 : -1;
     let nextFolders: LutFolder[];
