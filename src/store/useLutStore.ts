@@ -90,9 +90,10 @@ export const useLutStore = create<LutState>((set, get) => ({
 
       // Clean up stale paths from folders/order/favorites.
       const existingPaths = new Set(entries.map((e) => e.path));
-      const folders = rawFolders
-        .map((f) => ({ ...f, children: f.children.filter((p) => existingPaths.has(p)) }))
-        .filter((f) => f.children.length > 0 || rawFolders.some((rf) => rf.id === f.id));
+      const folders = rawFolders.map((f) => ({
+        ...f,
+        children: f.children.filter((p) => existingPaths.has(p)),
+      }));
       const order = rawOrder.filter((p) => existingPaths.has(p));
       const favorites = new Set(rawFavorites.filter((p) => existingPaths.has(p)));
 
@@ -147,6 +148,8 @@ export const useLutStore = create<LutState>((set, get) => ({
       const children = folder?.children ?? [];
       const remainingFolders = state.folders.filter((f) => f.id !== id);
       let order = state.order;
+      // Folder children are not in root order; moving them to root makes them
+      // ordered root items, otherwise they remain visible as unordered entries.
       if (moveChildrenToRoot) {
         order = [...children.filter((p) => !state.order.includes(p)), ...order];
       }
