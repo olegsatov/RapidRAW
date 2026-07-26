@@ -363,6 +363,14 @@ pub struct LutFileSettings {
     pub hotkey: Option<Vec<String>>,
 }
 
+#[derive(Serialize, Deserialize, Debug, Clone, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct LutFolder {
+    pub id: String,
+    pub name: String,
+    pub children: Vec<String>,
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct AppSettings {
@@ -500,7 +508,21 @@ pub struct AppSettings {
     #[serde(default)]
     pub lut_settings: HashMap<String, LutFileSettings>,
     #[serde(default)]
+    pub lut_folders: Vec<LutFolder>,
+    #[serde(default)]
+    pub lut_order: Vec<String>,
+    #[serde(default)]
+    pub lut_favorites: Vec<String>,
+    #[serde(default)]
     pub flag_auto_advance: Option<bool>,
+    #[serde(default)]
+    pub catalog_backup_folder: Option<String>,
+    #[serde(default)]
+    pub catalog_backup_threshold: Option<u32>,
+    #[serde(default)]
+    pub catalog_backup_banner_interval_minutes: Option<u32>,
+    #[serde(default)]
+    pub catalog_backup_keep_count: Option<u32>,
 }
 
 impl Default for AppSettings {
@@ -598,7 +620,14 @@ impl Default for AppSettings {
             proof_margin_level: Some(1),
             editor_background_color: None,
             lut_settings: HashMap::new(),
+            lut_folders: Vec::new(),
+            lut_order: Vec::new(),
+            lut_favorites: Vec::new(),
             flag_auto_advance: None,
+            catalog_backup_folder: None,
+            catalog_backup_threshold: Some(50),
+            catalog_backup_banner_interval_minutes: Some(60),
+            catalog_backup_keep_count: Some(10),
         }
     }
 }
