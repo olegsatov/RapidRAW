@@ -365,6 +365,7 @@ export default function LutsPanel({ isVisible, panelWidth }: LutsPanelProps) {
 
   const handleBackgroundContextMenu = useCallback(
     (event: React.MouseEvent) => {
+      if (event.target !== event.currentTarget) return;
       event.preventDefault();
       showContextMenu(event.clientX, event.clientY, [
         {
@@ -485,7 +486,7 @@ export default function LutsPanel({ isVisible, panelWidth }: LutsPanelProps) {
           icon: Trash2,
           label: t('ui.lut.deleteFolder'),
           submenu: [
-            { label: t('contextMenus.editor.cancel'), icon: X, onClick: () => {} },
+            { label: t('ui.lut.cancelDelete'), icon: X, onClick: () => {} },
             {
               label: t('ui.lut.deleteFolderKeepChildren'),
               icon: Check,
