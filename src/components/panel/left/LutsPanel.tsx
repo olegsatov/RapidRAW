@@ -5,6 +5,15 @@ import { open } from '@tauri-apps/plugin-dialog';
 import clsx from 'clsx';
 import { AnimatePresence, motion } from 'framer-motion';
 import {
+  DndContext,
+  DragOverlay,
+  PointerSensor,
+  useDraggable,
+  useDroppable,
+  useSensor,
+  useSensors,
+} from '@dnd-kit/core';
+import {
   Check,
   ChevronRight,
   Folder as FolderIcon,
@@ -84,13 +93,27 @@ export default function LutsPanel({ isVisible, panelWidth }: LutsPanelProps) {
   const appSettings = useSettingsStore((state) => state.appSettings);
   const osPlatform = useSettingsStore((state) => state.osPlatform);
 
-  const { entries, folders, order, loadLuts, isLoading: isLoadingEntries, viewMode, setViewMode } = useLutStore();
+  const {
+    entries,
+    folders,
+    order,
+    loadLuts,
+    isLoading: isLoadingEntries,
+    viewMode,
+    setViewMode,
+    moveLutToFolder,
+    reorderLut,
+    reorderFolderLut,
+  } = useLutStore();
   const [previews, setPreviews] = useState<Record<string, string | null>>({});
   const [isLoadingPreviews, setIsLoadingPreviews] = useState(false);
   const [hotkeyModalState, setHotkeyModalState] = useState<{ isOpen: boolean; entry: LutEntry | null }>({
     isOpen: false,
     entry: null,
   });
+  const [activeDragItem, setActiveDragItem] = useState<{ type: LutListType; path?: string; folder?: LutFolder } | null>(
+    null,
+  );
   const [expandedFolders, setExpandedFolders] = useState(new Set<string>());
   const previewCache = useRef<Map<string, { key: string; thumb: string | null }>>(new Map());
   const previewTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -376,6 +399,34 @@ export default function LutsPanel({ isVisible, panelWidth }: LutsPanelProps) {
     [showContextMenu, t],
   );
 
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 10 } }));
+
+  const handleDragEnd = useCallback(
+    (event: any) => {
+      const { active, over } = event;
+      setActiveDragItem(null);
+      if (!over || active.id === over.id) return;
+
+      const activeType = active.data.current?.type;
+      const activePath = active.data.current?.path as string | undefined;
+      const activeFolderId = active.data.current?.folderId as string | undefined;
+
+      if (activeType === LutListType.Lut && activePath) {
+        const overType = over.data.current?.type;
+        const overFolderId =
+          overType === LutListType.Folder ? (over.id as string) : (over.data.current?.folderId as string | undefined);
+        if (overFolderId && overFolderId !== activeFolderId) {
+          moveLutToFolder(activePath, overFolderId);
+        } else if (activeFolderId) {
+          reorderFolderLut(activeFolderId, activePath, over.id as string);
+        } else {
+          reorderLut(activePath, over.id as string);
+        }
+      }
+    },
+    [moveLutToFolder, reorderFolderLut, reorderLut],
+  );
+
   const updateLutAdjustment = useCallback(
     (adjustmentPatch: Partial<Adjustments>) => {
       setAdjustments((prev) => {
@@ -529,306 +580,343 @@ export default function LutsPanel({ isVisible, panelWidth }: LutsPanelProps) {
             <Upload size={16} />
             {t('ui.lut.import')}
           </button>
-        ) : viewMode === 'compact' ? (
-          <div className="space-y-2">
-            {mixedItems.map((item) => {
-              if (item.type === LutListType.Folder) {
-                const folder = item.folder;
-                const isExpanded = expandedFolders.has(folder.id);
-                const visibleChildren = folder.children
-                  .map((path) => orderedEntries.find((e) => e.path === path))
-                  .filter(Boolean) as LutEntry[];
-                return (
-                  <div key={folder.id}>
-                    <FolderHeader
-                      folder={folder}
-                      visibleCount={visibleChildren.length}
-                      isExpanded={isExpanded}
-                      onToggle={toggleFolder}
-                      onContextMenu={(e) => {
-                        e.preventDefault();
-                      }}
-                    />
-                    <AnimatePresence initial={false}>
-                      {isExpanded && (
-                        <motion.div
-                          initial={{ height: 0, opacity: 0 }}
-                          animate={{ height: 'auto', opacity: 1 }}
-                          exit={{ height: 0, opacity: 0 }}
-                          transition={{ duration: 0.25, ease: 'easeInOut' }}
-                          className="ml-5 pl-4 border-l-[1.5px] border-border-color/50 space-y-2 pt-2"
-                        >
-                          {visibleChildren.map((entry) => {
-                            const isSelected = entry.path === selectedLutPath;
-                            return (
-                              <div key={entry.path} className="flex flex-col">
-                                <CompactLutRow
-                                  entry={entry}
-                                  thumb={previews[entry.path] ?? null}
-                                  isSelected={isSelected}
-                                  isLoading={isLoadingPreviews}
-                                  hotkey={appSettings?.lutSettings?.[entry.path]?.hotkey ?? null}
-                                  osPlatform={osPlatform}
-                                  onSelect={handleSelect}
-                                  onContextMenu={handleContextMenu}
-                                  onMouseEnter={() => setLutPreviewOverride(entry.path)}
-                                  onMouseLeave={() => setLutPreviewOverride(null)}
-                                />
-                                <AnimatePresence initial={false}>
-                                  {isSelected && (
-                                    <motion.div
-                                      initial={{ height: 0, opacity: 0 }}
-                                      animate={{ height: 'auto', opacity: 1 }}
-                                      exit={{ height: 0, opacity: 0 }}
-                                      transition={{ duration: 0.25, ease: 'easeInOut' }}
-                                      className="w-full cursor-auto overflow-hidden"
-                                      onClick={(e) => e.stopPropagation()}
-                                      onPointerDown={(e) => e.stopPropagation()}
-                                    >
-                                      <div className="mt-3 px-2 pb-2">
-                                        <LutDetailPanel
-                                          lutIntensity={lutIntensity}
-                                          lutInputOffset={lutInputOffset}
-                                          lutInputRange={lutInputRange}
-                                          lutWbTemperatureShift={lutWbTemperatureShift}
-                                          lutWbTintShift={lutWbTintShift}
-                                          lutFlimContrast={lutFlimContrast}
-                                          lutFlimLights={lutFlimLights}
-                                          lutFlimShadows={lutFlimShadows}
-                                          lutSaturation={lutSaturation}
-                                          lutVibrance={lutVibrance}
-                                          defaultIntensity={defaultParams.intensity}
-                                          defaultInputOffset={defaultParams.inputOffset}
-                                          defaultInputRange={defaultParams.inputRange}
-                                          defaultWbTemperatureShift={defaultWbTemperatureShift}
-                                          defaultWbTintShift={defaultWbTintShift}
-                                          defaultFlimContrast={defaultFlimContrast}
-                                          defaultFlimLights={defaultFlimLights}
-                                          defaultFlimShadows={defaultFlimShadows}
-                                          defaultSaturation={defaultSaturation}
-                                          defaultVibrance={defaultVibrance}
-                                          onDragStateChange={handleDragStateChange}
-                                          onUpdate={updateLutAdjustment}
-                                          onSaveAsDefault={handleSaveAsDefault}
-                                          onResetToDefault={handleResetToDefault}
-                                        />
-                                      </div>
-                                    </motion.div>
-                                  )}
-                                </AnimatePresence>
-                              </div>
-                            );
-                          })}
-                        </motion.div>
-                      )}
-                    </AnimatePresence>
-                  </div>
-                );
-              }
-              const entry = item.entry;
-              const isSelected = entry.path === selectedLutPath;
-              return (
-                <div key={entry.path} className="flex flex-col">
-                  <CompactLutRow
-                    entry={entry}
-                    thumb={previews[entry.path] ?? null}
-                    isSelected={isSelected}
-                    isLoading={isLoadingPreviews}
-                    hotkey={appSettings?.lutSettings?.[entry.path]?.hotkey ?? null}
-                    osPlatform={osPlatform}
-                    onSelect={handleSelect}
-                    onContextMenu={handleContextMenu}
-                    onMouseEnter={() => setLutPreviewOverride(entry.path)}
-                    onMouseLeave={() => setLutPreviewOverride(null)}
-                  />
-                  <AnimatePresence initial={false}>
-                    {isSelected && (
-                      <motion.div
-                        initial={{ height: 0, opacity: 0 }}
-                        animate={{ height: 'auto', opacity: 1 }}
-                        exit={{ height: 0, opacity: 0 }}
-                        transition={{ duration: 0.25, ease: 'easeInOut' }}
-                        className="w-full cursor-auto overflow-hidden"
-                        onClick={(e) => e.stopPropagation()}
-                        onPointerDown={(e) => e.stopPropagation()}
-                      >
-                        <div className="mt-3 px-2 pb-2">
-                          <LutDetailPanel
-                            lutIntensity={lutIntensity}
-                            lutInputOffset={lutInputOffset}
-                            lutInputRange={lutInputRange}
-                            lutWbTemperatureShift={lutWbTemperatureShift}
-                            lutWbTintShift={lutWbTintShift}
-                            lutFlimContrast={lutFlimContrast}
-                            lutFlimLights={lutFlimLights}
-                            lutFlimShadows={lutFlimShadows}
-                            lutSaturation={lutSaturation}
-                            lutVibrance={lutVibrance}
-                            defaultIntensity={defaultParams.intensity}
-                            defaultInputOffset={defaultParams.inputOffset}
-                            defaultInputRange={defaultParams.inputRange}
-                            defaultWbTemperatureShift={defaultWbTemperatureShift}
-                            defaultWbTintShift={defaultWbTintShift}
-                            defaultFlimContrast={defaultFlimContrast}
-                            defaultFlimLights={defaultFlimLights}
-                            defaultFlimShadows={defaultFlimShadows}
-                            defaultSaturation={defaultSaturation}
-                            defaultVibrance={defaultVibrance}
-                            onDragStateChange={handleDragStateChange}
-                            onUpdate={updateLutAdjustment}
-                            onSaveAsDefault={handleSaveAsDefault}
-                            onResetToDefault={handleResetToDefault}
-                          />
-                        </div>
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
-                </div>
-              );
-            })}
-          </div>
         ) : (
-          <>
-            {Array.from({ length: Math.ceil(orderedEntries.length / (isWide ? 2 : 1)) }).map((_, rowIndex) => {
-              const columns = isWide ? 2 : 1;
-              const start = rowIndex * columns;
-              const rowEntries = orderedEntries.slice(start, start + columns);
-              const isLastRow = rowIndex === Math.ceil(orderedEntries.length / columns) - 1;
-              return (
-                <div
-                  key={rowIndex}
-                  className={clsx(
-                    'grid gap-3 items-start',
-                    isWide ? 'grid-cols-2' : 'grid-cols-1',
-                    !isLastRow && 'mb-2.5',
-                  )}
-                  role="row"
-                >
-                  {rowEntries.map((entry) => {
-                    const thumb = previews[entry.path];
-                    const isSelected = entry.path === selectedLutPath;
+          <DndContext
+            sensors={sensors}
+            onDragStart={(e) => setActiveDragItem(e.active.data.current as any)}
+            onDragEnd={handleDragEnd}
+          >
+            {viewMode === 'compact' ? (
+              <div className="space-y-2">
+                {mixedItems.map((item) => {
+                  if (item.type === LutListType.Folder) {
+                    const folder = item.folder;
+                    const isExpanded = expandedFolders.has(folder.id);
+                    const visibleChildren = folder.children
+                      .map((path) => orderedEntries.find((e) => e.path === path))
+                      .filter(Boolean) as LutEntry[];
                     return (
-                      <div key={entry.path} className="flex flex-col p-2 rounded-lg bg-surface">
-                        <button
-                          onClick={() => handleSelect(entry.path)}
-                          onContextMenu={(e) => handleContextMenu(e, entry)}
-                          onMouseEnter={() => setLutPreviewOverride(entry.path)}
-                          onMouseLeave={() => setLutPreviewOverride(null)}
-                          className={clsx(
-                            'relative aspect-square rounded-md overflow-hidden bg-bg-tertiary text-left outline-2 outline-offset-[-2px] transition-[outline-color]',
-                            isSelected ? 'outline-accent' : 'outline-transparent hover:outline-accent/50',
-                          )}
-                          aria-selected={isSelected}
-                          aria-label={entry.name}
-                          role="gridcell"
-                        >
-                          {isLoadingPreviews && thumb === undefined ? (
-                            <div className="w-full h-full animate-pulse bg-surface" />
-                          ) : thumb ? (
-                            <img
-                              src={thumb}
-                              alt={entry.name}
-                              className="w-full h-full object-cover"
-                              draggable={false}
-                            />
-                          ) : (
-                            <div className="w-full h-full flex items-center justify-center text-text-secondary">
-                              <ImageOff size={18} />
-                            </div>
-                          )}
-                          {appSettings?.lutSettings?.[entry.path]?.hotkey &&
-                            appSettings.lutSettings[entry.path].hotkey.length > 0 && (
-                              <Text
-                                as="kbd"
-                                variant={TextVariants.small}
-                                color={TextColors.secondary}
-                                className="absolute top-1.5 right-1.5 px-1 py-0.5 bg-bg-primary/90 backdrop-blur-sm border border-border-color/50 rounded text-[10px] leading-none"
-                              >
-                                {appSettings.lutSettings[entry.path].hotkey
-                                  .map((k) => formatKeyCode(k, osPlatform))
-                                  .join('')}
-                              </Text>
-                            )}
-                        </button>
-                        <Text
-                          variant={TextVariants.label}
-                          color={isSelected ? TextColors.primary : TextColors.secondary}
-                          weight={isSelected ? TextWeights.medium : TextWeights.normal}
-                          className="mt-[10px] truncate px-0.5"
-                        >
-                          {entry.name}
-                        </Text>
+                      <div key={folder.id}>
+                        <DraggableFolderHeader
+                          folder={folder}
+                          visibleCount={visibleChildren.length}
+                          isExpanded={isExpanded}
+                          onToggle={toggleFolder}
+                          onContextMenu={(e) => {
+                            e.preventDefault();
+                          }}
+                        />
                         <AnimatePresence initial={false}>
-                          {isSelected && (
+                          {isExpanded && (
                             <motion.div
                               initial={{ height: 0, opacity: 0 }}
                               animate={{ height: 'auto', opacity: 1 }}
                               exit={{ height: 0, opacity: 0 }}
                               transition={{ duration: 0.25, ease: 'easeInOut' }}
-                              className="w-full cursor-auto overflow-hidden"
-                              onClick={(e) => e.stopPropagation()}
-                              onPointerDown={(e) => e.stopPropagation()}
+                              className="ml-5 pl-4 border-l-[1.5px] border-border-color/50 space-y-2 pt-2"
                             >
-                              <div className="mt-3">
-                                <LutDetailPanel
-                                  lutIntensity={lutIntensity}
-                                  lutInputOffset={lutInputOffset}
-                                  lutInputRange={lutInputRange}
-                                  lutWbTemperatureShift={lutWbTemperatureShift}
-                                  lutWbTintShift={lutWbTintShift}
-                                  lutFlimContrast={lutFlimContrast}
-                                  lutFlimLights={lutFlimLights}
-                                  lutFlimShadows={lutFlimShadows}
-                                  lutSaturation={lutSaturation}
-                                  lutVibrance={lutVibrance}
-                                  defaultIntensity={defaultParams.intensity}
-                                  defaultInputOffset={defaultParams.inputOffset}
-                                  defaultInputRange={defaultParams.inputRange}
-                                  defaultWbTemperatureShift={defaultWbTemperatureShift}
-                                  defaultWbTintShift={defaultWbTintShift}
-                                  defaultFlimContrast={defaultFlimContrast}
-                                  defaultFlimLights={defaultFlimLights}
-                                  defaultFlimShadows={defaultFlimShadows}
-                                  defaultSaturation={defaultSaturation}
-                                  defaultVibrance={defaultVibrance}
-                                  onDragStateChange={handleDragStateChange}
-                                  onUpdate={updateLutAdjustment}
-                                  onSaveAsDefault={handleSaveAsDefault}
-                                  onResetToDefault={handleResetToDefault}
-                                />
-                              </div>
+                              {visibleChildren.map((entry) => {
+                                const isSelected = entry.path === selectedLutPath;
+                                return (
+                                  <div key={entry.path} className="flex flex-col">
+                                    <DraggableLutRow
+                                      folderId={folder.id}
+                                      entry={entry}
+                                      thumb={previews[entry.path] ?? null}
+                                      isSelected={isSelected}
+                                      isLoading={isLoadingPreviews}
+                                      hotkey={appSettings?.lutSettings?.[entry.path]?.hotkey ?? null}
+                                      osPlatform={osPlatform}
+                                      onSelect={handleSelect}
+                                      onContextMenu={handleContextMenu}
+                                      onMouseEnter={() => setLutPreviewOverride(entry.path)}
+                                      onMouseLeave={() => setLutPreviewOverride(null)}
+                                    />
+                                    <AnimatePresence initial={false}>
+                                      {isSelected && (
+                                        <motion.div
+                                          initial={{ height: 0, opacity: 0 }}
+                                          animate={{ height: 'auto', opacity: 1 }}
+                                          exit={{ height: 0, opacity: 0 }}
+                                          transition={{ duration: 0.25, ease: 'easeInOut' }}
+                                          className="w-full cursor-auto overflow-hidden"
+                                          onClick={(e) => e.stopPropagation()}
+                                          onPointerDown={(e) => e.stopPropagation()}
+                                        >
+                                          <div className="mt-3 px-2 pb-2">
+                                            <LutDetailPanel
+                                              lutIntensity={lutIntensity}
+                                              lutInputOffset={lutInputOffset}
+                                              lutInputRange={lutInputRange}
+                                              lutWbTemperatureShift={lutWbTemperatureShift}
+                                              lutWbTintShift={lutWbTintShift}
+                                              lutFlimContrast={lutFlimContrast}
+                                              lutFlimLights={lutFlimLights}
+                                              lutFlimShadows={lutFlimShadows}
+                                              lutSaturation={lutSaturation}
+                                              lutVibrance={lutVibrance}
+                                              defaultIntensity={defaultParams.intensity}
+                                              defaultInputOffset={defaultParams.inputOffset}
+                                              defaultInputRange={defaultParams.inputRange}
+                                              defaultWbTemperatureShift={defaultWbTemperatureShift}
+                                              defaultWbTintShift={defaultWbTintShift}
+                                              defaultFlimContrast={defaultFlimContrast}
+                                              defaultFlimLights={defaultFlimLights}
+                                              defaultFlimShadows={defaultFlimShadows}
+                                              defaultSaturation={defaultSaturation}
+                                              defaultVibrance={defaultVibrance}
+                                              onDragStateChange={handleDragStateChange}
+                                              onUpdate={updateLutAdjustment}
+                                              onSaveAsDefault={handleSaveAsDefault}
+                                              onResetToDefault={handleResetToDefault}
+                                            />
+                                          </div>
+                                        </motion.div>
+                                      )}
+                                    </AnimatePresence>
+                                  </div>
+                                );
+                              })}
                             </motion.div>
                           )}
                         </AnimatePresence>
                       </div>
                     );
-                  })}
-                  {isLastRow && isWide && rowEntries.length < 2 && (
-                    <button
-                      onClick={handleImport}
-                      className="aspect-square rounded-md bg-bg-tertiary border-2 border-text-secondary/25 hover:border-accent flex items-center justify-center text-text-secondary hover:text-text-primary transition-all duration-150"
-                      data-tooltip={t('ui.lut.import')}
-                      aria-label={t('ui.lut.import')}
-                      role="gridcell"
+                  }
+                  const entry = item.entry;
+                  const isSelected = entry.path === selectedLutPath;
+                  return (
+                    <div key={entry.path} className="flex flex-col">
+                      <DraggableLutRow
+                        entry={entry}
+                        thumb={previews[entry.path] ?? null}
+                        isSelected={isSelected}
+                        isLoading={isLoadingPreviews}
+                        hotkey={appSettings?.lutSettings?.[entry.path]?.hotkey ?? null}
+                        osPlatform={osPlatform}
+                        onSelect={handleSelect}
+                        onContextMenu={handleContextMenu}
+                        onMouseEnter={() => setLutPreviewOverride(entry.path)}
+                        onMouseLeave={() => setLutPreviewOverride(null)}
+                      />
+                      <AnimatePresence initial={false}>
+                        {isSelected && (
+                          <motion.div
+                            initial={{ height: 0, opacity: 0 }}
+                            animate={{ height: 'auto', opacity: 1 }}
+                            exit={{ height: 0, opacity: 0 }}
+                            transition={{ duration: 0.25, ease: 'easeInOut' }}
+                            className="w-full cursor-auto overflow-hidden"
+                            onClick={(e) => e.stopPropagation()}
+                            onPointerDown={(e) => e.stopPropagation()}
+                          >
+                            <div className="mt-3 px-2 pb-2">
+                              <LutDetailPanel
+                                lutIntensity={lutIntensity}
+                                lutInputOffset={lutInputOffset}
+                                lutInputRange={lutInputRange}
+                                lutWbTemperatureShift={lutWbTemperatureShift}
+                                lutWbTintShift={lutWbTintShift}
+                                lutFlimContrast={lutFlimContrast}
+                                lutFlimLights={lutFlimLights}
+                                lutFlimShadows={lutFlimShadows}
+                                lutSaturation={lutSaturation}
+                                lutVibrance={lutVibrance}
+                                defaultIntensity={defaultParams.intensity}
+                                defaultInputOffset={defaultParams.inputOffset}
+                                defaultInputRange={defaultParams.inputRange}
+                                defaultWbTemperatureShift={defaultWbTemperatureShift}
+                                defaultWbTintShift={defaultWbTintShift}
+                                defaultFlimContrast={defaultFlimContrast}
+                                defaultFlimLights={defaultFlimLights}
+                                defaultFlimShadows={defaultFlimShadows}
+                                defaultSaturation={defaultSaturation}
+                                defaultVibrance={defaultVibrance}
+                                onDragStateChange={handleDragStateChange}
+                                onUpdate={updateLutAdjustment}
+                                onSaveAsDefault={handleSaveAsDefault}
+                                onResetToDefault={handleResetToDefault}
+                              />
+                            </div>
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <>
+                {Array.from({ length: Math.ceil(orderedEntries.length / (isWide ? 2 : 1)) }).map((_, rowIndex) => {
+                  const columns = isWide ? 2 : 1;
+                  const start = rowIndex * columns;
+                  const rowEntries = orderedEntries.slice(start, start + columns);
+                  const isLastRow = rowIndex === Math.ceil(orderedEntries.length / columns) - 1;
+                  return (
+                    <div
+                      key={rowIndex}
+                      className={clsx(
+                        'grid gap-3 items-start',
+                        isWide ? 'grid-cols-2' : 'grid-cols-1',
+                        !isLastRow && 'mb-2.5',
+                      )}
+                      role="row"
                     >
-                      <Upload size={20} />
-                    </button>
-                  )}
-                </div>
-              );
-            })}
-            {(orderedEntries.length === 0 || !isWide || orderedEntries.length % 2 === 0) && (
-              <button
-                onClick={handleImport}
-                className="w-full aspect-square rounded-md bg-bg-tertiary border-2 border-text-secondary/25 hover:border-accent flex items-center justify-center text-text-secondary hover:text-text-primary transition-all duration-150 mt-3"
-                data-tooltip={t('ui.lut.import')}
-                aria-label={t('ui.lut.import')}
-                role="gridcell"
-              >
-                <Upload size={20} />
-              </button>
+                      {rowEntries.map((entry) => {
+                        const thumb = previews[entry.path];
+                        const isSelected = entry.path === selectedLutPath;
+                        return (
+                          <div key={entry.path} className="flex flex-col p-2 rounded-lg bg-surface">
+                            <button
+                              onClick={() => handleSelect(entry.path)}
+                              onContextMenu={(e) => handleContextMenu(e, entry)}
+                              onMouseEnter={() => setLutPreviewOverride(entry.path)}
+                              onMouseLeave={() => setLutPreviewOverride(null)}
+                              className={clsx(
+                                'relative aspect-square rounded-md overflow-hidden bg-bg-tertiary text-left outline-2 outline-offset-[-2px] transition-[outline-color]',
+                                isSelected ? 'outline-accent' : 'outline-transparent hover:outline-accent/50',
+                              )}
+                              aria-selected={isSelected}
+                              aria-label={entry.name}
+                              role="gridcell"
+                            >
+                              {isLoadingPreviews && thumb === undefined ? (
+                                <div className="w-full h-full animate-pulse bg-surface" />
+                              ) : thumb ? (
+                                <img
+                                  src={thumb}
+                                  alt={entry.name}
+                                  className="w-full h-full object-cover"
+                                  draggable={false}
+                                />
+                              ) : (
+                                <div className="w-full h-full flex items-center justify-center text-text-secondary">
+                                  <ImageOff size={18} />
+                                </div>
+                              )}
+                              {appSettings?.lutSettings?.[entry.path]?.hotkey &&
+                                appSettings.lutSettings[entry.path].hotkey.length > 0 && (
+                                  <Text
+                                    as="kbd"
+                                    variant={TextVariants.small}
+                                    color={TextColors.secondary}
+                                    className="absolute top-1.5 right-1.5 px-1 py-0.5 bg-bg-primary/90 backdrop-blur-sm border border-border-color/50 rounded text-[10px] leading-none"
+                                  >
+                                    {appSettings.lutSettings[entry.path].hotkey
+                                      .map((k) => formatKeyCode(k, osPlatform))
+                                      .join('')}
+                                  </Text>
+                                )}
+                            </button>
+                            <Text
+                              variant={TextVariants.label}
+                              color={isSelected ? TextColors.primary : TextColors.secondary}
+                              weight={isSelected ? TextWeights.medium : TextWeights.normal}
+                              className="mt-[10px] truncate px-0.5"
+                            >
+                              {entry.name}
+                            </Text>
+                            <AnimatePresence initial={false}>
+                              {isSelected && (
+                                <motion.div
+                                  initial={{ height: 0, opacity: 0 }}
+                                  animate={{ height: 'auto', opacity: 1 }}
+                                  exit={{ height: 0, opacity: 0 }}
+                                  transition={{ duration: 0.25, ease: 'easeInOut' }}
+                                  className="w-full cursor-auto overflow-hidden"
+                                  onClick={(e) => e.stopPropagation()}
+                                  onPointerDown={(e) => e.stopPropagation()}
+                                >
+                                  <div className="mt-3">
+                                    <LutDetailPanel
+                                      lutIntensity={lutIntensity}
+                                      lutInputOffset={lutInputOffset}
+                                      lutInputRange={lutInputRange}
+                                      lutWbTemperatureShift={lutWbTemperatureShift}
+                                      lutWbTintShift={lutWbTintShift}
+                                      lutFlimContrast={lutFlimContrast}
+                                      lutFlimLights={lutFlimLights}
+                                      lutFlimShadows={lutFlimShadows}
+                                      lutSaturation={lutSaturation}
+                                      lutVibrance={lutVibrance}
+                                      defaultIntensity={defaultParams.intensity}
+                                      defaultInputOffset={defaultParams.inputOffset}
+                                      defaultInputRange={defaultParams.inputRange}
+                                      defaultWbTemperatureShift={defaultWbTemperatureShift}
+                                      defaultWbTintShift={defaultWbTintShift}
+                                      defaultFlimContrast={defaultFlimContrast}
+                                      defaultFlimLights={defaultFlimLights}
+                                      defaultFlimShadows={defaultFlimShadows}
+                                      defaultSaturation={defaultSaturation}
+                                      defaultVibrance={defaultVibrance}
+                                      onDragStateChange={handleDragStateChange}
+                                      onUpdate={updateLutAdjustment}
+                                      onSaveAsDefault={handleSaveAsDefault}
+                                      onResetToDefault={handleResetToDefault}
+                                    />
+                                  </div>
+                                </motion.div>
+                              )}
+                            </AnimatePresence>
+                          </div>
+                        );
+                      })}
+                      {isLastRow && isWide && rowEntries.length < 2 && (
+                        <button
+                          onClick={handleImport}
+                          className="aspect-square rounded-md bg-bg-tertiary border-2 border-text-secondary/25 hover:border-accent flex items-center justify-center text-text-secondary hover:text-text-primary transition-all duration-150"
+                          data-tooltip={t('ui.lut.import')}
+                          aria-label={t('ui.lut.import')}
+                          role="gridcell"
+                        >
+                          <Upload size={20} />
+                        </button>
+                      )}
+                    </div>
+                  );
+                })}
+                {(orderedEntries.length === 0 || !isWide || orderedEntries.length % 2 === 0) && (
+                  <button
+                    onClick={handleImport}
+                    className="w-full aspect-square rounded-md bg-bg-tertiary border-2 border-text-secondary/25 hover:border-accent flex items-center justify-center text-text-secondary hover:text-text-primary transition-all duration-150 mt-3"
+                    data-tooltip={t('ui.lut.import')}
+                    aria-label={t('ui.lut.import')}
+                    role="gridcell"
+                  >
+                    <Upload size={20} />
+                  </button>
+                )}
+              </>
             )}
-          </>
+            <DragOverlay>
+              {activeDragItem?.type === LutListType.Lut && activeDragItem.path ? (
+                <div className="p-2 rounded-lg bg-surface opacity-90">
+                  <CompactLutRow
+                    entry={orderedEntries.find((e) => e.path === activeDragItem.path)!}
+                    thumb={previews[activeDragItem.path] ?? null}
+                    isSelected={false}
+                    isLoading={false}
+                    hotkey={appSettings?.lutSettings?.[activeDragItem.path]?.hotkey ?? null}
+                    osPlatform={osPlatform}
+                    onSelect={() => {}}
+                    onContextMenu={() => {}}
+                    onMouseEnter={() => {}}
+                    onMouseLeave={() => {}}
+                  />
+                </div>
+              ) : activeDragItem?.type === LutListType.Folder && activeDragItem.folder ? (
+                <div className="p-2 rounded-lg bg-surface opacity-90">
+                  <FolderHeader
+                    folder={activeDragItem.folder}
+                    visibleCount={activeDragItem.folder.children.length}
+                    isExpanded={false}
+                    onToggle={() => {}}
+                    onContextMenu={() => {}}
+                  />
+                </div>
+              ) : null}
+            </DragOverlay>
+          </DndContext>
         )}
       </div>
 
@@ -959,6 +1047,88 @@ function CompactLutRow({
           )}
         </div>
       </div>
+    </div>
+  );
+}
+
+interface DraggableLutRowProps extends CompactLutRowProps {
+  folderId?: string | null;
+}
+
+function DraggableLutRow({ folderId, ...props }: DraggableLutRowProps) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef: setDragRef,
+    isDragging,
+  } = useDraggable({
+    id: props.entry.path,
+    data: { type: LutListType.Lut, path: props.entry.path, folderId },
+  });
+  const { setNodeRef: setDropRef, isOver } = useDroppable({
+    id: props.entry.path,
+    data: { type: LutListType.Lut, path: props.entry.path, folderId },
+  });
+  const setRef = useCallback(
+    (node: HTMLElement | null) => {
+      setDragRef(node);
+      setDropRef(node);
+    },
+    [setDragRef, setDropRef],
+  );
+  return (
+    <div
+      ref={setRef}
+      style={{
+        opacity: isDragging ? 0.4 : 1,
+        outline: isOver ? '2px solid var(--color-primary)' : '2px solid transparent',
+        outlineOffset: '-2px',
+      }}
+      {...listeners}
+      {...attributes}
+    >
+      <CompactLutRow {...props} />
+    </div>
+  );
+}
+
+interface DraggableFolderHeaderProps extends FolderHeaderProps {
+  visibleCount: number;
+}
+
+function DraggableFolderHeader(props: DraggableFolderHeaderProps) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef: setDragRef,
+    isDragging,
+  } = useDraggable({
+    id: props.folder.id,
+    data: { type: LutListType.Folder, folder: props.folder },
+  });
+  const { setNodeRef: setDropRef, isOver } = useDroppable({
+    id: props.folder.id,
+    data: { type: LutListType.Folder, folder: props.folder },
+  });
+  const setRef = useCallback(
+    (node: HTMLElement | null) => {
+      setDragRef(node);
+      setDropRef(node);
+    },
+    [setDragRef, setDropRef],
+  );
+  return (
+    <div
+      ref={setRef}
+      style={{
+        opacity: isDragging ? 0.4 : 1,
+        outline: isOver ? '2px solid var(--color-primary)' : '2px solid transparent',
+        outlineOffset: '-2px',
+      }}
+      {...listeners}
+      {...attributes}
+    >
+      <FolderHeader {...props} />
     </div>
   );
 }
