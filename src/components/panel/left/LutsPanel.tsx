@@ -20,13 +20,16 @@ import {
   ChevronRight,
   Folder as FolderIcon,
   FolderOpen,
+  FolderPlus,
   ImageOff,
   LayoutGrid,
   List,
   Loader2,
   Pencil,
+  Plus,
   RotateCcw,
   Save,
+  Star,
   Trash2,
   Upload,
   X,
@@ -43,6 +46,8 @@ import { useLutStore, type LutEntry, type LutListItem, LutListType } from '../..
 import { useSettingsStore } from '../../../store/useSettingsStore';
 import { useUIStore } from '../../../store/useUIStore';
 import ConfigureLutHotkeyModal from '../../modals/ConfigureLutHotkeyModal';
+import CreateFolderModal from '../../modals/CreateFolderModal';
+import RenameFolderModal from '../../modals/RenameFolderModal';
 import { Adjustments, INITIAL_ADJUSTMENTS } from '../../../utils/adjustments';
 import {
   DEFAULT_LUT_PARAMS,
@@ -107,6 +112,11 @@ export default function LutsPanel({ isVisible, panelWidth }: LutsPanelProps) {
     reorderLut,
     reorderFolderLut,
     reorderFolder,
+    toggleFavorite,
+    favorites,
+    addFolder,
+    deleteFolder,
+    renameFolder,
   } = useLutStore();
   const [previews, setPreviews] = useState<Record<string, string | null>>({});
   const [isLoadingPreviews, setIsLoadingPreviews] = useState(false);
@@ -114,6 +124,11 @@ export default function LutsPanel({ isVisible, panelWidth }: LutsPanelProps) {
     isOpen: false,
     entry: null,
   });
+  const [folderModalState, setFolderModalState] = useState<
+    | { type: 'create' }
+    | { type: 'rename'; folder: LutFolder }
+    | null
+  >(null);
   const [activeDragItem, setActiveDragItem] = useState<{ type: LutListType; path?: string; folder?: LutFolder } | null>(
     null,
   );
@@ -362,6 +377,22 @@ export default function LutsPanel({ isVisible, panelWidth }: LutsPanelProps) {
           onClick: () => setHotkeyModalState({ isOpen: true, entry }),
         },
         {
+          icon: Star,
+          label: favorites.has(entry.path) ? t('ui.lut.removeFavorite') : t('ui.lut.addFavorite'),
+          onClick: () => toggleFavorite(entry.path),
+        },
+        {
+          icon: FolderPlus,
+          label: t('ui.lut.addToFolder'),
+          submenu: [
+            ...folders.map((f) => ({
+              label: f.name,
+              onClick: () => moveLutToFolder(entry.path, f.id),
+            })),
+            { label: t('ui.lut.newFolder'), icon: Plus, onClick: () => setFolderModalState({ type: 'create' }) },
+          ],
+        },
+        {
           icon: Trash2,
           label: t('ui.lut.deleteLut'),
           submenu: [
@@ -399,7 +430,40 @@ export default function LutsPanel({ isVisible, panelWidth }: LutsPanelProps) {
         },
       ]);
     },
-    [showContextMenu, t],
+    [showContextMenu, t, favorites, toggleFavorite, folders, moveLutToFolder, selectedLutPath, setAdjustments, loadLuts],
+  );
+
+  const handleFolderContextMenu = useCallback(
+    (event: React.MouseEvent, folder: LutFolder) => {
+      event.preventDefault();
+      event.stopPropagation();
+      showContextMenu(event.clientX, event.clientY, [
+        {
+          icon: Pencil,
+          label: t('ui.lut.renameFolder'),
+          onClick: () => setFolderModalState({ type: 'rename', folder }),
+        },
+        {
+          icon: Trash2,
+          label: t('ui.lut.deleteFolder'),
+          submenu: [
+            { label: t('contextMenus.editor.cancel'), icon: X, onClick: () => {} },
+            {
+              label: t('ui.lut.deleteFolderKeepChildren'),
+              icon: Check,
+              onClick: () => deleteFolder(folder.id, true),
+            },
+            {
+              label: t('ui.lut.deleteFolderRemoveChildren'),
+              icon: Trash2,
+              isDestructive: true,
+              onClick: () => deleteFolder(folder.id, false),
+            },
+          ],
+        },
+      ]);
+    },
+    [showContextMenu, t, deleteFolder],
   );
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 10 } }));
@@ -572,7 +636,26 @@ export default function LutsPanel({ isVisible, panelWidth }: LutsPanelProps) {
         </div>
       </div>
 
-      <div className="grow min-h-0 overflow-y-auto p-4">
+      <div
+        className="grow min-h-0 overflow-y-auto p-4"
+        onContextMenu={(e) => {
+          if (e.target === e.currentTarget) {
+            e.preventDefault();
+            showContextMenu(e.clientX, e.clientY, [
+              {
+                icon: FolderPlus,
+                label: t('ui.lut.createFolder'),
+                onClick: () => setFolderModalState({ type: 'create' }),
+              },
+              {
+                icon: viewMode === 'expanded' ? List : LayoutGrid,
+                label: t(viewMode === 'expanded' ? 'ui.lut.compactView' : 'ui.lut.expandedView'),
+                onClick: () => setViewMode(viewMode === 'expanded' ? 'compact' : 'expanded'),
+              },
+            ]);
+          }
+        }}
+      >
         {isLoadingEntries && orderedEntries.length === 0 ? (
           <Text
             as="div"
@@ -615,9 +698,7 @@ export default function LutsPanel({ isVisible, panelWidth }: LutsPanelProps) {
                           visibleCount={visibleChildren.length}
                           isExpanded={isExpanded}
                           onToggle={toggleFolder}
-                          onContextMenu={(e) => {
-                            e.preventDefault();
-                          }}
+                          onContextMenu={handleFolderContextMenu}
                         />
                         <AnimatePresence initial={false}>
                           {isExpanded && (
@@ -807,19 +888,18 @@ export default function LutsPanel({ isVisible, panelWidth }: LutsPanelProps) {
                                   <ImageOff size={18} />
                                 </div>
                               )}
-                              {appSettings?.lutSettings?.[entry.path]?.hotkey &&
-                                appSettings.lutSettings[entry.path].hotkey.length > 0 && (
-                                  <Text
-                                    as="kbd"
-                                    variant={TextVariants.small}
-                                    color={TextColors.secondary}
-                                    className="absolute top-1.5 right-1.5 px-1 py-0.5 bg-bg-primary/90 backdrop-blur-sm border border-border-color/50 rounded text-[10px] leading-none"
-                                  >
-                                    {appSettings.lutSettings[entry.path].hotkey
-                                      .map((k) => formatKeyCode(k, osPlatform))
-                                      .join('')}
-                                  </Text>
-                                )}
+                              {appSettings?.lutSettings?.[entry.path]?.hotkey?.length ? (
+                                <Text
+                                  as="kbd"
+                                  variant={TextVariants.small}
+                                  color={TextColors.secondary}
+                                  className="absolute top-1.5 right-1.5 px-1 py-0.5 bg-bg-primary/90 backdrop-blur-sm border border-border-color/50 rounded text-[10px] leading-none"
+                                >
+                                  {appSettings.lutSettings?.[entry.path]?.hotkey
+                                    ?.map((k) => formatKeyCode(k, osPlatform))
+                                    .join('')}
+                                </Text>
+                              ) : null}
                             </button>
                             <Text
                               variant={TextVariants.label}
@@ -956,6 +1036,30 @@ export default function LutsPanel({ isVisible, panelWidth }: LutsPanelProps) {
               }));
             }
           }}
+        />
+      )}
+
+      {folderModalState?.type === 'create' && (
+        <CreateFolderModal
+          isOpen
+          onClose={() => setFolderModalState(null)}
+          onSave={(name) => {
+            addFolder(name);
+            setFolderModalState(null);
+          }}
+          title={t('ui.lut.createFolder')}
+        />
+      )}
+      {folderModalState?.type === 'rename' && (
+        <RenameFolderModal
+          isOpen
+          currentName={folderModalState.folder.name}
+          onClose={() => setFolderModalState(null)}
+          onSave={(name) => {
+            renameFolder(folderModalState.folder.id, name);
+            setFolderModalState(null);
+          }}
+          title={t('ui.lut.renameFolder')}
         />
       )}
     </div>
