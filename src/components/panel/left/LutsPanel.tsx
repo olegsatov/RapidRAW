@@ -13,7 +13,7 @@ import type { LutFileSettings } from '../../ui/AppProperties';
 import { useContextMenu } from '../../../context/ContextMenuContext';
 import { useEditorActions } from '../../../hooks/useEditorActions';
 import { useEditorStore } from '../../../store/useEditorStore';
-import { useLutStore } from '../../../store/useLutStore';
+import { useLutStore, type LutEntry } from '../../../store/useLutStore';
 import { useSettingsStore } from '../../../store/useSettingsStore';
 import { useUIStore } from '../../../store/useUIStore';
 import ConfigureLutHotkeyModal from '../../modals/ConfigureLutHotkeyModal';
@@ -29,11 +29,6 @@ import {
 } from '../../../utils/lutSettings';
 import { formatKeyCode } from '../../../utils/keyboardUtils';
 import { TextColors, TextVariants, TextWeights } from '../../../types/typography';
-
-interface LutEntry {
-  name: string;
-  path: string;
-}
 
 interface LutPreview {
   path: string;
@@ -240,7 +235,14 @@ export default function LutsPanel({ isVisible, panelWidth }: LutsPanelProps) {
       const isAndroid = osPlatform === 'android';
       const selected = await open({
         multiple: true,
-        filters: isAndroid ? [] : [{ name: 'LUT & HALD files', extensions: ['cube', '3dl', 'CUBE', '3DL', 'tiff', 'tif', 'png', 'TIFF', 'TIF', 'PNG'] }],
+        filters: isAndroid
+          ? []
+          : [
+              {
+                name: 'LUT & HALD files',
+                extensions: ['cube', '3dl', 'CUBE', '3DL', 'tiff', 'tif', 'png', 'TIFF', 'TIF', 'PNG'],
+              },
+            ],
       });
       const sourcePaths = Array.isArray(selected) ? selected : selected ? [selected] : [];
       if (sourcePaths.length === 0) return;
@@ -442,8 +444,9 @@ export default function LutsPanel({ isVisible, panelWidth }: LutsPanelProps) {
 
   const orderedEntries = useMemo(() => {
     const map = new Map(entries.map((e) => [e.path, e]));
+    const orderedPaths = new Set(order);
     const ordered = order.map((path) => map.get(path)).filter((e): e is LutEntry => !!e);
-    const remaining = entries.filter((e) => !order.includes(e.path));
+    const remaining = entries.filter((e) => !orderedPaths.has(e.path));
     return [...ordered, ...remaining];
   }, [entries, order]);
 
