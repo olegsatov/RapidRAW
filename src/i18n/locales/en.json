@@ -2029,6 +2029,7 @@
       "empty": "No LUTs yet — import some",
       "filterLabel": "LUT & HALD Files",
       "import": "Import LUTs",
+      "importIntoFolder": "Import LUTs into folder",
       "importFailed": "Failed to import LUTs",
       "inputOffset": "Input offset",
       "inputRange": "Input range",

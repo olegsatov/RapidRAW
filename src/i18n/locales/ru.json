@@ -2019,6 +2019,7 @@
       "empty": "Пока нет LUT — импортируйте их",
       "filterLabel": "Файлы LUT и HALD",
       "import": "Import LUTs",
+      "importIntoFolder": "Импортировать LUT в папку",
       "importFailed": "Не удалось импортировать LUT",
       "inputOffset": "Смещение входа",
       "inputRange": "Диапазон входа",

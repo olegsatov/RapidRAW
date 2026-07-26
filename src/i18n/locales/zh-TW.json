@@ -1840,6 +1840,7 @@
       "empty": "暫無 LUT — 請匯入一些",
       "filterLabel": "LUT & HALD 檔案",
       "import": "Import LUTs",
+      "importIntoFolder": "匯入 LUT 到資料夾",
       "importFailed": "匯入 LUT 失敗",
       "intensity": "強度",
       "wbTemperatureShift": "Temp shift",

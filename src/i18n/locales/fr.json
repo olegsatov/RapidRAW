@@ -1840,6 +1840,7 @@
       "empty": "Pas encore de LUT — importez-en",
       "filterLabel": "Fichiers LUT et HALD",
       "import": "Import LUTs",
+      "importIntoFolder": "Importer les LUT dans le dossier",
       "importFailed": "Échec de l'importation des LUT",
       "intensity": "Intensité",
       "wbTemperatureShift": "Temp shift",

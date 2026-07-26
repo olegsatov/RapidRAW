@@ -1840,6 +1840,7 @@
       "empty": "아직 LUT가 없습니다 — 가져오기를 수행하세요",
       "filterLabel": "LUT & HALD 파일",
       "import": "Import LUTs",
+      "importIntoFolder": "폴더에 LUT 가져오기",
       "importFailed": "LUT 가져오기 실패",
       "intensity": "강도",
       "wbTemperatureShift": "Temp shift",

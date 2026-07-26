@@ -1904,6 +1904,7 @@
       "empty": "Brak LUT — zaimportuj jakieś",
       "filterLabel": "Pliki LUT i HALD",
       "import": "Import LUTs",
+      "importIntoFolder": "Importuj LUT-y do folderu",
       "importFailed": "Nie udało się zaimportować LUT",
       "intensity": "Intensywność",
       "wbTemperatureShift": "Temp shift",

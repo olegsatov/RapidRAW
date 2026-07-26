@@ -1839,6 +1839,7 @@
       "empty": "LUTはまだありません — インポートしてください",
       "filterLabel": "LUT & HALDファイル",
       "import": "Import LUTs",
+      "importIntoFolder": "フォルダにLUTをインポート",
       "importFailed": "LUTのインポートに失敗しました",
       "intensity": "適用度",
       "wbTemperatureShift": "Temp shift",
