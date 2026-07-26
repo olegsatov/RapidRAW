@@ -14,6 +14,9 @@ import Resizer from './components/ui/Resizer';
 import GlobalTooltip from './components/ui/GlobalTooltip';
 import ImportJobsIndicator from './components/ui/ImportJobsIndicator';
 import ArchiveProgressIndicator from './components/ui/ArchiveProgressIndicator';
+import CatalogBackupIndicator from './components/ui/CatalogBackupIndicator';
+import CatalogBackupBanner from './components/ui/CatalogBackupBanner';
+import CatalogBackupExitDialog from './components/ui/CatalogBackupExitDialog';
 import AppModals from './components/modals/AppModals';
 
 import EditorView from './components/views/EditorView';
@@ -45,6 +48,7 @@ import { useProductivityActions } from './hooks/useProductivityActions';
 
 import { useAppInitialization, LaunchPayload } from './hooks/useAppInitialization';
 import { useAndroidBackHandler } from './hooks/useAndroidBackHandler';
+import { useCatalogBackup } from './hooks/useCatalogBackup';
 import './i18n';
 
 import {
@@ -402,6 +406,9 @@ function App() {
     markGenerated,
   });
 
+  const { pendingCount, showBanner, setShowBanner, showExitDialog, setShowExitDialog, createBackup, dismissBanner } =
+    useCatalogBackup();
+
   useAndroidBackHandler();
 
   const instantTransitionTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -648,7 +655,16 @@ function App() {
             isFullScreen || lightsOffActive ? 'max-h-0 opacity-0 pointer-events-none' : 'max-h-[60px] opacity-100',
           )}
         >
-          {appSettings?.decorations || (!isWindowFullScreen && <TitleBar />)}
+          {appSettings?.decorations ||
+            (!isWindowFullScreen && (
+              <TitleBar
+                leftAccessory={
+                  hasMainContent ? (
+                    <CatalogBackupIndicator pendingCount={pendingCount} onClick={() => createBackup()} />
+                  ) : undefined
+                }
+              />
+            ))}
         </div>
         <div
           className={clsx(
@@ -811,6 +827,30 @@ function App() {
         />
         <ImportJobsIndicator />
         <ArchiveProgressIndicator />
+        <CatalogBackupBanner
+          isOpen={showBanner}
+          pendingCount={pendingCount}
+          onBackup={() => {
+            setShowBanner(false);
+            createBackup();
+          }}
+          onDismiss={() => dismissBanner()}
+        />
+        <CatalogBackupExitDialog
+          isOpen={showExitDialog}
+          pendingCount={pendingCount}
+          onBackup={async () => {
+            const ok = await createBackup();
+            if (ok) {
+              await invoke('confirm_exit');
+            }
+          }}
+          onQuitWithoutBackup={() => invoke('confirm_exit')}
+          onCancel={() => {
+            setShowExitDialog(false);
+            invoke('cancel_exit_request');
+          }}
+        />
       </div>
     </>
   );

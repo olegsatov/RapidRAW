@@ -20,7 +20,7 @@ const RestoreDownIcon = ({ size = 14, className = '' }) => (
   </svg>
 );
 
-export default function TitleBar() {
+export default function TitleBar({ leftAccessory }: { leftAccessory?: React.ReactNode }) {
   const [osPlatform, setOsPlatform] = useState('');
   const [isMaximized, setIsMaximized] = useState(false);
   const [appWindow, setAppWindow] = useState<ReturnType<typeof getCurrentWindow> | null>(null);
@@ -126,6 +126,7 @@ export default function TitleBar() {
           )}
           <div data-tauri-drag-region className={`flex items-center h-full ${isMac ? '' : 'px-4'}`}>
             <p className="text-sm font-semibold text-text-secondary pointer-events-none">RapidRAW</p>
+            {leftAccessory && <div className="ml-3">{leftAccessory}</div>}
           </div>
         </div>
         <div data-tauri-drag-region className="flex-1 h-full" />
