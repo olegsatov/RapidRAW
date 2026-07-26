@@ -15,6 +15,7 @@ mod app_state;
 mod archive_operations;
 mod bw_decolor;
 mod cache_utils;
+mod catalog_backup;
 pub mod crystal_grain;
 mod culling;
 mod availability_watch;
@@ -2513,6 +2514,7 @@ pub fn run() {
             thumbnail_manager: ThumbnailManager::new(),
             metadata_manager: MetadataManager::new(),
             availability_watchers: Arc::new(AvailabilityWatchers::new()),
+            exit_backup_requested: Mutex::new(false),
         })
         .invoke_handler(tauri::generate_handler![
             apply_adjustments,
@@ -2639,6 +2641,12 @@ pub fn run() {
             archive_operations::delete_archived_sources,
             history_commands::load_edit_history,
             history_commands::save_edit_history,
+            catalog_backup::get_catalog_backup_state,
+            catalog_backup::create_catalog_backup,
+            catalog_backup::set_catalog_backup_destination,
+            catalog_backup::dismiss_catalog_backup_banner,
+            catalog_backup::cancel_exit_request,
+            catalog_backup::confirm_exit,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
@@ -2657,13 +2665,27 @@ pub fn run() {
                     }
                 }
                 tauri::RunEvent::ExitRequested { api, .. } => {
-                    api.prevent_exit();
+                    let state = app_handle.state::<AppState>();
+                    let already_waiting = *state.exit_backup_requested.lock().unwrap();
+                    if already_waiting {
+                        api.prevent_exit();
+                        return;
+                    }
 
-                    #[cfg(target_os = "macos")]
-                    unsafe { libc::_exit(0); }
+                    match crate::catalog_backup::should_prompt_before_exit(app_handle) {
+                        Ok(true) => {
+                            *state.exit_backup_requested.lock().unwrap() = true;
+                            api.prevent_exit();
+                            let _ = app_handle.emit("catalog-backup-exit-prompt", ());
+                        }
+                        _ => {
+                            #[cfg(target_os = "macos")]
+                            unsafe { libc::_exit(0); }
 
-                    #[cfg(not(target_os = "macos"))]
-                    std::process::exit(0);
+                            #[cfg(not(target_os = "macos"))]
+                            std::process::exit(0);
+                        }
+                    }
                 }
                 tauri::RunEvent::Exit => {
                     #[cfg(target_os = "macos")]

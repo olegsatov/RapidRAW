@@ -199,6 +199,7 @@ pub struct AppState {
     pub thumbnail_manager: Arc<ThumbnailManager>,
     pub metadata_manager: Arc<MetadataManager>,
     pub availability_watchers: Arc<AvailabilityWatchers>,
+    pub exit_backup_requested: Mutex<bool>,
 }
 
 impl AppState {
