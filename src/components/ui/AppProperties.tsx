@@ -184,6 +184,12 @@ export interface LastFolderState {
   lastSelectedImage?: string | null;
 }
 
+export interface LutFolder {
+  id: string;
+  name: string;
+  children: string[];
+}
+
 export interface LutFileSettings {
   intensity?: number;
   timing?: 'after' | 'before';
@@ -260,8 +266,15 @@ export interface AppSettings {
   proofMarginLevel1?: number;
   proofMarginLevel2?: number;
   proofMarginLevel?: 1 | 2;
+  catalogBackupFolder?: string;
+  catalogBackupThreshold?: number;
+  catalogBackupBannerIntervalMinutes?: number;
+  catalogBackupKeepCount?: number;
   flagAutoAdvance?: boolean;
   lutSettings?: Record<string, LutFileSettings>;
+  lutFolders?: LutFolder[];
+  lutOrder?: string[];
+  lutFavorites?: string[];
 }
 
 export interface BrushSettings {
