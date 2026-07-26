@@ -29,6 +29,74 @@ pub(crate) fn open_connection<R: Runtime>(app_handle: &AppHandle<R>) -> Result<C
     Ok(conn)
 }
 
+#[allow(dead_code)] // consumed by catalog backup tasks 4-7
+const BACKUP_PENDING_COUNT_KEY: &str = "backup_pending_count";
+#[allow(dead_code)] // consumed by catalog backup tasks 4-7
+const BACKUP_LAST_AT_KEY: &str = "backup_last_at";
+#[allow(dead_code)] // consumed by catalog backup tasks 4-7
+const BACKUP_LAST_BANNER_AT_KEY: &str = "backup_last_banner_at";
+
+#[allow(dead_code)] // consumed by catalog backup tasks 4-7
+fn get_meta_i64(conn: &Connection, key: &str) -> Result<Option<i64>, String> {
+    let value: Option<String> = conn
+        .query_row(
+            "SELECT value FROM meta WHERE key = ?1",
+            params![key],
+            |row| row.get::<_, String>(0),
+        )
+        .optional()
+        .map_err(|e| e.to_string())?;
+    match value {
+        Some(v) => v.parse::<i64>().map(Some).map_err(|e| e.to_string()),
+        None => Ok(None),
+    }
+}
+
+fn set_meta_i64(conn: &Connection, key: &str, value: i64) -> Result<(), String> {
+    conn.execute(
+        "INSERT INTO meta(key, value) VALUES (?1, ?2)
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+        params![key, value.to_string()],
+    )
+    .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+/// Increments the pending-backup counter by `delta`. Non-positive values are ignored.
+#[allow(dead_code)] // consumed by catalog backup tasks 4-7
+pub(crate) fn increment_backup_counter_in_conn(conn: &Connection, delta: i64) -> Result<(), String> {
+    if delta <= 0 {
+        return Ok(());
+    }
+    let current = get_meta_i64(conn, BACKUP_PENDING_COUNT_KEY)?.unwrap_or(0);
+    let next = current.saturating_add(delta);
+    set_meta_i64(conn, BACKUP_PENDING_COUNT_KEY, next)
+}
+
+#[allow(dead_code)] // consumed by catalog backup tasks 4-7
+pub fn get_catalog_backup_state_in_conn(
+    conn: &Connection,
+) -> Result<(i64, Option<i64>, Option<i64>), String> {
+    Ok((
+        get_meta_i64(conn, BACKUP_PENDING_COUNT_KEY)?.unwrap_or(0),
+        get_meta_i64(conn, BACKUP_LAST_AT_KEY)?,
+        get_meta_i64(conn, BACKUP_LAST_BANNER_AT_KEY)?,
+    ))
+}
+
+#[allow(dead_code)] // consumed by catalog backup tasks 4-7
+pub fn reset_backup_counter_in_conn(conn: &Connection) -> Result<(), String> {
+    let now = now_secs();
+    set_meta_i64(conn, BACKUP_PENDING_COUNT_KEY, 0)?;
+    set_meta_i64(conn, BACKUP_LAST_AT_KEY, now)?;
+    Ok(())
+}
+
+#[allow(dead_code)] // used by the backup-banner UI task
+pub fn touch_backup_banner_in_conn(conn: &Connection) -> Result<(), String> {
+    set_meta_i64(conn, BACKUP_LAST_BANNER_AT_KEY, now_secs())
+}
+
 fn column_exists(conn: &Connection, table: &str, column: &str) -> Result<bool, String> {
     let sql = format!(
         "SELECT 1 FROM pragma_table_info('{}') WHERE name = ?1",
@@ -541,6 +609,7 @@ fn upsert_files_in_conn(
             .map_err(|e| e.to_string())?;
         }
     }
+    increment_backup_counter_in_conn(&*tx, files.len() as i64)?;
     tx.commit().map_err(|e| e.to_string())
 }
 
@@ -897,6 +966,7 @@ fn save_edit_history_in_conn(
     )
     .map_err(|e| e.to_string())?;
 
+    increment_backup_counter_in_conn(conn, 1)?;
     Ok(())
 }
 
@@ -1097,6 +1167,7 @@ pub(crate) fn update_file_rating_flag_tags_in_conn(
             .map_err(|e| e.to_string())?;
         }
     }
+    increment_backup_counter_in_conn(conn, 1)?;
     Ok(())
 }
 
@@ -1149,13 +1220,15 @@ pub fn update_file_color<R: Runtime>(
     file_id: i64,
     color: Option<&str>,
 ) -> Result<(), String> {
-    let conn = open_connection(app_handle)?;
-    conn.execute(
+    let mut conn = open_connection(app_handle)?;
+    let tx = conn.transaction().map_err(|e| e.to_string())?;
+    tx.execute(
         "UPDATE files SET color = ?1, metadata_modified = ?2 WHERE id = ?3",
         params![color, now_secs(), file_id],
     )
     .map_err(|e| e.to_string())?;
-    Ok(())
+    increment_backup_counter_in_conn(&tx, 1)?;
+    tx.commit().map_err(|e| e.to_string())
 }
 
 /// Returns `(id, path)` for every catalog row in `folder_id`, real files and
@@ -1864,6 +1937,7 @@ pub fn update_file_path_in_conn(
         .map_err(|e| e.to_string())?
     };
 
+    increment_backup_counter_in_conn(conn, updated as i64)?;
     Ok(updated)
 }
 
@@ -3143,5 +3217,28 @@ mod tests {
         let (states, active_index) = reconstruct_history(&snapshot, &deltas, 99).unwrap();
         assert_eq!(states.len(), 4);
         assert_eq!(active_index, 3);
+    }
+
+    #[test]
+    fn test_backup_counter_increments_and_resets() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(SCHEMA_V1).unwrap();
+        let (pending, last, banner) = get_catalog_backup_state_in_conn(&conn).unwrap();
+        assert_eq!(pending, 0);
+        assert!(last.is_none());
+        assert!(banner.is_none());
+
+        increment_backup_counter_in_conn(&conn, 3).unwrap();
+        let (pending, _, _) = get_catalog_backup_state_in_conn(&conn).unwrap();
+        assert_eq!(pending, 3);
+
+        touch_backup_banner_in_conn(&conn).unwrap();
+        let (_, _, banner) = get_catalog_backup_state_in_conn(&conn).unwrap();
+        assert!(banner.is_some());
+
+        reset_backup_counter_in_conn(&conn).unwrap();
+        let (pending, last, _) = get_catalog_backup_state_in_conn(&conn).unwrap();
+        assert_eq!(pending, 0);
+        assert!(last.is_some());
     }
 }

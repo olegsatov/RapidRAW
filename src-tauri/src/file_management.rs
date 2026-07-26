@@ -3704,7 +3704,13 @@ pub fn create_virtual_copy(
         .map_err(|e| format!("Failed to save virtual-copy metadata: {}", e))?;
 
     if let Some(album_id) = target_album_id {
-        let _ = add_to_album(album_id, vec![new_virtual_path.clone()], app_handle);
+        let _ = add_to_album(album_id, vec![new_virtual_path.clone()], app_handle.clone());
+    }
+
+    // Best-effort: bump the backup counter after the virtual copy sidecar and
+    // album changes have already been persisted.
+    if let Ok(conn) = library_db::open_connection(&app_handle) {
+        let _ = library_db::increment_backup_counter_in_conn(&conn, 1);
     }
 
     Ok(new_virtual_path)
