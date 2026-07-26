@@ -81,11 +81,13 @@ export function useGestureAdjust() {
 
         const adjustments = useEditorStore.getState().adjustments;
         const appSettings = useSettingsStore.getState().appSettings;
+        const favorites = new Set(appSettings?.lutFavorites ?? []);
+        const sourceEntries = favorites.size > 0 ? entries.filter((e) => favorites.has(e.path)) : entries;
         const currentPath = adjustments.lutPath ?? null;
 
         const noLutEntry = { path: NO_LUT_PATH, name: t('ui.lut.disabledLut'), thumb: null };
-        const stripEntries = [noLutEntry, ...entries.map((e) => ({ path: e.path, name: e.name, thumb: null }))];
-        const selectedIndex = currentPath ? Math.max(1, 1 + entries.findIndex((e) => e.path === currentPath)) : 0;
+        const stripEntries = [noLutEntry, ...sourceEntries.map((e) => ({ path: e.path, name: e.name, thumb: null }))];
+        const selectedIndex = currentPath ? Math.max(1, 1 + sourceEntries.findIndex((e) => e.path === currentPath)) : 0;
 
         const lutFieldSet = new Set([
           'lutPath',
@@ -115,7 +117,7 @@ export function useGestureAdjust() {
         };
 
         const lutParams: Record<string, LutFileSettings> = {};
-        entries.forEach((entry) => {
+        sourceEntries.forEach((entry) => {
           const effective = getEffectiveLutParams(appSettings, adjustments, entry.path);
           lutParams[entry.path] = resolvedLutParamsToLutFileSettings(effective);
         });
