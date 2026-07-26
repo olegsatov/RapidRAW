@@ -1395,7 +1395,8 @@
     "categories": {
       "general": "通用",
       "processing": "处理",
-      "shortcuts": "控制"
+      "shortcuts": "控制",
+      "backup": "Backup"
     },
     "controls": {
       "keyboardTitle": "键盘控制",
@@ -1412,6 +1413,22 @@
       "title": "鼠标控制",
       "zoom": "缩放速度倍率",
       "zoomDesc": "调整使用滚轮或捏合手势时画布缩放的速度。"
+    },
+    "backup": {
+      "title": "Catalog Backup",
+      "destination": "Backup folder",
+      "destinationDesc": "Where compressed catalog backups are stored.",
+      "destinationNotSet": "Not set",
+      "chooseFolder": "Choose folder",
+      "threshold": "Prompt threshold",
+      "thresholdDesc": "Number of catalog changes before suggesting a backup.",
+      "bannerInterval": "Reminder interval",
+      "bannerIntervalDesc": "Minimum minutes between backup reminders.",
+      "keepCount": "Backups to keep",
+      "keepCountDesc": "Maximum number of backup files to retain.",
+      "manual": "Manual backup",
+      "manualDesc": "Create a backup immediately using the settings above.",
+      "backupNow": "Back up now"
     },
     "data": {
       "clearSidecars": "清除所有附属文件",
@@ -1544,7 +1561,8 @@
         "zoom_in": "放大",
         "zoom_in_step": "放大（步进）",
         "zoom_out": "缩小",
-        "zoom_out_step": "缩小（步进）"
+        "zoom_out_step": "缩小（步进）",
+        "backup_catalog": "Back up catalog now"
       },
       "sections": {
         "editing": "编辑",
@@ -1552,7 +1570,8 @@
         "panels": "面板",
         "rating": "评分与标签",
         "view": "视图",
-        "gestures": "Gestures"
+        "gestures": "Gestures",
+        "backup": "Backup"
       }
     },
     "language": "语言",
@@ -1876,5 +1895,31 @@
     },
     "dismiss": "Dismiss import job",
     "cancel": "Cancel import"
+  },
+  "catalogBackup": {
+    "indicator": {
+      "upToDate": "Catalog up to date",
+      "tooltip_one": "{{count}} pending catalog change",
+      "tooltip_other": "{{count}} pending catalog changes",
+      "label": "{{count}}"
+    },
+    "banner": {
+      "message_one": "{{count}} catalog change is not backed up",
+      "message_other": "{{count}} catalog changes are not backed up",
+      "backup": "Back up now",
+      "later": "Later"
+    },
+    "exitDialog": {
+      "title": "Back up catalog before exiting?",
+      "message_one": "You have {{count}} unsaved catalog change. Create a backup before quitting?",
+      "message_other": "You have {{count}} unsaved catalog changes. Create a backup before quitting?",
+      "cancel": "Cancel",
+      "quitWithoutBackup": "Quit without backup",
+      "backup": "Back up now"
+    },
+    "toasts": {
+      "success": "Catalog backed up to {{path}} ({{size}})",
+      "error": "Catalog backup failed: {{error}}"
+    }
   }
 }

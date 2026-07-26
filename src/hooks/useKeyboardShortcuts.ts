@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react';
+import { invoke } from '@tauri-apps/api/core';
 import { ImageFile, Panel, ExifOverlay, LeftPanelTab, Preset } from '../components/ui/AppProperties';
 import { getEffectiveKeybind, KEYBIND_DEFINITIONS, normalizeCombo } from '../utils/keyboardUtils';
 import { useEditorStore } from '../store/useEditorStore';
@@ -525,6 +526,15 @@ export const useKeyboardShortcuts = ({
           e.preventDefault();
           const newSize = Math.max((s.editor.brushSettings.size || 50) - 10, 1);
           s.editor.setEditor({ brushSettings: { ...s.editor.brushSettings, size: newSize } });
+        },
+      },
+      backup_catalog: {
+        shouldFire: () => true,
+        execute: (e: any) => {
+          e.preventDefault();
+          invoke('create_catalog_backup', { destination: null }).catch((err) => {
+            console.error('[keyboard-shortcuts] backup failed', err);
+          });
         },
       },
     };

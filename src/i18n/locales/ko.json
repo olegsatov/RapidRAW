@@ -1395,7 +1395,8 @@
     "categories": {
       "general": "일반",
       "processing": "처리",
-      "shortcuts": "컨트롤"
+      "shortcuts": "컨트롤",
+      "backup": "Backup"
     },
     "controls": {
       "keyboardTitle": "키보드 컨트롤",
@@ -1412,6 +1413,22 @@
       "title": "마우스 컨트롤",
       "zoom": "확대/축소 속도 배율",
       "zoomDesc": "스크롤 휠이나 핀치 제스처를 사용할 때 캔버스가 확대/축소되는 속도를 조정합니다."
+    },
+    "backup": {
+      "title": "Catalog Backup",
+      "destination": "Backup folder",
+      "destinationDesc": "Where compressed catalog backups are stored.",
+      "destinationNotSet": "Not set",
+      "chooseFolder": "Choose folder",
+      "threshold": "Prompt threshold",
+      "thresholdDesc": "Number of catalog changes before suggesting a backup.",
+      "bannerInterval": "Reminder interval",
+      "bannerIntervalDesc": "Minimum minutes between backup reminders.",
+      "keepCount": "Backups to keep",
+      "keepCountDesc": "Maximum number of backup files to retain.",
+      "manual": "Manual backup",
+      "manualDesc": "Create a backup immediately using the settings above.",
+      "backupNow": "Back up now"
     },
     "data": {
       "clearSidecars": "모든 사이드카 파일 지우기",
@@ -1544,7 +1561,8 @@
         "zoom_in": "확대",
         "zoom_in_step": "확대 (단계별)",
         "zoom_out": "축소",
-        "zoom_out_step": "축소 (단계별)"
+        "zoom_out_step": "축소 (단계별)",
+        "backup_catalog": "Back up catalog now"
       },
       "sections": {
         "editing": "편집",
@@ -1552,7 +1570,8 @@
         "panels": "패널",
         "rating": "평점 및 레이블",
         "view": "보기",
-        "gestures": "Gestures"
+        "gestures": "Gestures",
+        "backup": "Backup"
       }
     },
     "language": "언어",
@@ -1876,5 +1895,31 @@
     },
     "dismiss": "Dismiss import job",
     "cancel": "Cancel import"
+  },
+  "catalogBackup": {
+    "indicator": {
+      "upToDate": "Catalog up to date",
+      "tooltip_one": "{{count}} pending catalog change",
+      "tooltip_other": "{{count}} pending catalog changes",
+      "label": "{{count}}"
+    },
+    "banner": {
+      "message_one": "{{count}} catalog change is not backed up",
+      "message_other": "{{count}} catalog changes are not backed up",
+      "backup": "Back up now",
+      "later": "Later"
+    },
+    "exitDialog": {
+      "title": "Back up catalog before exiting?",
+      "message_one": "You have {{count}} unsaved catalog change. Create a backup before quitting?",
+      "message_other": "You have {{count}} unsaved catalog changes. Create a backup before quitting?",
+      "cancel": "Cancel",
+      "quitWithoutBackup": "Quit without backup",
+      "backup": "Back up now"
+    },
+    "toasts": {
+      "success": "Catalog backed up to {{path}} ({{size}})",
+      "error": "Catalog backup failed: {{error}}"
+    }
   }
 }

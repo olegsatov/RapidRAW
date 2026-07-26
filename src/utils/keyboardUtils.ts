@@ -2,7 +2,7 @@ export interface KeybindDefinition {
   action: string;
   description: string;
   defaultCombo: string[];
-  section: 'library' | 'view' | 'rating' | 'panels' | 'editing' | 'gestures';
+  section: 'library' | 'view' | 'rating' | 'panels' | 'editing' | 'gestures' | 'backup';
 }
 
 export interface KeybindSection {
@@ -17,6 +17,7 @@ export const KEYBIND_SECTIONS: KeybindSection[] = [
   { id: 'view', label: 'settings.keybinds.sections.view' },
   { id: 'rating', label: 'settings.keybinds.sections.rating' },
   { id: 'panels', label: 'settings.keybinds.sections.panels' },
+  { id: 'backup', label: 'settings.keybinds.sections.backup' },
 ];
 
 export const KEYBIND_DEFINITIONS: KeybindDefinition[] = [
@@ -315,6 +316,12 @@ export const KEYBIND_DEFINITIONS: KeybindDefinition[] = [
     description: 'settings.keybinds.actions.brush_size_down',
     defaultCombo: ['ctrl', 'ArrowDown'],
     section: 'editing',
+  },
+  {
+    action: 'backup_catalog',
+    description: 'settings.keybinds.actions.backup_catalog',
+    defaultCombo: ['ctrl', 'shift', 'KeyB'],
+    section: 'backup',
   },
 ];
 

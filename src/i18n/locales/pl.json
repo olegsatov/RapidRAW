@@ -1451,7 +1451,8 @@
     "categories": {
       "general": "Ogólne",
       "processing": "Przetwarzanie",
-      "shortcuts": "Sterowanie"
+      "shortcuts": "Sterowanie",
+      "backup": "Backup"
     },
     "controls": {
       "keyboardTitle": "Sterowanie klawiaturą",
@@ -1468,6 +1469,22 @@
       "title": "Sterowanie myszą",
       "zoom": "Mnożnik szybkości przybliżania",
       "zoomDesc": "Dostosuj, jak szybko płótno się powiększa i pomniejsza przy użyciu kółka myszy lub gestu szczypania."
+    },
+    "backup": {
+      "title": "Catalog Backup",
+      "destination": "Backup folder",
+      "destinationDesc": "Where compressed catalog backups are stored.",
+      "destinationNotSet": "Not set",
+      "chooseFolder": "Choose folder",
+      "threshold": "Prompt threshold",
+      "thresholdDesc": "Number of catalog changes before suggesting a backup.",
+      "bannerInterval": "Reminder interval",
+      "bannerIntervalDesc": "Minimum minutes between backup reminders.",
+      "keepCount": "Backups to keep",
+      "keepCountDesc": "Maximum number of backup files to retain.",
+      "manual": "Manual backup",
+      "manualDesc": "Create a backup immediately using the settings above.",
+      "backupNow": "Back up now"
     },
     "data": {
       "clearSidecars": "Wyczyść wszystkie pliki poboczne (Sidecar)",
@@ -1606,7 +1623,8 @@
         "zoom_in": "Przybliż",
         "zoom_in_step": "Przybliż (krokowo)",
         "zoom_out": "Oddal",
-        "zoom_out_step": "Oddal (krokowo)"
+        "zoom_out_step": "Oddal (krokowo)",
+        "backup_catalog": "Back up catalog now"
       },
       "sections": {
         "editing": "Edycja",
@@ -1614,7 +1632,8 @@
         "panels": "Panele",
         "rating": "Oceny i Etykiety",
         "view": "Widok",
-        "gestures": "Gestures"
+        "gestures": "Gestures",
+        "backup": "Backup"
       }
     },
     "language": "Język",
@@ -1940,5 +1959,31 @@
     },
     "dismiss": "Dismiss import job",
     "cancel": "Cancel import"
+  },
+  "catalogBackup": {
+    "indicator": {
+      "upToDate": "Catalog up to date",
+      "tooltip_one": "{{count}} pending catalog change",
+      "tooltip_other": "{{count}} pending catalog changes",
+      "label": "{{count}}"
+    },
+    "banner": {
+      "message_one": "{{count}} catalog change is not backed up",
+      "message_other": "{{count}} catalog changes are not backed up",
+      "backup": "Back up now",
+      "later": "Later"
+    },
+    "exitDialog": {
+      "title": "Back up catalog before exiting?",
+      "message_one": "You have {{count}} unsaved catalog change. Create a backup before quitting?",
+      "message_other": "You have {{count}} unsaved catalog changes. Create a backup before quitting?",
+      "cancel": "Cancel",
+      "quitWithoutBackup": "Quit without backup",
+      "backup": "Back up now"
+    },
+    "toasts": {
+      "success": "Catalog backed up to {{path}} ({{size}})",
+      "error": "Catalog backup failed: {{error}}"
+    }
   }
 }
