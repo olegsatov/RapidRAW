@@ -115,7 +115,7 @@ export const useLutStore = create<LutState>((set, get) => ({
         folders.length !== rawFolders.length ||
         folders.some((f, i) => f.id !== rawFolders[i].id || !stringArraysEqual(f.children, rawFolders[i].children));
       const orderChanged = !stringArraysEqual(order, rawOrder);
-      const favoritesChanged = !stringArraysEqual([...favorites].sort(), rawFavorites.sort());
+      const favoritesChanged = !stringArraysEqual([...favorites].sort(), [...rawFavorites].sort());
 
       if (foldersChanged || orderChanged || favoritesChanged) {
         saveSettings({ lutFolders: folders, lutOrder: order, lutFavorites: [...favorites] });
@@ -152,7 +152,7 @@ export const useLutStore = create<LutState>((set, get) => ({
       // Folder children are not in root order; moving them to root makes them
       // ordered root items, otherwise they remain visible as unordered entries.
       if (moveChildrenToRoot) {
-        order = [...children.filter((p) => !state.order.includes(p)), ...order];
+        order = [...order, ...children.filter((p) => !state.order.includes(p))];
       }
       saveSettings({ lutFolders: remainingFolders, lutOrder: order });
       return { folders: remainingFolders, order };
