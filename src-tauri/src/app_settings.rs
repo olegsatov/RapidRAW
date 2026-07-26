@@ -514,6 +514,8 @@ pub struct AppSettings {
     #[serde(default)]
     pub lut_favorites: Vec<String>,
     #[serde(default)]
+    pub lut_view_mode: Option<String>,
+    #[serde(default)]
     pub flag_auto_advance: Option<bool>,
     #[serde(default)]
     pub catalog_backup_folder: Option<String>,
@@ -623,6 +625,7 @@ impl Default for AppSettings {
             lut_folders: Vec::new(),
             lut_order: Vec::new(),
             lut_favorites: Vec::new(),
+            lut_view_mode: None,
             flag_auto_advance: None,
             catalog_backup_folder: None,
             catalog_backup_threshold: Some(50),

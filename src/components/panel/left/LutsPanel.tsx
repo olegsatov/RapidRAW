@@ -467,22 +467,24 @@ export default function LutsPanel({ isVisible, panelWidth }: LutsPanelProps) {
     <div className="flex flex-col h-full">
       <div className="p-4 flex justify-between items-center shrink-0 border-b border-surface">
         <Text variant={TextVariants.title}>{t('ui.lut.luts')}</Text>
-        <button
-          className="p-2 rounded-full hover:bg-surface transition-colors"
-          onClick={handleImport}
-          data-tooltip={t('ui.lut.import')}
-          aria-label={t('ui.lut.import')}
-        >
-          <Upload size={18} />
-        </button>
-        <button
-          className="p-2 rounded-full hover:bg-surface transition-colors"
-          onClick={() => setViewMode(viewMode === 'expanded' ? 'compact' : 'expanded')}
-          data-tooltip={viewMode === 'expanded' ? t('ui.lut.compactView') : t('ui.lut.expandedView')}
-          aria-label={viewMode === 'expanded' ? t('ui.lut.compactView') : t('ui.lut.expandedView')}
-        >
-          {viewMode === 'expanded' ? <List size={18} /> : <LayoutGrid size={18} />}
-        </button>
+        <div className="flex items-center gap-1">
+          <button
+            className="p-2 rounded-full hover:bg-surface transition-colors"
+            onClick={handleImport}
+            data-tooltip={t('ui.lut.import')}
+            aria-label={t('ui.lut.import')}
+          >
+            <Upload size={18} />
+          </button>
+          <button
+            className="p-2 rounded-full hover:bg-surface transition-colors"
+            onClick={() => setViewMode(viewMode === 'expanded' ? 'compact' : 'expanded')}
+            data-tooltip={viewMode === 'expanded' ? t('ui.lut.compactView') : t('ui.lut.expandedView')}
+            aria-label={viewMode === 'expanded' ? t('ui.lut.compactView') : t('ui.lut.expandedView')}
+          >
+            {viewMode === 'expanded' ? <List size={18} /> : <LayoutGrid size={18} />}
+          </button>
+        </div>
       </div>
 
       <div className="grow min-h-0 overflow-y-auto p-4">
