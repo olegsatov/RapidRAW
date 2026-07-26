@@ -4,7 +4,20 @@ import { invoke } from '@tauri-apps/api/core';
 import { open } from '@tauri-apps/plugin-dialog';
 import clsx from 'clsx';
 import { AnimatePresence, motion } from 'framer-motion';
-import { Check, ChevronRight, ImageOff, Loader2, Pencil, RotateCcw, Save, Trash2, Upload, X } from 'lucide-react';
+import {
+  Check,
+  ChevronRight,
+  ImageOff,
+  LayoutGrid,
+  List,
+  Loader2,
+  Pencil,
+  RotateCcw,
+  Save,
+  Trash2,
+  Upload,
+  X,
+} from 'lucide-react';
 import { toast } from 'react-toastify';
 
 import Slider from '../../ui/Slider';
@@ -69,7 +82,7 @@ export default function LutsPanel({ isVisible, panelWidth }: LutsPanelProps) {
   const appSettings = useSettingsStore((state) => state.appSettings);
   const osPlatform = useSettingsStore((state) => state.osPlatform);
 
-  const { entries, order, loadLuts, isLoading: isLoadingEntries } = useLutStore();
+  const { entries, order, loadLuts, isLoading: isLoadingEntries, viewMode, setViewMode } = useLutStore();
   const [previews, setPreviews] = useState<Record<string, string | null>>({});
   const [isLoadingPreviews, setIsLoadingPreviews] = useState(false);
   const [hotkeyModalState, setHotkeyModalState] = useState<{ isOpen: boolean; entry: LutEntry | null }>({
@@ -461,6 +474,14 @@ export default function LutsPanel({ isVisible, panelWidth }: LutsPanelProps) {
           aria-label={t('ui.lut.import')}
         >
           <Upload size={18} />
+        </button>
+        <button
+          className="p-2 rounded-full hover:bg-surface transition-colors"
+          onClick={() => setViewMode(viewMode === 'expanded' ? 'compact' : 'expanded')}
+          data-tooltip={viewMode === 'expanded' ? t('ui.lut.compactView') : t('ui.lut.expandedView')}
+          aria-label={viewMode === 'expanded' ? t('ui.lut.compactView') : t('ui.lut.expandedView')}
+        >
+          {viewMode === 'expanded' ? <List size={18} /> : <LayoutGrid size={18} />}
         </button>
       </div>
 

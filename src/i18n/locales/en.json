@@ -1567,7 +1567,8 @@
     "categories": {
       "general": "General",
       "processing": "Processing",
-      "shortcuts": "Controls"
+      "shortcuts": "Controls",
+      "backup": "Backup"
     },
     "controls": {
       "keyboardTitle": "Keyboard Controls",
@@ -1585,6 +1586,22 @@
       "title": "Mouse Controls",
       "zoom": "Zoom Speed Multiplier",
       "zoomDesc": "Adjust how fast the canvas zooms in and out when using the scroll wheel or pinch gesture."
+    },
+    "backup": {
+      "title": "Catalog Backup",
+      "destination": "Backup folder",
+      "destinationDesc": "Where compressed catalog backups are stored.",
+      "destinationNotSet": "Not set",
+      "chooseFolder": "Choose folder",
+      "threshold": "Prompt threshold",
+      "thresholdDesc": "Number of catalog changes before suggesting a backup.",
+      "bannerInterval": "Reminder interval",
+      "bannerIntervalDesc": "Minimum minutes between backup reminders.",
+      "keepCount": "Backups to keep",
+      "keepCountDesc": "Maximum number of backup files to retain.",
+      "manual": "Manual backup",
+      "manualDesc": "Create a backup immediately using the settings above.",
+      "backupNow": "Back up now"
     },
     "data": {
       "clearSidecars": "Clear All Sidecar Files",
@@ -1722,7 +1739,8 @@
         "zoom_in": "Zoom in",
         "zoom_in_step": "Zoom in (by step)",
         "zoom_out": "Zoom out",
-        "zoom_out_step": "Zoom out (by step)"
+        "zoom_out_step": "Zoom out (by step)",
+        "backup_catalog": "Back up catalog now"
       },
       "sections": {
         "editing": "Editing",
@@ -1730,7 +1748,8 @@
         "panels": "Panels",
         "rating": "Rating & Labels",
         "view": "View",
-        "gestures": "Gestures"
+        "gestures": "Gestures",
+        "backup": "Backup"
       }
     },
     "language": "Language",
@@ -2004,7 +2023,9 @@
     "lut": {
       "auto": "Auto",
       "clearLut": "Clear LUT",
+      "compactView": "Compact view",
       "configureHotkey": "Configure hotkey",
+      "expandedView": "Expanded view",
       "empty": "No LUTs yet — import some",
       "filterLabel": "LUT & HALD Files",
       "import": "Import LUTs",
@@ -2076,6 +2097,32 @@
       "title": "Archiving {{folderName}}",
       "status": "{{current}}/{{total}} to {{targetName}}",
       "dismiss": "Dismiss archive job"
+    }
+  },
+  "catalogBackup": {
+    "indicator": {
+      "upToDate": "Catalog up to date",
+      "tooltip_one": "{{count}} pending catalog change",
+      "tooltip_other": "{{count}} pending catalog changes",
+      "label": "{{count}}"
+    },
+    "banner": {
+      "message_one": "{{count}} catalog change is not backed up",
+      "message_other": "{{count}} catalog changes are not backed up",
+      "backup": "Back up now",
+      "later": "Later"
+    },
+    "exitDialog": {
+      "title": "Back up catalog before exiting?",
+      "message_one": "You have {{count}} unsaved catalog change. Create a backup before quitting?",
+      "message_other": "You have {{count}} unsaved catalog changes. Create a backup before quitting?",
+      "cancel": "Cancel",
+      "quitWithoutBackup": "Quit without backup",
+      "backup": "Back up now"
+    },
+    "toasts": {
+      "success": "Catalog backed up to {{path}} ({{size}})",
+      "error": "Catalog backup failed: {{error}}"
     }
   }
 }
