@@ -52,6 +52,7 @@ interface LutState {
   moveLutToFolder: (path: string, folderId: string | null, overPath?: string | null) => void;
   reorderLut: (activePath: string, overPath: string) => void;
   reorderFolderLut: (folderId: string, activePath: string, overPath: string) => void;
+  reorderFolder: (activeId: string, overId: string) => void;
   toggleFavorite: (path: string) => void;
   setViewMode: (mode: 'compact' | 'expanded') => void;
   viewMode: 'compact' | 'expanded';
@@ -76,7 +77,7 @@ const saveSettings = (patch: Partial<AppSettings>) => {
   flushSettings();
 };
 
-export const useLutStore = create<LutState>((set, get) => ({
+export const useLutStore = create<LutState>((set) => ({
   entries: [],
   folders: [],
   order: [],
@@ -226,6 +227,17 @@ export const useLutStore = create<LutState>((set, get) => ({
       if (from === -1 || to === -1) return state;
       const children = arrayMove(folder.children, from, to);
       const folders = state.folders.map((f) => (f.id === folderId ? { ...f, children } : f));
+      saveSettings({ lutFolders: folders });
+      return { folders };
+    });
+  },
+
+  reorderFolder: (activeId: string, overId: string) => {
+    set((state) => {
+      const from = state.folders.findIndex((f) => f.id === activeId);
+      const to = state.folders.findIndex((f) => f.id === overId);
+      if (from === -1 || to === -1) return state;
+      const folders = arrayMove(state.folders, from, to);
       saveSettings({ lutFolders: folders });
       return { folders };
     });

@@ -6,7 +6,9 @@ import clsx from 'clsx';
 import { AnimatePresence, motion } from 'framer-motion';
 import {
   DndContext,
+  DragEndEvent,
   DragOverlay,
+  DragStartEvent,
   PointerSensor,
   useDraggable,
   useDroppable,
@@ -104,6 +106,7 @@ export default function LutsPanel({ isVisible, panelWidth }: LutsPanelProps) {
     moveLutToFolder,
     reorderLut,
     reorderFolderLut,
+    reorderFolder,
   } = useLutStore();
   const [previews, setPreviews] = useState<Record<string, string | null>>({});
   const [isLoadingPreviews, setIsLoadingPreviews] = useState(false);
@@ -402,7 +405,7 @@ export default function LutsPanel({ isVisible, panelWidth }: LutsPanelProps) {
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 10 } }));
 
   const handleDragEnd = useCallback(
-    (event: any) => {
+    (event: DragEndEvent) => {
       const { active, over } = event;
       setActiveDragItem(null);
       if (!over || active.id === over.id) return;
@@ -415,17 +418,25 @@ export default function LutsPanel({ isVisible, panelWidth }: LutsPanelProps) {
         const overType = over.data.current?.type;
         const overFolderId =
           overType === LutListType.Folder ? (over.id as string) : (over.data.current?.folderId as string | undefined);
-        if (overFolderId && overFolderId !== activeFolderId) {
-          moveLutToFolder(activePath, overFolderId);
+        if (activeFolderId && !overFolderId) {
+          moveLutToFolder(activePath, null, over.id as string);
+        } else if (overFolderId && overFolderId !== activeFolderId) {
+          moveLutToFolder(activePath, overFolderId, over.id as string);
         } else if (activeFolderId) {
           reorderFolderLut(activeFolderId, activePath, over.id as string);
         } else {
           reorderLut(activePath, over.id as string);
         }
+      } else if (activeType === LutListType.Folder) {
+        reorderFolder(active.id as string, over.id as string);
       }
     },
-    [moveLutToFolder, reorderFolderLut, reorderLut],
+    [moveLutToFolder, reorderFolderLut, reorderLut, reorderFolder],
   );
+
+  const handleDragStart = useCallback((event: DragStartEvent) => {
+    setActiveDragItem(event.active.data.current as { type: LutListType; path?: string; folder?: LutFolder });
+  }, []);
 
   const updateLutAdjustment = useCallback(
     (adjustmentPatch: Partial<Adjustments>) => {
@@ -581,10 +592,12 @@ export default function LutsPanel({ isVisible, panelWidth }: LutsPanelProps) {
             {t('ui.lut.import')}
           </button>
         ) : (
+          // Drag-and-drop is intentionally scoped to compact view because folders are only rendered there.
           <DndContext
             sensors={sensors}
-            onDragStart={(e) => setActiveDragItem(e.active.data.current as any)}
+            onDragStart={handleDragStart}
             onDragEnd={handleDragEnd}
+            onDragCancel={() => setActiveDragItem(null)}
           >
             {viewMode === 'compact' ? (
               <div className="space-y-2">
@@ -890,20 +903,26 @@ export default function LutsPanel({ isVisible, panelWidth }: LutsPanelProps) {
             )}
             <DragOverlay>
               {activeDragItem?.type === LutListType.Lut && activeDragItem.path ? (
-                <div className="p-2 rounded-lg bg-surface opacity-90">
-                  <CompactLutRow
-                    entry={orderedEntries.find((e) => e.path === activeDragItem.path)!}
-                    thumb={previews[activeDragItem.path] ?? null}
-                    isSelected={false}
-                    isLoading={false}
-                    hotkey={appSettings?.lutSettings?.[activeDragItem.path]?.hotkey ?? null}
-                    osPlatform={osPlatform}
-                    onSelect={() => {}}
-                    onContextMenu={() => {}}
-                    onMouseEnter={() => {}}
-                    onMouseLeave={() => {}}
-                  />
-                </div>
+                (() => {
+                  const entry = orderedEntries.find((e) => e.path === activeDragItem.path);
+                  if (!entry) return null;
+                  return (
+                    <div className="p-2 rounded-lg bg-surface opacity-90">
+                      <CompactLutRow
+                        entry={entry}
+                        thumb={previews[entry.path] ?? null}
+                        isSelected={false}
+                        isLoading={false}
+                        hotkey={appSettings?.lutSettings?.[entry.path]?.hotkey ?? null}
+                        osPlatform={osPlatform}
+                        onSelect={() => {}}
+                        onContextMenu={() => {}}
+                        onMouseEnter={() => {}}
+                        onMouseLeave={() => {}}
+                      />
+                    </div>
+                  );
+                })()
               ) : activeDragItem?.type === LutListType.Folder && activeDragItem.folder ? (
                 <div className="p-2 rounded-lg bg-surface opacity-90">
                   <FolderHeader
