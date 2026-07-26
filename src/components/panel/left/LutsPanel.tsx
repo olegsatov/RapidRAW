@@ -741,6 +741,7 @@ export default function LutsPanel({ isVisible, panelWidth }: LutsPanelProps) {
                                       isLoading={isLoadingPreviews}
                                       hotkey={appSettings?.lutSettings?.[entry.path]?.hotkey ?? null}
                                       osPlatform={osPlatform}
+                                      isFavorite={favorites.has(entry.path)}
                                       onSelect={handleSelect}
                                       onContextMenu={handleContextMenu}
                                       onMouseEnter={() => setLutPreviewOverride(entry.path)}
@@ -808,6 +809,7 @@ export default function LutsPanel({ isVisible, panelWidth }: LutsPanelProps) {
                         isLoading={isLoadingPreviews}
                         hotkey={appSettings?.lutSettings?.[entry.path]?.hotkey ?? null}
                         osPlatform={osPlatform}
+                        isFavorite={favorites.has(entry.path)}
                         onSelect={handleSelect}
                         onContextMenu={handleContextMenu}
                         onMouseEnter={() => setLutPreviewOverride(entry.path)}
@@ -906,6 +908,11 @@ export default function LutsPanel({ isVisible, panelWidth }: LutsPanelProps) {
                               ) : (
                                 <div className="w-full h-full flex items-center justify-center text-text-secondary">
                                   <ImageOff size={18} />
+                                </div>
+                              )}
+                              {favorites.has(entry.path) && (
+                                <div className="absolute top-1.5 left-1.5 p-0.5 bg-bg-primary/90 backdrop-blur-sm border border-border-color/50 rounded">
+                                  <Star size={10} className="fill-accent text-accent" />
                                 </div>
                               )}
                               {appSettings?.lutSettings?.[entry.path]?.hotkey?.length ? (
@@ -1131,6 +1138,7 @@ interface CompactLutRowProps {
   isLoading: boolean;
   hotkey: string[] | null;
   osPlatform: string;
+  isFavorite: boolean;
   onSelect: (path: string) => void;
   onContextMenu: (event: React.MouseEvent, entry: LutEntry) => void;
   onMouseEnter: () => void;
@@ -1144,6 +1152,7 @@ function CompactLutRow({
   isLoading,
   hotkey,
   osPlatform,
+  isFavorite,
   onSelect,
   onContextMenu,
   onMouseEnter,
@@ -1161,6 +1170,11 @@ function CompactLutRow({
       onMouseLeave={onMouseLeave}
     >
       <div className="w-20 h-14 bg-bg-tertiary rounded-md flex items-center justify-center shrink-0 relative overflow-hidden">
+        {isFavorite && (
+          <div className="absolute top-1 left-1 z-10 p-0.5 bg-bg-primary/90 backdrop-blur-sm border border-border-color/50 rounded">
+            <Star size={8} className="fill-accent text-accent" />
+          </div>
+        )}
         {isLoading && thumb === undefined ? (
           <Loader2 size={20} className="animate-spin text-text-secondary" />
         ) : thumb ? (
