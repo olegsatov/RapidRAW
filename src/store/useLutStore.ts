@@ -33,6 +33,11 @@ function arrayMove<T>(array: T[], from: number, to: number): T[] {
   return next;
 }
 
+function stringArraysEqual(a: string[], b: string[]): boolean {
+  if (a.length !== b.length) return false;
+  return a.every((value, index) => value === b[index]);
+}
+
 interface LutState {
   entries: LutEntry[];
   folders: LutFolder[];
@@ -106,11 +111,13 @@ export const useLutStore = create<LutState>((set, get) => ({
         isLoading: false,
       });
 
-      if (
-        JSON.stringify(folders) !== JSON.stringify(rawFolders) ||
-        JSON.stringify(order) !== JSON.stringify(rawOrder) ||
-        JSON.stringify([...favorites]) !== JSON.stringify(rawFavorites)
-      ) {
+      const foldersChanged =
+        folders.length !== rawFolders.length ||
+        folders.some((f, i) => f.id !== rawFolders[i].id || !stringArraysEqual(f.children, rawFolders[i].children));
+      const orderChanged = !stringArraysEqual(order, rawOrder);
+      const favoritesChanged = !stringArraysEqual([...favorites].sort(), rawFavorites.sort());
+
+      if (foldersChanged || orderChanged || favoritesChanged) {
         saveSettings({ lutFolders: folders, lutOrder: order, lutFavorites: [...favorites] });
       }
     } catch (error) {
@@ -120,18 +127,12 @@ export const useLutStore = create<LutState>((set, get) => ({
   },
 
   addFolder: (name: string) => {
-    const { folders, order } = get();
-    const newFolder: LutFolder = { id: crypto.randomUUID(), name, children: [] };
-    const firstLutIndex = order.length > 0 ? 0 : -1;
-    let nextFolders: LutFolder[];
-    if (firstLutIndex === -1) {
-      nextFolders = [...folders, newFolder];
-    } else {
-      nextFolders = [...folders];
-      nextFolders.splice(firstLutIndex, 0, newFolder);
-    }
-    set({ folders: nextFolders });
-    saveSettings({ lutFolders: nextFolders });
+    set((state) => {
+      const newFolder: LutFolder = { id: crypto.randomUUID(), name, children: [] };
+      const folders = [...state.folders, newFolder];
+      saveSettings({ lutFolders: folders });
+      return { folders };
+    });
   },
 
   renameFolder: (id: string, name: string) => {
@@ -161,6 +162,9 @@ export const useLutStore = create<LutState>((set, get) => ({
   moveLutToFolder: (path: string, folderId: string | null, overPath: string | null = null) => {
     set((state) => {
       const sourceFolder = state.folders.find((f) => f.children.includes(path)) ?? null;
+      if (folderId && !state.folders.some((f) => f.id === folderId)) {
+        return state;
+      }
       let folders = state.folders;
       let order = state.order;
 
