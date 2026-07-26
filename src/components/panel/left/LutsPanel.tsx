@@ -506,6 +506,70 @@ export default function LutsPanel({ isVisible, panelWidth }: LutsPanelProps) {
             <Upload size={16} />
             {t('ui.lut.import')}
           </button>
+        ) : viewMode === 'compact' ? (
+          <div className="space-y-2">
+            {orderedEntries.map((entry) => {
+              const isSelected = entry.path === selectedLutPath;
+              return (
+                <div key={entry.path} className="flex flex-col">
+                  <CompactLutRow
+                    entry={entry}
+                    thumb={previews[entry.path] ?? null}
+                    isSelected={isSelected}
+                    isLoading={isLoadingPreviews}
+                    hotkey={appSettings?.lutSettings?.[entry.path]?.hotkey ?? null}
+                    osPlatform={osPlatform}
+                    onSelect={handleSelect}
+                    onContextMenu={handleContextMenu}
+                    onMouseEnter={() => setLutPreviewOverride(entry.path)}
+                    onMouseLeave={() => setLutPreviewOverride(null)}
+                  />
+                  <AnimatePresence initial={false}>
+                    {isSelected && (
+                      <motion.div
+                        initial={{ height: 0, opacity: 0 }}
+                        animate={{ height: 'auto', opacity: 1 }}
+                        exit={{ height: 0, opacity: 0 }}
+                        transition={{ duration: 0.25, ease: 'easeInOut' }}
+                        className="w-full cursor-auto overflow-hidden"
+                        onClick={(e) => e.stopPropagation()}
+                        onPointerDown={(e) => e.stopPropagation()}
+                      >
+                        <div className="mt-3 px-2 pb-2">
+                          <LutDetailPanel
+                            lutIntensity={lutIntensity}
+                            lutInputOffset={lutInputOffset}
+                            lutInputRange={lutInputRange}
+                            lutWbTemperatureShift={lutWbTemperatureShift}
+                            lutWbTintShift={lutWbTintShift}
+                            lutFlimContrast={lutFlimContrast}
+                            lutFlimLights={lutFlimLights}
+                            lutFlimShadows={lutFlimShadows}
+                            lutSaturation={lutSaturation}
+                            lutVibrance={lutVibrance}
+                            defaultIntensity={defaultParams.intensity}
+                            defaultInputOffset={defaultParams.inputOffset}
+                            defaultInputRange={defaultParams.inputRange}
+                            defaultWbTemperatureShift={defaultWbTemperatureShift}
+                            defaultWbTintShift={defaultWbTintShift}
+                            defaultFlimContrast={defaultFlimContrast}
+                            defaultFlimLights={defaultFlimLights}
+                            defaultFlimShadows={defaultFlimShadows}
+                            defaultSaturation={defaultSaturation}
+                            defaultVibrance={defaultVibrance}
+                            onDragStateChange={handleDragStateChange}
+                            onUpdate={updateLutAdjustment}
+                            onSaveAsDefault={handleSaveAsDefault}
+                            onResetToDefault={handleResetToDefault}
+                          />
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </div>
+              );
+            })}
+          </div>
         ) : (
           <>
             {Array.from({ length: Math.ceil(orderedEntries.length / (isWide ? 2 : 1)) }).map((_, rowIndex) => {
@@ -670,6 +734,76 @@ export default function LutsPanel({ isVisible, panelWidth }: LutsPanelProps) {
           }}
         />
       )}
+    </div>
+  );
+}
+
+interface CompactLutRowProps {
+  entry: LutEntry;
+  thumb: string | null;
+  isSelected: boolean;
+  isLoading: boolean;
+  hotkey: string[] | null;
+  osPlatform: string;
+  onSelect: (path: string) => void;
+  onContextMenu: (event: React.MouseEvent, entry: LutEntry) => void;
+  onMouseEnter: () => void;
+  onMouseLeave: () => void;
+}
+
+function CompactLutRow({
+  entry,
+  thumb,
+  isSelected,
+  isLoading,
+  hotkey,
+  osPlatform,
+  onSelect,
+  onContextMenu,
+  onMouseEnter,
+  onMouseLeave,
+}: CompactLutRowProps) {
+  return (
+    <div
+      className={clsx(
+        'flex items-center gap-3 p-2 rounded-lg bg-surface cursor-pointer outline-2 outline-offset-[-2px] transition-[outline-color]',
+        isSelected ? 'outline-accent' : 'outline-transparent hover:outline-accent/50',
+      )}
+      onClick={() => onSelect(entry.path)}
+      onContextMenu={(e) => onContextMenu(e, entry)}
+      onMouseEnter={onMouseEnter}
+      onMouseLeave={onMouseLeave}
+    >
+      <div className="w-20 h-14 bg-bg-tertiary rounded-md flex items-center justify-center shrink-0 relative overflow-hidden">
+        {isLoading && thumb === undefined ? (
+          <Loader2 size={20} className="animate-spin text-text-secondary" />
+        ) : thumb ? (
+          <img src={thumb} alt={entry.name} className="w-full h-full object-cover rounded-md pointer-events-none" />
+        ) : (
+          <ImageOff size={18} className="text-text-secondary" />
+        )}
+      </div>
+      <div className="grow min-w-0 flex flex-col justify-center">
+        <div className="flex items-center gap-2">
+          <Text
+            color={TextColors.primary}
+            weight={isSelected ? TextWeights.medium : TextWeights.normal}
+            className="truncate"
+          >
+            {entry.name}
+          </Text>
+          {hotkey && hotkey.length > 0 && (
+            <Text
+              as="kbd"
+              variant={TextVariants.small}
+              color={TextColors.secondary}
+              className="px-1.5 py-0.5 bg-bg-primary border border-border-color rounded text-[10px] shrink-0"
+            >
+              {hotkey.map((k) => formatKeyCode(k, osPlatform)).join('')}
+            </Text>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
