@@ -1511,19 +1511,6 @@ const ImageCanvas = memo(
       return { width: w, height: h };
     }, [selectedImage.width, selectedImage.height, adjustments.orientationSteps]);
 
-    // Dodge/burn masks are feathered and don't need full-resolution storage.
-    // Capping the long edge keeps PNG/JPEG encode fast and the persisted JSON small.
-    const dodgeBurnMaskTargetSize = useMemo(() => {
-      const MAX_MASK_DIM = 1280;
-      const maxDim = Math.max(effectiveImageDimensions.width, effectiveImageDimensions.height);
-      if (maxDim <= MAX_MASK_DIM) return effectiveImageDimensions;
-      const scale = MAX_MASK_DIM / maxDim;
-      return {
-        width: Math.round(effectiveImageDimensions.width * scale),
-        height: Math.round(effectiveImageDimensions.height * scale),
-      };
-    }, [effectiveImageDimensions]);
-
     const getCropFrameClientRect = useCallback((): DOMRect | null => {
       const inner = cropViewInnerRef.current;
       if (!inner || !crop) {
@@ -2730,7 +2717,7 @@ const ImageCanvas = memo(
 
         let maskBitmap: string | null | undefined;
         try {
-          maskBitmap = await dodgeBurnLayerRef.current?.commitMask(dodgeBurnMaskTargetSize);
+          maskBitmap = await dodgeBurnLayerRef.current?.commitMask(effectiveImageDimensions);
         } catch (error) {
           console.error('[ImageCanvas] Failed to commit dodge & burn mask:', error);
         }

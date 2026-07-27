@@ -1,3 +1,5 @@
+import DodgeBurnMaskWorker from './dodgeBurnMaskWorker?worker';
+
 export type BrushMode = 'add' | 'erase';
 
 interface Size {
@@ -184,6 +186,9 @@ export class DodgeBurnRenderer {
   private overlayVisible = false;
   private opacity = 1;
   private canvasSize: Size = { width: 0, height: 0 };
+  private worker: Worker | null = null;
+  private workerRequestId = 0;
+  private workerPending = new Map<number, (result: string | null) => void>();
 
   private lastBrushPosition: { x: number; y: number } | null = null;
   private destroyed = false;
@@ -281,6 +286,16 @@ export class DodgeBurnRenderer {
     this.framebufferB = this.createFramebuffer(gl, this.maskTextureB);
 
     this.currentMaskTexture = this.maskTextureA;
+
+    this.worker = new DodgeBurnMaskWorker();
+    this.worker.onmessage = (event) => {
+      const { requestId, dataUrl } = event.data as { requestId: number; dataUrl: string | null };
+      const resolve = this.workerPending.get(requestId);
+      if (resolve) {
+        this.workerPending.delete(requestId);
+        resolve(dataUrl);
+      }
+    };
 
     if (this.maskDataUrl) {
       await this.loadMaskTexture(this.maskDataUrl);
@@ -571,65 +586,44 @@ export class DodgeBurnRenderer {
     gl.pixelStorei(gl.PACK_ALIGNMENT, 4);
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
 
-    const sourceCanvas = document.createElement('canvas');
-    sourceCanvas.width = readWidth;
-    sourceCanvas.height = readHeight;
-    const sourceCtx = sourceCanvas.getContext('2d');
-    if (!sourceCtx) {
-      return Promise.reject(new Error('Failed to create 2D context'));
+    if (!this.worker) {
+      return Promise.reject(new Error('Mask worker not initialized'));
     }
 
-    const imageData = sourceCtx.createImageData(readWidth, readHeight);
-    const data = imageData.data;
-    for (let y = 0; y < readHeight; y++) {
-      const srcY = readHeight - 1 - y;
-      for (let x = 0; x < readWidth; x++) {
-        const srcIndex = srcY * readWidth + x;
-        const dstIndex = (y * readWidth + x) * 4;
-        const value = pixels[srcIndex];
-        data[dstIndex] = value;
-        data[dstIndex + 1] = value;
-        data[dstIndex + 2] = value;
-        data[dstIndex + 3] = 255;
+    const requestId = ++this.workerRequestId;
+    const dataUrlPromise = new Promise<string | null>((resolve) => {
+      this.workerPending.set(requestId, resolve);
+    });
+
+    const targetWidth = targetSize?.width ?? readWidth;
+    const targetHeight = targetSize?.height ?? readHeight;
+    this.worker.postMessage(
+      {
+        requestId,
+        pixels,
+        width: readWidth,
+        height: readHeight,
+        targetWidth,
+        targetHeight,
+      },
+      [pixels.buffer],
+    );
+
+    return dataUrlPromise.then((dataUrl) => {
+      if (!dataUrl) {
+        return Promise.reject(new Error('Worker failed to encode mask'));
       }
-    }
-    sourceCtx.putImageData(imageData, 0, 0);
-
-    const outputWidth = targetSize?.width ?? readWidth;
-    const outputHeight = targetSize?.height ?? readHeight;
-
-    const outputCanvas = document.createElement('canvas');
-    outputCanvas.width = outputWidth;
-    outputCanvas.height = outputHeight;
-    const outputCtx = outputCanvas.getContext('2d');
-    if (!outputCtx) {
-      return Promise.reject(new Error('Failed to create output canvas context'));
-    }
-    if (outputWidth !== readWidth || outputHeight !== readHeight) {
-      outputCtx.imageSmoothingEnabled = true;
-      outputCtx.imageSmoothingQuality = 'high';
-    }
-    outputCtx.drawImage(sourceCanvas, 0, 0, outputWidth, outputHeight);
-
-    return new Promise((resolve, reject) => {
-      const tryToBlob = (type: string, quality?: number) => {
-        outputCanvas.toBlob(
-          (blob) => {
-            if (blob) {
-              resolve(blob);
-            } else if (type === 'image/jpeg') {
-              tryToBlob('image/webp', 0.7);
-            } else if (type === 'image/webp') {
-              tryToBlob('image/png');
-            } else {
-              reject(new Error('Failed to create mask blob'));
-            }
-          },
-          type,
-          quality,
-        );
-      };
-      tryToBlob('image/jpeg', 0.9);
+      // Convert data URL back to Blob. Keeping the worker returning a data URL
+      // matches the existing API and avoids sending a large base64 string back to
+      // the main thread twice.
+      const byteString = atob(dataUrl.split(',')[1]);
+      const mimeString = dataUrl.split(',')[0].split(':')[1].split(';')[0];
+      const ab = new ArrayBuffer(byteString.length);
+      const ia = new Uint8Array(ab);
+      for (let i = 0; i < byteString.length; i++) {
+        ia[i] = byteString.charCodeAt(i);
+      }
+      return new Blob([ab], { type: mimeString });
     });
   }
 
@@ -650,6 +644,11 @@ export class DodgeBurnRenderer {
       if (this.compositorProgram) gl.deleteProgram(this.compositorProgram);
       if (this.brushProgram) gl.deleteProgram(this.brushProgram);
     }
+    if (this.worker) {
+      this.worker.terminate();
+      this.worker = null;
+    }
+    this.workerPending.clear();
     this.gl = null;
     this.framebufferA = null;
     this.framebufferB = null;
