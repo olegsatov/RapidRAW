@@ -156,7 +156,10 @@ export function useAppNavigation({ clearThumbnailQueue, refs }: AppNavigationPro
       debouncedSetHistory.flush();
 
       if (selectedImage?.path && cachedEditStateRef.current) {
-        globalImageCache.set(selectedImage.path, cachedEditStateRef.current);
+        globalImageCache.set(selectedImage.path, {
+          ...cachedEditStateRef.current,
+          adjustments: useEditorStore.getState().adjustments,
+        });
       }
 
       const {
@@ -265,6 +268,8 @@ export function useAppNavigation({ clearThumbnailQueue, refs }: AppNavigationPro
             } else {
               freshAdjustments = { ...INITIAL_ADJUSTMENTS };
             }
+            const dbSubMask = freshAdjustments.masks?.flatMap((c: any) => c.subMasks || []).find((sm: any) => sm.type === 'dodge-burn');
+            console.log('[DB] loaded metadata, dodge-burn maskBitmap:', dbSubMask?.parameters?.maskBitmap ? 'present' : 'null');
             if (
               !cachedHistory &&
               !isSliderDragging &&

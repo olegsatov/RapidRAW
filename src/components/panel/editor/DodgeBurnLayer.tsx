@@ -42,6 +42,7 @@ const DodgeBurnLayer = forwardRef<DodgeBurnLayerRef, DodgeBurnLayerProps>(
           const renderer = rendererRef.current;
           if (!renderer) return null;
           const blob = await renderer.getMaskBlob(targetSize ?? originalSize);
+          console.log('[DB] commitMask blob size:', blob.size, 'type:', blob.type);
           return new Promise<string | null>((resolve, reject) => {
             const reader = new FileReader();
             reader.onload = () => resolve(reader.result as string);
@@ -78,6 +79,7 @@ const DodgeBurnLayer = forwardRef<DodgeBurnLayerRef, DodgeBurnLayerProps>(
       if (!canvasRef.current) return;
 
       let cancelled = false;
+      console.log('[DB] init/update effect, baseUrl:', baseUrl ? baseUrl.slice(0, 60) : baseUrl, 'effectUrl:', effectUrl ? effectUrl.slice(0, 60) : effectUrl);
 
       const init = async () => {
         const renderer = new DodgeBurnRenderer(canvasRef.current!, baseUrl, effectUrl, null);
@@ -91,6 +93,7 @@ const DodgeBurnLayer = forwardRef<DodgeBurnLayerRef, DodgeBurnLayerProps>(
         renderer.render();
         rendererRef.current = renderer;
         setRendererGeneration((g) => g + 1);
+        console.log('[DB] renderer initialized, generation bumped');
         prevBaseUrlRef.current = baseUrl;
         prevEffectUrlRef.current = effectUrl;
       };
@@ -132,7 +135,11 @@ const DodgeBurnLayer = forwardRef<DodgeBurnLayerRef, DodgeBurnLayerProps>(
           await initInFlightRef.current;
         }
         const renderer = rendererRef.current;
-        if (!renderer) return;
+        if (!renderer) {
+          console.log('[DB] loadMask skipped: no renderer');
+          return;
+        }
+        console.log('[DB] loadMaskTexture called with:', maskBitmap ? `${maskBitmap.slice(0, 80)}...` : maskBitmap);
         await renderer.loadMaskTexture(maskBitmap);
         renderer.render();
       };
