@@ -73,15 +73,16 @@ void main() {
   // The source mask is a rendered texture, stored with the origin at the
   // bottom-left; flip v so reads stay in the same screen space as writes.
   float current = texture(u_sourceMask, vec2(v_uv.x, 1.0 - v_uv.y)).r;
-  // Exponential asymptotic buildup: each stamp closes a fraction of the
-  // remaining distance to the limit. This makes 100% density unreachable
-  // and keeps repeated brush edges feathering smoothly instead of clipping.
-  float decay = exp(-u_flow * alpha);
+  // Dodge (add) uses exponential asymptotic buildup so 100% density is
+  // unreachable and edges stay smooth. Burn-reverse (erase) uses a linear
+  // decrease at half the dodge rate; it still guarantees the mask reaches
+  // zero, but gives finer control over the last bits of density.
+  float stamp = u_flow * alpha;
   float next;
   if (u_mode > 0.0) {
-    next = 1.0 - (1.0 - current) * decay;
+    next = 1.0 - (1.0 - current) * exp(-stamp);
   } else {
-    next = current * decay;
+    next = max(0.0, current - stamp * 0.5);
   }
   outColor = vec4(next, 0.0, 0.0, 1.0);
 }
