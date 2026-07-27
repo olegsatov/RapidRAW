@@ -12,6 +12,9 @@ import { useOsPlatform } from '../../../hooks/useOsPlatform';
 import { useTranslation } from 'react-i18next';
 import type { OverlayMode } from '../right/CropPanel';
 import CompositionOverlays from './overlays/CompositionOverlays';
+import DodgeBurnLayer, { type DodgeBurnLayerRef } from './DodgeBurnLayer';
+import useDodgeBurnEffectUrl from '../../../hooks/useDodgeBurnEffectUrl';
+import { useEditorStore } from '../../../store/useEditorStore';
 
 interface CursorPreview {
   visible: boolean;
@@ -45,6 +48,7 @@ const ROTATE_ZONE_PX = 20;
 const ROTATE_DEG_PER_PX = 0.05;
 const ROTATE_MIN_DEG = -45;
 const ROTATE_MAX_DEG = 45;
+const DODGE_BURN_UNDO_STACK_MAX = 20;
 
 interface ImageCanvasProps {
   appSettings: AppSettings | null;
@@ -1260,6 +1264,16 @@ const ImageCanvas = memo(
     const previewBoxRef = useRef<{ start: Coord; end: Coord } | null>(null);
     const [previewBox, setPreviewBox] = useState<{ start: Coord; end: Coord } | null>(null);
     const activeStrokeIndex = useRef<number | null>(null);
+    const dodgeBurnLayerRef = useRef<DodgeBurnLayerRef>(null);
+    const isDodgeBurnDrawingRef = useRef(false);
+    const [dodgeBurnCurrentMask, setDodgeBurnCurrentMask] = useState<string | null>(null);
+    const dodgeBurnCurrentMaskRef = useRef<string | null>(null);
+    const dodgeBurnUndoStackRef = useRef<(string | null)[]>([]);
+    const dodgeBurnLastSavedMaskRef = useRef<string | null>(null);
+    const activeSubMaskIdRef = useRef<string | null>(null);
+    const prevDodgeBurnSubMaskIdRef = useRef<string | null>(null);
+    const prevIsDodgeBurnActiveRef = useRef(false);
+    dodgeBurnCurrentMaskRef.current = dodgeBurnCurrentMask;
 
     const [cursorPreview, setCursorPreview] = useState<CursorPreview>({ x: 0, y: 0, visible: false });
     const [straightenLine, setStraightenLine] = useState<any>(null);
@@ -1281,6 +1295,8 @@ const ImageCanvas = memo(
     const { t } = useTranslation();
     const osPlatform = useOsPlatform();
     const modifierKey = osPlatform === 'macos' ? 'Cmd' : 'Ctrl';
+    const setEditor = useEditorStore((s) => s.setEditor);
+    const undo = useEditorStore((s) => s.undo);
 
     const manualCleanupStateRef = useRef({
       inFlight: false,
@@ -1482,6 +1498,7 @@ const ImageCanvas = memo(
       }
       return null;
     }, [activeContainer, activeMaskId, activeAiSubMaskId, isMasking, isAiEditing]);
+    activeSubMaskIdRef.current = activeSubMask?.id ?? null;
 
     const effectiveImageDimensions = useMemo(() => {
       const steps = adjustments.orientationSteps || 0;
@@ -1698,8 +1715,112 @@ const ImageCanvas = memo(
         activeSubMask?.type === Mask.Flow ||
         activeSubMask?.type === Mask.Clone ||
         activeSubMask?.type === Mask.Heal);
+    const isDodgeBurnActive = isMasking && activeSubMask?.type === Mask.DodgeBurn;
+    const { effectUrl: dodgeBurnEffectUrl, isLoading: isDodgeBurnEffectLoading } = useDodgeBurnEffectUrl(
+      activeSubMask ?? null,
+      adjustments,
+    );
     const isManualCleanupActive =
       isAiEditing && (activeSubMask?.type === Mask.Clone || activeSubMask?.type === Mask.Heal);
+
+    const persistDodgeBurnMask = useCallback(
+      (subMaskId: string, maskBitmap: string | null) => {
+        setEditor((state) => ({
+          adjustments: {
+            ...state.adjustments,
+            masks: state.adjustments.masks.map((container) => ({
+              ...container,
+              subMasks: container.subMasks.map((sm) =>
+                sm.id === subMaskId ? { ...sm, parameters: { ...sm.parameters, maskBitmap } } : sm,
+              ),
+            })),
+          },
+        }));
+      },
+      [setEditor],
+    );
+
+    const flattenDodgeBurnMask = useCallback(
+      (subMaskId: string | null) => {
+        if (!subMaskId) {
+          dodgeBurnUndoStackRef.current = [];
+          return;
+        }
+        const currentMask = dodgeBurnCurrentMaskRef.current;
+        if (currentMask && currentMask !== dodgeBurnLastSavedMaskRef.current) {
+          persistDodgeBurnMask(subMaskId, currentMask);
+          dodgeBurnLastSavedMaskRef.current = currentMask;
+        }
+        dodgeBurnUndoStackRef.current = [];
+      },
+      [persistDodgeBurnMask],
+    );
+
+    useEffect(() => {
+      const prevId = prevDodgeBurnSubMaskIdRef.current;
+      const prevActive = prevIsDodgeBurnActiveRef.current;
+      const currentId = activeSubMask?.id ?? null;
+      const currentActive = isDodgeBurnActive;
+
+      if (prevId && (prevId !== currentId || (prevActive && !currentActive))) {
+        flattenDodgeBurnMask(prevId);
+      }
+
+      prevDodgeBurnSubMaskIdRef.current = currentActive ? currentId : null;
+      prevIsDodgeBurnActiveRef.current = currentActive;
+    }, [isDodgeBurnActive, activeSubMask?.id, flattenDodgeBurnMask]);
+
+    useEffect(() => {
+      if (activeSubMask?.type === Mask.DodgeBurn) {
+        const savedMask = activeSubMask.parameters?.maskBitmap ?? null;
+        setDodgeBurnCurrentMask(savedMask);
+        dodgeBurnLastSavedMaskRef.current = savedMask;
+        dodgeBurnUndoStackRef.current = [];
+      }
+    }, [activeSubMask?.id]);
+
+    useEffect(() => {
+      if (activeSubMask?.type === Mask.DodgeBurn) {
+        const savedMask = activeSubMask.parameters?.maskBitmap ?? null;
+        if (savedMask !== dodgeBurnCurrentMaskRef.current) {
+          setDodgeBurnCurrentMask(savedMask);
+          dodgeBurnLastSavedMaskRef.current = savedMask;
+          dodgeBurnUndoStackRef.current = [];
+        }
+      }
+    }, [activeSubMask?.parameters?.maskBitmap]);
+
+    useEffect(() => {
+      if (!isDodgeBurnActive) return;
+      const onKeyDown = (e: KeyboardEvent) => {
+        if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'z' && !e.shiftKey) {
+          e.preventDefault();
+          e.stopPropagation();
+          if (dodgeBurnUndoStackRef.current.length > 0) {
+            const prevMask = dodgeBurnUndoStackRef.current.pop();
+            if (prevMask !== undefined) {
+              dodgeBurnCurrentMaskRef.current = prevMask;
+              setDodgeBurnCurrentMask(prevMask);
+              const subMaskId = activeSubMaskIdRef.current;
+              if (subMaskId) {
+                dodgeBurnLastSavedMaskRef.current = prevMask;
+                persistDodgeBurnMask(subMaskId, prevMask);
+              }
+            }
+          } else {
+            undo();
+          }
+        }
+      };
+      window.addEventListener('keydown', onKeyDown, true);
+      return () => window.removeEventListener('keydown', onKeyDown, true);
+    }, [isDodgeBurnActive, undo, persistDodgeBurnMask]);
+
+    useEffect(() => {
+      return () => {
+        flattenDodgeBurnMask(activeSubMaskIdRef.current);
+      };
+    }, []);
 
     const isCloneOrHealActive =
       (isMasking || isAiEditing) && (activeSubMask?.type === Mask.Clone || activeSubMask?.type === Mask.Heal);
@@ -1766,7 +1887,8 @@ const ImageCanvas = memo(
       (isMasking || isAiEditing) && (activeSubMask?.type === Mask.Color || activeSubMask?.type === Mask.Luminance);
     const isInitialDrawing = (isMasking || isAiEditing) && activeSubMask?.parameters?.isInitialDraw === true;
 
-    const isToolActive = isBrushActive || isAiSubjectActive || isInitialDrawing || isParametricActive;
+    const isToolActive =
+      isBrushActive || isAiSubjectActive || isInitialDrawing || isParametricActive || isDodgeBurnActive;
 
     useEffect(() => {
       if (maskOverlayUrl && (isMasking || isAiEditing) && activeSubMask?.showOverlay) {
@@ -1976,6 +2098,37 @@ const ImageCanvas = memo(
       [isWbPickerActive, finalPreviewUrl, imageRenderSize, onWbPicked, setAdjustments, getCanvasPointer],
     );
 
+    const getEventClientPos = (
+      evt:
+        | PointerEvent
+        | MouseEvent
+        | TouchEvent
+        | { clientX?: number; clientY?: number; touches?: TouchList }
+        | null
+        | undefined,
+    ): { x: number; y: number } | null => {
+      if (!evt) return null;
+      const event = evt as { clientX?: number; clientY?: number; touches?: TouchList };
+      if (event.touches && event.touches.length > 0) {
+        return { x: event.touches[0].clientX, y: event.touches[0].clientY };
+      }
+      if (typeof event.clientX === 'number' && typeof event.clientY === 'number') {
+        return { x: event.clientX, y: event.clientY };
+      }
+      return null;
+    };
+
+    const getCanvasCoords = (clientX: number, clientY: number): { x: number; y: number } | null => {
+      const canvas = dodgeBurnLayerRef.current?.getCanvas();
+      if (!canvas) return null;
+      const rect = canvas.getBoundingClientRect();
+      const scale = transformState.scale || 1;
+      return {
+        x: (clientX - rect.left) / scale,
+        y: (clientY - rect.top) / scale,
+      };
+    };
+
     const handleStart = useCallback(
       (e: any) => {
         if (e.evt && typeof e.evt.button === 'number' && e.evt.button !== 0) {
@@ -2073,6 +2226,39 @@ const ImageCanvas = memo(
             if (e.evt && e.evt.cancelable) e.evt.preventDefault();
             return;
           }
+        }
+
+        if (isDodgeBurnActive && activeSubMask) {
+          if (isDodgeBurnEffectLoading || !dodgeBurnEffectUrl) {
+            return;
+          }
+
+          const clientPos = getEventClientPos(e.evt);
+          if (!clientPos) return;
+          const coords = getCanvasCoords(clientPos.x, clientPos.y);
+          if (!coords) return;
+
+          if (e.evt && e.evt.cancelable) e.evt.preventDefault();
+
+          isDodgeBurnDrawingRef.current = true;
+          isDrawing.current = true;
+
+          const size = brushStageSize > 0 ? brushStageSize : 10 / effectiveZoomScale;
+          const feather = brushSettings?.feather ?? 0;
+          const flow = activeSubMask.parameters?.flow ?? 2.5;
+          const altPressed = e.evt?.altKey || (window as any).altKeyDown;
+          const mode: 'add' | 'erase' = altPressed === (brushSettings?.tool === ToolType.Eraser) ? 'add' : 'erase';
+
+          dodgeBurnLayerRef.current?.resetBrush();
+
+          if (dodgeBurnUndoStackRef.current.length >= DODGE_BURN_UNDO_STACK_MAX) {
+            dodgeBurnUndoStackRef.current.shift();
+          }
+          dodgeBurnUndoStackRef.current.push(
+            dodgeBurnCurrentMaskRef.current ?? activeSubMask.parameters?.maskBitmap ?? null,
+          );
+          dodgeBurnLayerRef.current?.paintBrush(coords.x, coords.y, size, feather, flow, mode);
+          return;
         }
 
         if (isToolActive) {
@@ -2210,6 +2396,9 @@ const ImageCanvas = memo(
         brushStageSize,
         baseTool,
         getCanvasPointer,
+        isDodgeBurnActive,
+        isDodgeBurnEffectLoading,
+        dodgeBurnEffectUrl,
       ],
     );
 
@@ -2231,12 +2420,38 @@ const ImageCanvas = memo(
           }
         }
 
-        if (isToolActive) {
+        if (isToolActive || isDodgeBurnActive) {
           if (pos) {
             setCursorPreview({ x: pos.x, y: pos.y, visible: true });
+          } else if (isDodgeBurnActive && isDodgeBurnDrawingRef.current) {
+            // During a global window drag the Konva stage pointer is not updated,
+            // so fall back to the dodge/burn overlay canvas coordinates to keep
+            // the brush cursor visible while painting.
+            const clientPos = getEventClientPos(e?.evt ?? e);
+            const coords = clientPos ? getCanvasCoords(clientPos.x, clientPos.y) : null;
+            if (coords) {
+              setCursorPreview({ x: coords.x, y: coords.y, visible: true });
+            }
           } else {
             setCursorPreview((p: CursorPreview) => ({ ...p, visible: false }));
           }
+        }
+
+        if (isDodgeBurnActive && isDodgeBurnDrawingRef.current) {
+          const clientPos = getEventClientPos(e?.evt ?? e);
+          if (!clientPos) return;
+          const coords = getCanvasCoords(clientPos.x, clientPos.y);
+          if (!coords) return;
+
+          const size = brushStageSize > 0 ? brushStageSize : 10 / effectiveZoomScale;
+          const feather = brushSettings?.feather ?? 0;
+          const flow = activeSubMask?.parameters?.flow ?? 2.5;
+          const altPressed = (e?.altKey ?? false) || (e?.evt?.altKey ?? false) || (window as any).altKeyDown;
+          const mode: 'add' | 'erase' = altPressed === (brushSettings?.tool === ToolType.Eraser) ? 'add' : 'erase';
+
+          dodgeBurnLayerRef.current?.paintBrush(coords.x, coords.y, size, feather, flow, mode);
+          if (e?.evt && e.evt.cancelable) e.evt.preventDefault();
+          return;
         }
 
         if (!isDrawing.current || !isToolActive) {
@@ -2445,6 +2660,7 @@ const ImageCanvas = memo(
         activeContainer,
         activeSubMask,
         isBrushActive,
+        isDodgeBurnActive,
         isManualCleanupActive,
         onManualCleanup,
         activeLineFlow,
@@ -2457,17 +2673,38 @@ const ImageCanvas = memo(
         isMasking,
         localInitialDrawParams,
         brushImageSpaceSize,
+        brushStageSize,
         baseTool,
         getCanvasPointer,
       ],
     );
 
-    const handleUp = useCallback(() => {
+    const handleUp = useCallback(async () => {
       if (!isDrawing.current) {
         return;
       }
 
       setIsMaskInteractionActive(false);
+
+      if (isDodgeBurnDrawingRef.current && activeSubMask) {
+        isDodgeBurnDrawingRef.current = false;
+        isDrawing.current = false;
+
+        let maskBitmap: string | null | undefined;
+        try {
+          maskBitmap = await dodgeBurnLayerRef.current?.commitMask();
+        } catch (error) {
+          console.error('[ImageCanvas] Failed to commit dodge & burn mask:', error);
+        }
+
+        if (maskBitmap) {
+          dodgeBurnCurrentMaskRef.current = maskBitmap;
+          setDodgeBurnCurrentMask(maskBitmap);
+          dodgeBurnLastSavedMaskRef.current = maskBitmap;
+          persistDodgeBurnMask(activeSubMask.id, maskBitmap);
+        }
+        return;
+      }
 
       if (isInitialDrawing && activeSubMask) {
         isDrawing.current = false;
@@ -2625,20 +2862,22 @@ const ImageCanvas = memo(
       brushImageSpaceSize,
       brushStageSize,
       baseTool,
+      isDodgeBurnActive,
+      persistDodgeBurnMask,
     ]);
 
     const handleMouseEnter = useCallback(() => {
-      if (isToolActive) {
+      if (isToolActive || isDodgeBurnActive) {
         setCursorPreview((p: CursorPreview) => ({ ...p, visible: true }));
       }
-    }, [isToolActive]);
+    }, [isToolActive, isDodgeBurnActive]);
 
     const handleMouseLeave = useCallback(() => {
       setCursorPreview((p: CursorPreview) => ({ ...p, visible: false }));
     }, []);
 
     useEffect(() => {
-      if (!isToolActive) return;
+      if (!isToolActive && !isDodgeBurnActive) return;
 
       function onGlobalMove(e: MouseEvent | TouchEvent) {
         if (!isDrawing.current) return;
@@ -2654,13 +2893,15 @@ const ImageCanvas = memo(
       window.addEventListener('mouseup', onGlobalUp);
       window.addEventListener('touchmove', onGlobalMove, { passive: false });
       window.addEventListener('touchcancel', onGlobalUp);
+      window.addEventListener('touchend', onGlobalUp);
       return () => {
         window.removeEventListener('mousemove', onGlobalMove);
         window.removeEventListener('mouseup', onGlobalUp);
         window.removeEventListener('touchmove', onGlobalMove);
         window.removeEventListener('touchcancel', onGlobalUp);
+        window.removeEventListener('touchend', onGlobalUp);
       };
-    }, [isToolActive, handleMove, handleUp]);
+    }, [isToolActive, isDodgeBurnActive, handleMove, handleUp]);
 
     const handleStraightenMouseDown = (e: any) => {
       if (e.evt.button !== 0 && !e.evt.touches) {
@@ -2834,7 +3075,7 @@ const ImageCanvas = memo(
       if (isParametricActive) return 'crosshair';
       if (isInitialDrawing) return 'crosshair';
 
-      if (isBrushActive && !isManualCleanupActive) return 'none';
+      if ((isBrushActive && !isManualCleanupActive) || isDodgeBurnActive) return 'none';
 
       if (isManualCleanupActive) {
         if (activeSubMask?.parameters?.sourceX === undefined || isCtrlPressed) {
@@ -2858,6 +3099,7 @@ const ImageCanvas = memo(
       isWbPickerActive,
       isInitialDrawing,
       isBrushActive,
+      isDodgeBurnActive,
       isManualCleanupActive,
       activeSubMask,
       isAiSubjectActive,
@@ -2905,6 +3147,17 @@ const ImageCanvas = memo(
           : isMaskControlHovered
             ? 0
             : 1;
+
+    const dodgeBurnSubMaskOpacity = Math.max(0, Math.min(1, (activeSubMask?.opacity ?? 100) / 100));
+    const dodgeBurnContainerOpacity =
+      activeContainer && 'opacity' in activeContainer && typeof activeContainer.opacity === 'number'
+        ? Math.max(0, Math.min(1, activeContainer.opacity / 100))
+        : 1;
+    // For dodge/burn the overlay *is* the effect preview, so it must stay visible
+    // while the user hovers or drags its own sliders. Hide it only when explicitly
+    // showing the original image.
+    const dodgeBurnBaseOpacity = isShowingOriginal ? 0 : 1;
+    const dodgeBurnOpacity = dodgeBurnBaseOpacity * dodgeBurnSubMaskOpacity * dodgeBurnContainerOpacity;
 
     return (
       <div className="relative" style={{ width: '100%', height: '100%', cursor: effectiveCursor }}>
@@ -3036,6 +3289,18 @@ const ImageCanvas = memo(
                   }}
                 />
               )}
+              {isDodgeBurnActive && finalPreviewUrl && dodgeBurnEffectUrl && (
+                <DodgeBurnLayer
+                  ref={dodgeBurnLayerRef}
+                  baseUrl={finalPreviewUrl}
+                  effectUrl={dodgeBurnEffectUrl}
+                  maskBitmap={dodgeBurnCurrentMask ?? activeSubMask?.parameters?.maskBitmap ?? null}
+                  showOverlay={activeSubMask?.showOverlay ?? false}
+                  isActive={isDodgeBurnActive}
+                  opacity={dodgeBurnOpacity}
+                  imageRenderSize={imageRenderSize}
+                />
+              )}
             </div>
 
             <div className="absolute inset-0 pointer-events-none z-50">
@@ -3116,7 +3381,8 @@ const ImageCanvas = memo(
                 transform: `scale(${1 / maxSafeScale})`,
                 width: stageWidth * maxSafeScale,
                 height: stageHeight * maxSafeScale,
-                zIndex: 4,
+                zIndex: 11,
+                pointerEvents: 'auto',
                 touchAction: 'none',
                 userSelect: 'none',
                 opacity: isShowingOriginal ? 0 : 1,
@@ -3200,12 +3466,12 @@ const ImageCanvas = memo(
                           listening={false}
                         />
                       )}
-                      {isBrushActive &&
+                      {(isBrushActive || isDodgeBurnActive) &&
                         cursorPreview.visible &&
                         (!isManualCleanupActive ||
                           (activeSubMask?.parameters?.sourceX !== undefined && !isCtrlPressed)) && (
                           <>
-                            {activeSubMask?.type !== Mask.Flow && (
+                            {activeSubMask?.type !== Mask.Flow && activeSubMask?.type !== Mask.DodgeBurn && (
                               <Circle
                                 {...(brushCursorPreview.colorStops
                                   ? {
@@ -3223,7 +3489,7 @@ const ImageCanvas = memo(
                                 y={cursorPreview.y}
                               />
                             )}
-                            {activeSubMask?.type === Mask.Flow && (
+                            {(activeSubMask?.type === Mask.Flow || activeSubMask?.type === Mask.DodgeBurn) && (
                               <Circle
                                 listening={false}
                                 perfectDrawEnabled={false}
