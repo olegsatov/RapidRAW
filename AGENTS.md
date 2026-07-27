@@ -169,6 +169,10 @@ explicit user action and keep the catalog-only path as the default.
 
 ## Interaction rules
 
+- **Direct questions are the highest-priority instruction.** When the user asks a
+  direct question, stop all other work and answer it clearly and concisely first.
+  Do not proceed with code changes, investigation, or tooling until the question
+  is answered. After answering, wait for the next instruction.
 - When the user asks a direct question, answer that question clearly and
   concisely, then stop and wait for the next instruction. Do not launch
   into unrelated investigation, tooling, or fixes unless explicitly asked.

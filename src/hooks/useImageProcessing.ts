@@ -38,6 +38,8 @@ export function useImageProcessing(
   const renderGeneration = useEditorStore((state) => state.renderGeneration);
   const setEditor = useEditorStore((state) => state.setEditor);
 
+  const lastPayloadSigRef = useRef<string | null>(null);
+
   const activeRightPanel = useUIStore((state) => state.activeRightPanel);
   const appSettings = useSettingsStore((state) => state.appSettings);
   const multiSelectedPaths = useLibraryStore((state) => state.multiSelectedPaths);
@@ -187,7 +189,12 @@ export function useImageProcessing(
               (sm: any) => sm.id === activeDodgeBurnId && sm.type === 'dodge-burn',
             );
             if (idx !== -1) {
-              container.subMasks[idx] = { ...container.subMasks[idx], visible: false };
+              container.subMasks[idx] = {
+                ...container.subMasks[idx],
+                visible: false,
+                opacity: 0,
+                parameters: { ...container.subMasks[idx].parameters, maskBitmap: null },
+              };
               forceSoftwareRender = true;
               break;
             }
@@ -197,6 +204,15 @@ export function useImageProcessing(
 
       const jobId = ++previewJobIdRef.current;
       const roi = calculateROI();
+
+      // The active dodge/burn mask's bitmap and opacity are rendered by the
+      // overlay layer, not the base preview, so a change to them does not alter
+      // the backend payload. Skip the expensive software render in that case.
+      const payloadSig =
+        JSON.stringify(payload) +
+        `|${targetRes ?? 0}|${dragging ? 1 : 0}|${JSON.stringify(roi)}|${isWaveformVisible ? 1 : 0}`;
+      if (payloadSig === lastPayloadSigRef.current) return;
+      lastPayloadSigRef.current = payloadSig;
 
       // Screen-space grain scale: the grain mip must match the DISPLAYED size
       // (zoom included), not the render resolution — the wgpu display blit

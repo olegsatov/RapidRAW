@@ -66,7 +66,14 @@ function hideTargetDodgeBurnMask(source: Adjustments, targetId: string | undefin
     if (!container.subMasks) continue;
     const idx = container.subMasks.findIndex((sm: SubMask) => sm.id === targetId && sm.type === Mask.DodgeBurn);
     if (idx !== -1) {
-      container.subMasks[idx] = { ...container.subMasks[idx], visible: false };
+      // Hidden while rendering the effect plane: maskBitmap/opacity are consumed
+      // by the overlay compositor, not by the backend render of the plane.
+      container.subMasks[idx] = {
+        ...container.subMasks[idx],
+        visible: false,
+        opacity: 0,
+        parameters: { ...container.subMasks[idx].parameters, maskBitmap: null },
+      };
       break;
     }
   }
@@ -84,6 +91,7 @@ export function useDodgeBurnEffectUrl(activeSubMask: SubMask | null, adjustments
 
   const isActive = activeSubMask?.type === Mask.DodgeBurn;
   const delta = activeSubMask?.parameters?.adjustments as DodgeBurnAdjustments | undefined;
+  const lastPayloadSigRef = useRef<string | null>(null);
 
   const effectAdjustments = useMemo(() => {
     if (!isActive || !delta) return null;
@@ -93,8 +101,10 @@ export function useDodgeBurnEffectUrl(activeSubMask: SubMask | null, adjustments
 
   const generate = useMemo(
     () =>
-      debounce(async (payload: Adjustments, targetRes: number) => {
+      debounce(async (payload: Adjustments, targetRes: number, sig: string) => {
         if (!selectedImage?.isReady) return;
+        if (sig === lastPayloadSigRef.current) return;
+        lastPayloadSigRef.current = sig;
 
         const requestId = ++requestIdRef.current;
         setIsLoading(true);
@@ -148,7 +158,8 @@ export function useDodgeBurnEffectUrl(activeSubMask: SubMask | null, adjustments
       return;
     }
 
-    generate(effectAdjustments, previewResolution);
+    const payloadSig = JSON.stringify(effectAdjustments);
+    generate(effectAdjustments, previewResolution, payloadSig);
 
     return () => {
       generate.cancel();

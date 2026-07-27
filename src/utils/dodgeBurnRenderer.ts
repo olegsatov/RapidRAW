@@ -565,13 +565,10 @@ export class DodgeBurnRenderer {
 
     const readWidth = this.imageSize.width;
     const readHeight = this.imageSize.height;
-    const rgba = new Uint8Array(readWidth * readHeight * 4);
-    gl.readPixels(0, 0, readWidth, readHeight, gl.RGBA, gl.UNSIGNED_BYTE, rgba);
     const pixels = new Uint8Array(readWidth * readHeight);
-    for (let i = 0; i < readWidth * readHeight; i++) {
-      pixels[i] = rgba[i * 4];
-    }
-
+    gl.pixelStorei(gl.PACK_ALIGNMENT, 1);
+    gl.readPixels(0, 0, readWidth, readHeight, gl.RED, gl.UNSIGNED_BYTE, pixels);
+    gl.pixelStorei(gl.PACK_ALIGNMENT, 4);
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
 
     const sourceCanvas = document.createElement('canvas');
@@ -583,16 +580,17 @@ export class DodgeBurnRenderer {
     }
 
     const imageData = sourceCtx.createImageData(readWidth, readHeight);
+    const data = imageData.data;
     for (let y = 0; y < readHeight; y++) {
       const srcY = readHeight - 1 - y;
       for (let x = 0; x < readWidth; x++) {
         const srcIndex = srcY * readWidth + x;
-        const dstIndex = y * readWidth + x;
+        const dstIndex = (y * readWidth + x) * 4;
         const value = pixels[srcIndex];
-        imageData.data[dstIndex * 4] = value;
-        imageData.data[dstIndex * 4 + 1] = value;
-        imageData.data[dstIndex * 4 + 2] = value;
-        imageData.data[dstIndex * 4 + 3] = 255;
+        data[dstIndex] = value;
+        data[dstIndex + 1] = value;
+        data[dstIndex + 2] = value;
+        data[dstIndex + 3] = 255;
       }
     }
     sourceCtx.putImageData(imageData, 0, 0);
@@ -619,6 +617,8 @@ export class DodgeBurnRenderer {
           (blob) => {
             if (blob) {
               resolve(blob);
+            } else if (type === 'image/jpeg') {
+              tryToBlob('image/webp', 0.7);
             } else if (type === 'image/webp') {
               tryToBlob('image/png');
             } else {
@@ -629,7 +629,7 @@ export class DodgeBurnRenderer {
           quality,
         );
       };
-      tryToBlob('image/webp', 0.7);
+      tryToBlob('image/jpeg', 0.9);
     });
   }
 
