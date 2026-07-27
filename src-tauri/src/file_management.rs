@@ -2242,108 +2242,220 @@ pub fn move_files(
 }
 
 #[tauri::command]
-pub fn save_metadata_and_update_thumbnail(
+pub async fn save_dodge_burn_mask(
     path: String,
-    adjustments: Value,
+    sub_mask_id: String,
+    mask_data_url: String,
     app_handle: AppHandle,
-    state: tauri::State<AppState>,
 ) -> Result<(), String> {
-    let (source_path, _) = parse_virtual_path(&path);
-
-    let mut metadata =
-        metadata_store::load_image_metadata(&app_handle, None, &path).map_err(|e| e.to_string())?;
-
-    let mut final_adjustments = adjustments;
-    {
-        let lens_db_guard = state.lens_db.lock().unwrap();
-        resolve_lens_params_in_adjustments(
-            &mut final_adjustments,
-            &metadata.exif,
-            lens_db_guard.as_deref(),
-        );
-    }
-
-    metadata.adjustments = final_adjustments;
-
-    metadata_store::save_image_metadata(&app_handle, None, &path, &metadata)
-        .map_err(|e| e.to_string())?;
-
-    if let Ok(settings) = load_settings(app_handle.clone())
-        && settings.enable_xmp_sync.unwrap_or(false)
-    {
-        let create_if_missing = settings.create_xmp_if_missing.unwrap_or(false);
-        sync_metadata_to_xmp(&source_path, &metadata, create_if_missing);
-    }
-
-    let loaded_image_lock = state.original_image.lock().unwrap();
-    let preloaded_image_option = if let Some(loaded_image) = loaded_image_lock.as_ref() {
-        if loaded_image.path == path {
-            Some(loaded_image.image.clone())
-        } else {
-            None
-        }
-    } else {
-        None
+    let start = std::time::Instant::now();
+    log::info!(
+        "[perf-save-mask] async command started for {} sub_mask_id={} data_url_size={}",
+        path,
+        sub_mask_id,
+        mask_data_url.len()
+    );
+    let file_id = match library_db::get_file_id_by_path(&app_handle, &path)? {
+        Some(id) => id,
+        None => return Err(format!("File not in catalog: {}", path)),
     };
-    drop(loaded_image_lock);
+    let result = library_db::save_dodge_burn_mask(&app_handle, file_id, &sub_mask_id, &mask_data_url);
+    log::info!(
+        "[perf-save-mask] command done for {} after {:?}",
+        path,
+        start.elapsed()
+    );
+    result
+}
 
-    let gpu_context = gpu_processing::get_or_init_gpu_context(&state, &app_handle).ok();
-    let app_handle_clone = app_handle.clone();
+#[tauri::command]
+pub async fn save_metadata_and_update_thumbnail(
+    path: String,
+    adjustments_json: String,
+    client_timestamp_ms: Option<f64>,
+    app_handle: AppHandle,
+) -> Result<(), String> {
+    let start = std::time::Instant::now();
+    log::info!(
+        "[perf-save] async command started for {} (client_timestamp_ms: {:?})",
+        path,
+        client_timestamp_ms
+    );
     let path_clone = path.clone();
+    let app_handle_clone = app_handle.clone();
+    let spawn_blocking_start = std::time::Instant::now();
 
-    add_to_thumbnail_queue(&state, 1, &app_handle);
-
-    thread::spawn(move || {
+    let _ = tauri::async_runtime::spawn_blocking(move || {
+        log::info!(
+            "[perf-save] spawn_blocking actually started for {} after {:?}",
+            path_clone,
+            spawn_blocking_start.elapsed()
+        );
         let state = app_handle_clone.state::<AppState>();
-        let settings = load_settings(app_handle_clone.clone()).unwrap_or_default();
-
-        let thumb_cache_dir = match resolve_thumbnail_cache_dir(&app_handle_clone) {
-            Ok(dir) => dir,
-            Err(e) => {
-                log::warn!(
-                    "Unable to initialize thumbnail cache directory for '{}': {}",
-                    path_clone,
-                    e
-                );
-                emit_thumbnail_cache_setup_error(&app_handle_clone, &path_clone, &e);
-                increment_thumbnail_progress(&state, &app_handle_clone);
-                return;
-            }
-        };
-
-        let file_id = lookup_catalog_file_id(&app_handle_clone, &path_clone);
+        let start = std::time::Instant::now();
         let (source_path, _) = parse_virtual_path(&path_clone);
-        let modified = fs::metadata(&source_path)
-            .ok()
-            .and_then(|m| m.modified().ok())
-            .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
-            .map(|d| d.as_secs())
-            .unwrap_or(0);
-        let result = generate_single_thumbnail_and_cache(
-            &path_clone,
-            &thumb_cache_dir,
-            gpu_context.as_ref(),
-            preloaded_image_option.as_deref(),
-            true,
-            &app_handle_clone,
-            &settings,
-            file_id,
-            modified,
+
+        let t_parse = std::time::Instant::now();
+        let mut final_adjustments: Value =
+            serde_json::from_str(&adjustments_json).map_err(|e| e.to_string())?;
+        log::info!(
+            "[perf-save] parse adjustments_json took {:?} for {}",
+            t_parse.elapsed(),
+            path_clone
         );
 
-        if let Some((thumbnail_path, rating, is_edited)) = result {
-            emit_thumbnail_generated(
-                &app_handle_clone,
-                &path_clone,
-                &thumbnail_path,
-                rating,
-                is_edited,
+        let t0 = std::time::Instant::now();
+        let mut metadata = metadata_store::load_image_metadata(&app_handle_clone, None, &path_clone)
+            .map_err(|e| e.to_string())?;
+        log::info!(
+            "[perf-save] load_image_metadata took {:?} for {}",
+            t0.elapsed(),
+            path_clone
+        );
+
+        let t1 = std::time::Instant::now();
+        {
+            let lens_db_guard = state.lens_db.lock().unwrap();
+            resolve_lens_params_in_adjustments(
+                &mut final_adjustments,
+                &metadata.exif,
+                lens_db_guard.as_deref(),
             );
         }
+        log::info!(
+            "[perf-save] resolve_lens_params took {:?} for {}",
+            t1.elapsed(),
+            path_clone
+        );
 
-        increment_thumbnail_progress(&state, &app_handle_clone);
-    });
+        metadata.adjustments = final_adjustments;
 
+        let t2 = std::time::Instant::now();
+        metadata_store::save_image_metadata(&app_handle_clone, None, &path_clone, &metadata)
+            .map_err(|e| e.to_string())?;
+        log::info!(
+            "[perf-save] save_image_metadata took {:?} for {}",
+            t2.elapsed(),
+            path_clone
+        );
+
+        let t3 = std::time::Instant::now();
+        if let Ok(settings) = load_settings(app_handle_clone.clone())
+            && settings.enable_xmp_sync.unwrap_or(false)
+        {
+            let create_if_missing = settings.create_xmp_if_missing.unwrap_or(false);
+            sync_metadata_to_xmp(&source_path, &metadata, create_if_missing);
+        }
+        log::info!(
+            "[perf-save] xmp_sync took {:?} for {}",
+            t3.elapsed(),
+            path_clone
+        );
+
+        let t4 = std::time::Instant::now();
+        let loaded_image_lock = state.original_image.lock().unwrap();
+        let preloaded_image_option = if let Some(loaded_image) = loaded_image_lock.as_ref() {
+            if loaded_image.path == path_clone {
+                Some(loaded_image.image.clone())
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+        drop(loaded_image_lock);
+        log::info!(
+            "[perf-save] original_image lock took {:?} for {}",
+            t4.elapsed(),
+            path_clone
+        );
+
+        let t5 = std::time::Instant::now();
+        let gpu_context = gpu_processing::get_or_init_gpu_context(&state, &app_handle_clone).ok();
+        log::info!(
+            "[perf-save] get_or_init_gpu_context took {:?} for {}",
+            t5.elapsed(),
+            path_clone
+        );
+
+        let app_handle_thread = app_handle_clone.clone();
+        let path_thread = path_clone.clone();
+
+        let t6 = std::time::Instant::now();
+        add_to_thumbnail_queue(&state, 1, &app_handle_clone);
+        log::info!(
+            "[perf-save] add_to_thumbnail_queue took {:?} for {}",
+            t6.elapsed(),
+            path_clone
+        );
+
+        thread::spawn(move || {
+            let state = app_handle_thread.state::<AppState>();
+            let settings = load_settings(app_handle_thread.clone()).unwrap_or_default();
+
+            let thumb_cache_dir = match resolve_thumbnail_cache_dir(&app_handle_thread) {
+                Ok(dir) => dir,
+                Err(e) => {
+                    log::warn!(
+                        "Unable to initialize thumbnail cache directory for '{}': {}",
+                        path_thread,
+                        e
+                    );
+                    emit_thumbnail_cache_setup_error(&app_handle_thread, &path_thread, &e);
+                    increment_thumbnail_progress(&state, &app_handle_thread);
+                    return;
+                }
+            };
+
+            let file_id = lookup_catalog_file_id(&app_handle_thread, &path_thread);
+            let (source_path, _) = parse_virtual_path(&path_thread);
+            let modified = fs::metadata(&source_path)
+                .ok()
+                .and_then(|m| m.modified().ok())
+                .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                .map(|d| d.as_secs())
+                .unwrap_or(0);
+            let result = generate_single_thumbnail_and_cache(
+                &path_thread,
+                &thumb_cache_dir,
+                gpu_context.as_ref(),
+                preloaded_image_option.as_deref(),
+                true,
+                &app_handle_thread,
+                &settings,
+                file_id,
+                modified,
+            );
+
+            if let Some((thumbnail_path, rating, is_edited)) = result {
+                emit_thumbnail_generated(
+                    &app_handle_thread,
+                    &path_thread,
+                    &thumbnail_path,
+                    rating,
+                    is_edited,
+                );
+            }
+
+            increment_thumbnail_progress(&state, &app_handle_thread);
+        });
+
+        log::info!(
+            "[perf-save] spawn_blocking total took {:?} for {}",
+            start.elapsed(),
+            path_clone
+        );
+
+        Ok::<(), String>(())
+    })
+    .await
+    .map_err(|e| e.to_string())?;
+
+    log::info!(
+        "[perf-save] async command total took {:?} for {}",
+        start.elapsed(),
+        path
+    );
     Ok(())
 }
 

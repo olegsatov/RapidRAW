@@ -166,6 +166,9 @@ explicit user action and keep the catalog-only path as the default.
 - If you need to stop a dev server or background process, target the specific
   PID or port from the current task/session (e.g. `lsof -i :<port>` or the PID
   captured when the process was started).
+- **Never start or restart the application** (`npm run tauri dev`, `npm run dev`,
+  `cargo run`, etc.) on your own initiative. The user runs and restarts the app
+  manually. Only start or stop processes when explicitly asked.
 
 ## Interaction rules
 

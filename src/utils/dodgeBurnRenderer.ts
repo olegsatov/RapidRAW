@@ -364,12 +364,30 @@ export class DodgeBurnRenderer {
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
   }
 
+  // Brush stamps are scissored to their bounding box, so each ping-pong swap
+  // only refreshes a small region of the write texture (the rest is synced by
+  // a box copy-back). Any wholesale mask replacement must therefore update
+  // BOTH textures, or the stale half resurfaces after the first swap.
+  private syncMaskPair(): void {
+    const gl = this.gl;
+    if (!gl || !this.currentMaskTexture) return;
+    const currentFb = this.currentMaskTexture === this.maskTextureA ? this.framebufferA : this.framebufferB;
+    const otherTexture = this.currentMaskTexture === this.maskTextureA ? this.maskTextureB : this.maskTextureA;
+    if (!currentFb || !otherTexture) return;
+    gl.bindFramebuffer(gl.FRAMEBUFFER, currentFb);
+    gl.bindTexture(gl.TEXTURE_2D, otherTexture);
+    gl.copyTexSubImage2D(gl.TEXTURE_2D, 0, 0, 0, 0, 0, this.imageSize.width, this.imageSize.height);
+    gl.bindTexture(gl.TEXTURE_2D, null);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  }
+
   async loadMaskTexture(maskDataUrl: string | null): Promise<void> {
     const gl = this.gl;
     if (!gl || !this.currentMaskTexture) return;
 
     if (!maskDataUrl) {
       this.clearMaskTexture(this.currentMaskTexture);
+      this.syncMaskPair();
       return;
     }
 
@@ -404,6 +422,8 @@ export class DodgeBurnRenderer {
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.R8, width, height, 0, gl.RED, gl.UNSIGNED_BYTE, pixels);
     gl.pixelStorei(gl.UNPACK_ALIGNMENT, 4);
     gl.bindTexture(gl.TEXTURE_2D, null);
+
+    this.syncMaskPair();
   }
 
   resize(width: number, height: number): void {
@@ -509,15 +529,33 @@ export class DodgeBurnRenderer {
     const flowAlpha = Math.max(0, Math.min(1, flow / 200));
     const modeValue = mode === 'add' ? 1 : -1;
 
+    const maskW = this.imageSize.width;
+    const maskH = this.imageSize.height;
+
     for (const point of points) {
       const uv = this.screenToUv(point.x, point.y);
       if (!uv) continue;
+
+      const centerX = uv.u * maskW;
+      const centerY = uv.v * maskH;
+
+      // Scissor the stamp to its bounding box. A fullscreen pass per stamp is
+      // 4.4M pixels of read+write; fast strokes queue hundreds of stamps and
+      // the driver back-pressure then blocks the JS main thread (frozen
+      // cursor, stalled IPC responses).
+      const sx0 = Math.max(0, Math.min(maskW, Math.floor(centerX - radiusPixel) - 1));
+      const sx1 = Math.max(0, Math.min(maskW, Math.ceil(centerX + radiusPixel) + 1));
+      // The brush shader's pixel space is top-down; GL scissor uses a
+      // bottom-left origin, so mirror the box vertically.
+      const sy0 = Math.max(0, Math.min(maskH, Math.floor(maskH - centerY - radiusPixel) - 1));
+      const sy1 = Math.max(0, Math.min(maskH, Math.ceil(maskH - centerY + radiusPixel) + 1));
+      if (sx1 <= sx0 || sy1 <= sy0) continue;
 
       const readTexture = this.getReadMask();
       const writeFramebuffer = this.getWriteFramebuffer();
 
       gl.bindFramebuffer(gl.FRAMEBUFFER, writeFramebuffer);
-      gl.viewport(0, 0, this.imageSize.width, this.imageSize.height);
+      gl.viewport(0, 0, maskW, maskH);
 
       gl.useProgram(this.brushProgram);
       gl.bindVertexArray(this.vao);
@@ -526,14 +564,23 @@ export class DodgeBurnRenderer {
       gl.bindTexture(gl.TEXTURE_2D, readTexture);
       gl.uniform1i(this.brushUniforms.sourceMask, 0);
 
-      gl.uniform2f(this.brushUniforms.imageSize, this.imageSize.width, this.imageSize.height);
-      gl.uniform2f(this.brushUniforms.centerPixel, uv.u * this.imageSize.width, uv.v * this.imageSize.height);
+      gl.uniform2f(this.brushUniforms.imageSize, maskW, maskH);
+      gl.uniform2f(this.brushUniforms.centerPixel, centerX, centerY);
       gl.uniform1f(this.brushUniforms.radiusPixel, radiusPixel);
       gl.uniform1f(this.brushUniforms.flow, flowAlpha);
       gl.uniform1f(this.brushUniforms.feather, softFeather);
       gl.uniform1f(this.brushUniforms.mode, modeValue);
 
+      gl.enable(gl.SCISSOR_TEST);
+      gl.scissor(sx0, sy0, sx1 - sx0, sy1 - sy0);
       gl.drawArrays(gl.TRIANGLES, 0, 3);
+      gl.disable(gl.SCISSOR_TEST);
+
+      // Outside the box the write texture still holds the previous state, so
+      // the ping-pong pair stays in sync by copying the freshly stamped box
+      // back into the texture that was just sampled.
+      gl.bindTexture(gl.TEXTURE_2D, readTexture);
+      gl.copyTexSubImage2D(gl.TEXTURE_2D, 0, sx0, sy0, sx0, sy0, sx1 - sx0, sy1 - sy0);
 
       this.swapMask();
     }
@@ -570,6 +617,7 @@ export class DodgeBurnRenderer {
   }
 
   getMaskBlob(targetSize?: { width: number; height: number }): Promise<Blob> {
+    const t0 = performance.now();
     const gl = this.gl;
     if (!gl || !this.imageSize.width || !this.imageSize.height) {
       return Promise.reject(new Error('Renderer not initialized'));
@@ -585,6 +633,8 @@ export class DodgeBurnRenderer {
     gl.readPixels(0, 0, readWidth, readHeight, gl.RED, gl.UNSIGNED_BYTE, pixels);
     gl.pixelStorei(gl.PACK_ALIGNMENT, 4);
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    const t1 = performance.now();
+    console.log('[perf] getMaskBlob readPixels:', (t1 - t0).toFixed(1), 'ms', readWidth, 'x', readHeight);
 
     if (!this.worker) {
       return Promise.reject(new Error('Mask worker not initialized'));
@@ -610,6 +660,16 @@ export class DodgeBurnRenderer {
     );
 
     return dataUrlPromise.then((dataUrl) => {
+      const t2 = performance.now();
+      console.log(
+        '[perf] getMaskBlob worker encode:',
+        (t2 - t1).toFixed(1),
+        'ms',
+        'target',
+        targetWidth,
+        'x',
+        targetHeight,
+      );
       if (!dataUrl) {
         return Promise.reject(new Error('Worker failed to encode mask'));
       }
@@ -623,7 +683,10 @@ export class DodgeBurnRenderer {
       for (let i = 0; i < byteString.length; i++) {
         ia[i] = byteString.charCodeAt(i);
       }
-      return new Blob([ab], { type: mimeString });
+      const blob = new Blob([ab], { type: mimeString });
+      const t3 = performance.now();
+      console.log('[perf] getMaskBlob dataUrl->blob:', (t3 - t2).toFixed(1), 'ms', 'blob size:', blob.size);
+      return blob;
     });
   }
 

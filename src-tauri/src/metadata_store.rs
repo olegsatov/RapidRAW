@@ -35,12 +35,63 @@ pub fn load_image_metadata<R: Runtime>(
     Ok(ImageMetadata::default())
 }
 
+fn inject_dodge_burn_masks(
+    adjustments: &mut Value,
+    masks: &HashMap<String, String>,
+    migrated: &mut Vec<(String, String)>,
+) {
+    fn inject_submasks(
+        submasks: Option<&mut Vec<Value>>,
+        masks: &HashMap<String, String>,
+        migrated: &mut Vec<(String, String)>,
+    ) {
+        let Some(arr) = submasks else { return };
+        for submask in arr {
+            let id = submask.get("id").and_then(|v| v.as_str()).unwrap_or("");
+            let mask_type = submask.get("type").and_then(|v| v.as_str()).unwrap_or("");
+            if mask_type != "dodge-burn" {
+                continue;
+            }
+            let inline_bitmap = submask
+                .get("parameters")
+                .and_then(|p| p.get("maskBitmap"))
+                .and_then(|v| v.as_str());
+            if let Some(data_url) = inline_bitmap.filter(|s| !s.is_empty()) {
+                // Migrate legacy inline bitmaps to the dedicated table on first read.
+                if !masks.contains_key(id) {
+                    migrated.push((id.to_string(), data_url.to_string()));
+                }
+            }
+            let needs_bitmap = inline_bitmap.map(|v| v.is_empty()).unwrap_or(true);
+            if !needs_bitmap {
+                continue;
+            }
+            if let Some(data_url) = masks.get(id) {
+                if let Some(params) = submask.get_mut("parameters").and_then(|p| p.as_object_mut()) {
+                    params.insert("maskBitmap".to_string(), Value::String(data_url.clone()));
+                }
+            }
+        }
+    }
+
+    if let Some(containers) = adjustments.get_mut("masks").and_then(|v| v.as_array_mut()) {
+        for container in containers {
+            inject_submasks(container.get_mut("subMasks").and_then(|v| v.as_array_mut()), masks, migrated);
+        }
+    }
+    if let Some(patches) = adjustments.get_mut("aiPatches").and_then(|v| v.as_array_mut()) {
+        for patch in patches {
+            inject_submasks(patch.get_mut("subMasks").and_then(|v| v.as_array_mut()), masks, migrated);
+        }
+    }
+}
+
 fn parse_db_metadata<R: Runtime>(
     app_handle: &AppHandle<R>,
     file_id: i64,
     file_metadata: &library_db::FileMetadata,
 ) -> Result<ImageMetadata, String> {
-    let adjustments: Value =
+    let mut adjustments: Value =
         serde_json::from_str(&file_metadata.adjustments_json).map_err(|e| e.to_string())?;
     let exif = file_metadata
         .exif_json
@@ -52,6 +103,22 @@ fn parse_db_metadata<R: Runtime>(
 
     let (rating, flag, tags) =
         library_db::get_file_rating_flag_tags(app_handle, file_id)?.unwrap_or((0, 0, Vec::new()));
+
+    // Restore dodge/burn mask bitmaps from their dedicated table. They are kept
+    // out of the adjustments JSON so metadata saves stay small and fast.
+    let masks = library_db::load_dodge_burn_masks(app_handle, file_id).unwrap_or_default();
+    let mut migrated = Vec::new();
+    inject_dodge_burn_masks(&mut adjustments, &masks, &mut migrated);
+    for (sub_mask_id, data_url) in migrated {
+        if let Err(e) = library_db::save_dodge_burn_mask(app_handle, file_id, &sub_mask_id, &data_url) {
+            log::warn!(
+                "[metadata] failed to migrate inline dodge/burn mask {} for file_id {}: {}",
+                sub_mask_id,
+                file_id,
+                e
+            );
+        }
+    }
 
     Ok(ImageMetadata {
         version: 1,

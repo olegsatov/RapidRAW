@@ -1103,6 +1103,41 @@ export const normalizeLoadedAdjustments = (loadedAdjustments: Adjustments): any 
   };
 };
 
+/**
+ * Returns a copy of adjustments with all dodge/burn `maskBitmap` data URLs
+ * replaced by `null`. Use this before sending adjustments to the metadata save
+ * command: the bitmaps live in a dedicated catalog table and must not inflate
+ * the JSON payload that crosses the WebKit bridge on every slider change.
+ */
+export function stripDodgeBurnMaskBitmaps(adjustments: Adjustments): Adjustments {
+  const stripSubMask = (subMask: SubMask): SubMask => {
+    if (subMask.type !== Mask.DodgeBurn || !subMask.parameters?.maskBitmap) {
+      return subMask;
+    }
+    return {
+      ...subMask,
+      parameters: {
+        ...subMask.parameters,
+        maskBitmap: null,
+      },
+    };
+  };
+
+  const stripContainer = (container: MaskContainer): MaskContainer => ({
+    ...container,
+    subMasks: container.subMasks.map(stripSubMask),
+  });
+
+  return {
+    ...adjustments,
+    masks: adjustments.masks.map(stripContainer),
+    aiPatches: adjustments.aiPatches.map((patch) => ({
+      ...patch,
+      subMasks: patch.subMasks.map(stripSubMask),
+    })),
+  };
+}
+
 export interface AdjustmentGroup {
   label: string;
   keys: string[];

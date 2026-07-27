@@ -41,10 +41,16 @@ const DodgeBurnLayer = forwardRef<DodgeBurnLayerRef, DodgeBurnLayerProps>(
         commitMask: async (targetSize) => {
           const renderer = rendererRef.current;
           if (!renderer) return null;
+          const t0 = performance.now();
           const blob = await renderer.getMaskBlob(targetSize ?? originalSize);
+          console.log('[perf] commitMask getMaskBlob total:', (performance.now() - t0).toFixed(1), 'ms');
           return new Promise<string | null>((resolve, reject) => {
             const reader = new FileReader();
-            reader.onload = () => resolve(reader.result as string);
+            const t1 = performance.now();
+            reader.onload = () => {
+              console.log('[perf] commitMask FileReader readAsDataURL:', (performance.now() - t1).toFixed(1), 'ms');
+              resolve(reader.result as string);
+            };
             reader.onerror = () => reject(reader.error);
             reader.readAsDataURL(blob);
           });

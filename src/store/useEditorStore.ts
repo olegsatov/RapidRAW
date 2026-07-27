@@ -160,9 +160,12 @@ export const useEditorStore = create<EditorState>((set) => ({
 
   pushHistory: (newAdj, source = null) =>
     set((state) => {
+      const t0 = performance.now();
       const current = state.history[state.historyIndex];
       if (JSON.stringify(current) === JSON.stringify(newAdj)) return state;
+      console.log('[perf] pushHistory stringify compare:', (performance.now() - t0).toFixed(1), 'ms');
 
+      const t1 = performance.now();
       const delta = computeHistoryDeltas(current, newAdj);
       const newChanged = getChangedTopLevelKeys(current, newAdj);
       const atEnd = state.historyIndex === state.history.length - 1;

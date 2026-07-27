@@ -15,6 +15,7 @@ use std::sync::Arc; // Required for parallel rasterization
 use crate::app_state::AppState;
 use crate::get_cached_full_warped_image;
 use anyhow::Result;
+use tauri::Manager;
 
 #[derive(serde::Serialize, serde::Deserialize, Debug, Clone, Copy, PartialEq, Eq)]
 #[serde(crate = "serde")]
@@ -192,6 +193,10 @@ struct FlowMaskParameters {
 #[serde(rename_all = "camelCase")]
 struct DodgeBurnParameters {
     mask_bitmap: Option<String>,
+    #[serde(default)]
+    mask_width: Option<u32>,
+    #[serde(default)]
+    mask_height: Option<u32>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -895,7 +900,32 @@ fn generate_dodge_burn_bitmap(
     };
 
     match params.mask_bitmap.as_deref() {
-        Some(data_url) => generate_ai_bitmap_from_base64(data_url, &tf),
+        Some(data_url) => {
+            let b64_data = if let Some(idx) = data_url.find(',') {
+                &data_url[idx + 1..]
+            } else {
+                data_url
+            };
+            let decoded_bytes = general_purpose::STANDARD.decode(b64_data).ok()?;
+            let small_mask = image::load_from_memory(&decoded_bytes).ok()?.to_luma8();
+
+            // The stored mask is capped at the editor preview resolution (e.g. 2560 px
+            // on the long edge). Upscale it to the original image size expected by the
+            // GPU mask atlas, then apply the same crop/scale transform as other masks.
+            let (small_w, small_h) = small_mask.dimensions();
+            let stored_w = params.mask_width.unwrap_or(small_w);
+            let stored_h = params.mask_height.unwrap_or(small_h);
+            let target_w = (full_width as f32 / scale).round().max(1.0) as u32;
+            let target_h = (full_height as f32 / scale).round().max(1.0) as u32;
+
+            let full_mask = if stored_w == target_w && stored_h == target_h && small_w == target_w && small_h == target_h {
+                small_mask
+            } else {
+                image::imageops::resize(&small_mask, target_w, target_h, image::imageops::FilterType::Triangle)
+            };
+
+            Some(generate_ai_bitmap_from_full_mask(&full_mask, &tf))
+        }
         None => Some(GrayImage::from_pixel(full_width, full_height, Luma([0]))),
     }
 }
@@ -1432,7 +1462,27 @@ pub fn generate_mask_bitmap(
 }
 
 #[tauri::command]
-pub fn generate_mask_overlay(
+pub async fn generate_mask_overlay(
+    mask_def: serde_json::Value,
+    width: u32,
+    height: u32,
+    scale: f32,
+    crop_offset: (f32, f32),
+    js_adjustments: Option<serde_json::Value>,
+    app_handle: tauri::AppHandle,
+) -> Result<String, String> {
+    // Per-pixel mask rendering + PNG encode takes ~1s at full size. As a sync
+    // command it ran on the app main thread and froze the whole UI (webview
+    // frame production and every pending IPC response) after each mask commit.
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = app_handle.state::<AppState>();
+        generate_mask_overlay_inner(mask_def, width, height, scale, crop_offset, js_adjustments, state)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+fn generate_mask_overlay_inner(
     mut mask_def: serde_json::Value,
     width: u32,
     height: u32,

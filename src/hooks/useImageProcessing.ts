@@ -230,6 +230,8 @@ export function useImageProcessing(
       const grainMipLevel = origMax > 0 && dispMax > 0 ? Math.max(0, Math.log2(origMax / dispMax)) : null;
 
       try {
+        const applyT0 = performance.now();
+        console.log('[perf] executeApplyAdjustments invoke started');
         const buffer: ArrayBuffer = await invoke(Invokes.ApplyAdjustments, {
           jsAdjustments: payload,
           isInteractive: dragging,
@@ -240,6 +242,7 @@ export function useImageProcessing(
           activeWaveformChannel: activeWaveformChannelRef.current || null,
           forceSoftwareRender,
         });
+        console.log('[perf] executeApplyAdjustments invoke done:', (performance.now() - applyT0).toFixed(1), 'ms');
 
         if (newlySentPatches.size > 0) {
           newlySentPatches.forEach((id) => patchesSentToBackend.add(id));
@@ -358,15 +361,16 @@ export function useImageProcessing(
   }, [executeApplyAdjustments]);
 
   const applyAdjustments = useCallback(
-    (currentAdjustments: Adjustments, dragging: boolean = false, targetRes?: number) => {
-      if (!selectedImage?.isReady) return;
+    (currentAdjustments: Adjustments, dragging: boolean = false, targetRes?: number): Promise<void> => {
+      if (!selectedImage?.isReady) return Promise.resolve();
 
       if (dragging) {
         pendingApplyRef.current = { adjustments: currentAdjustments, targetRes };
         flushPipeline();
+        return Promise.resolve();
       } else {
         pendingApplyRef.current = null;
-        executeApplyAdjustments(currentAdjustments, false, targetRes);
+        return executeApplyAdjustments(currentAdjustments, false, targetRes);
       }
     },
     [selectedImage?.isReady, flushPipeline, executeApplyAdjustments],
@@ -511,35 +515,48 @@ export function useImageProcessing(
       dragIdleTimer.current = setTimeout(() => {
         currentResRef.current = targetRes;
 
-        applyAdjustments(renderAdjustments, false, targetRes);
+        const applyPromise = applyAdjustments(renderAdjustments, false, targetRes);
 
         if (previewOverride) return;
 
-        debouncedSave(selectedImage.path, adjustments);
+        // Save metadata only after the preview render has finished. Running the
+        // tiny save_metadata_and_update_thumbnail invoke at the same time as the
+        // large binary apply_adjustments response makes the WebKit IPC queue
+        // stall the JS event loop for hundreds of milliseconds (frozen cursor).
+        const runPostApply = () => {
+          const postApplyT0 = performance.now();
+          console.log('[perf] runPostApply started at', postApplyT0.toFixed(1));
+          debouncedSave(selectedImage.path, adjustments);
+          console.log('[perf] runPostApply debouncedSave dispatched:', (performance.now() - postApplyT0).toFixed(1), 'ms');
 
-        const otherPaths = multiSelectedPaths.filter((p) => p !== selectedImage.path);
-        if (otherPaths.length > 0) {
-          const prev = prevAdjustmentsRef.current;
-          if (prev && prev.path === selectedImage.path) {
-            const delta: Partial<Adjustments> = {};
-            const includedKeys = appSettings?.copyPasteSettings?.includedAdjustments || COPYABLE_ADJUSTMENT_KEYS;
-            for (const key of Object.keys(adjustments) as Array<keyof Adjustments>) {
-              if (includedKeys.includes(key as string)) {
-                if (JSON.stringify(adjustments[key]) !== JSON.stringify(prev.adjustments[key])) {
-                  (delta as any)[key] = adjustments[key];
+          const otherPaths = multiSelectedPaths.filter((p) => p !== selectedImage.path);
+          if (otherPaths.length > 0) {
+            const prev = prevAdjustmentsRef.current;
+            if (prev && prev.path === selectedImage.path) {
+              const delta: Partial<Adjustments> = {};
+              const includedKeys = appSettings?.copyPasteSettings?.includedAdjustments || COPYABLE_ADJUSTMENT_KEYS;
+              for (const key of Object.keys(adjustments) as Array<keyof Adjustments>) {
+                if (includedKeys.includes(key as string)) {
+                  if (JSON.stringify(adjustments[key]) !== JSON.stringify(prev.adjustments[key])) {
+                    (delta as any)[key] = adjustments[key];
+                  }
                 }
               }
-            }
-            if (Object.keys(delta).length > 0) {
-              otherPaths.forEach((p) => globalImageCache.delete(p));
-              otherPaths.forEach((p) => globalHistoryCache.delete(p));
-              invoke(Invokes.ApplyAdjustmentsToPaths, { paths: otherPaths, adjustments: delta }).catch((err) => {
-                console.error('Failed to apply adjustments to multi-selection:', err);
-              });
+              if (Object.keys(delta).length > 0) {
+                otherPaths.forEach((p) => globalImageCache.delete(p));
+                otherPaths.forEach((p) => globalHistoryCache.delete(p));
+                invoke(Invokes.ApplyAdjustmentsToPaths, { paths: otherPaths, adjustments: delta }).catch((err) => {
+                  console.error('Failed to apply adjustments to multi-selection:', err);
+                });
+              }
             }
           }
-        }
-        prevAdjustmentsRef.current = { path: selectedImage.path, adjustments };
+          prevAdjustmentsRef.current = { path: selectedImage.path, adjustments };
+        };
+
+        // Run the save whether the preview render succeeded or failed; metadata
+        // must not be lost just because a render errored.
+        applyPromise.then(runPostApply, runPostApply);
       }, 50);
     }
 

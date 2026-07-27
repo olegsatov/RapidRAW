@@ -23,16 +23,46 @@ import { globalImageCache } from '../utils/ImageLRUCache';
 import { globalHistoryCache } from '../utils/historyCache';
 import { PRESET_SECTION_VISIBILITY_KEYS } from '../utils/presetUtils';
 import { getEffectiveLutParams, lutParamsToAdjustments } from '../utils/lutSettings';
+import { stripDodgeBurnMaskBitmaps } from '../utils/adjustments';
 
 export const debouncedSetHistory = debounce((newAdj: Adjustments, source: Panel | null = null) => {
   useEditorStore.getState().pushHistory(newAdj, source);
 }, 500);
 
 export const debouncedSave = debounce((path: string, adjustmentsToSave: Adjustments) => {
-  invoke(Invokes.SaveMetadataAndUpdateThumbnail, { path, adjustments: adjustmentsToSave }).catch((err) => {
-    console.error('Auto-save failed:', err);
-    toast.error(`Failed to save changes: ${err}`);
+  const t0 = performance.now();
+  console.log('[perf] debouncedSave fn started at', t0.toFixed(1));
+  // Dodge/burn mask bitmaps are persisted in a dedicated catalog table.
+  // Never serialize them into the metadata JSON payload that crosses the
+  // WebKit bridge on every slider change.
+  const adjustmentsJson = JSON.stringify(stripDodgeBurnMaskBitmaps(adjustmentsToSave));
+  const adjustmentsJsonSize = adjustmentsJson.length;
+  const t1 = performance.now();
+  console.log('[perf] debouncedSave stringify:', (t1 - t0).toFixed(1), 'ms');
+  const invokeT0 = performance.now();
+  const promise = invoke(Invokes.SaveMetadataAndUpdateThumbnail, {
+    path,
+    adjustmentsJson,
+    clientTimestampMs: invokeT0,
   });
+  const invokeCallReturned = performance.now();
+  console.log('[perf] debouncedSave invoke call returned:', (invokeCallReturned - invokeT0).toFixed(1), 'ms');
+  promise
+    .then(() => {
+      const t2 = performance.now();
+      console.log(
+        '[perf] debouncedSave invoke done:',
+        (t2 - invokeT0).toFixed(1),
+        'ms, total fn:',
+        (t2 - t0).toFixed(1),
+        'ms, adjustments json size:',
+        adjustmentsJsonSize,
+      );
+    })
+    .catch((err) => {
+      console.error('Auto-save failed:', err);
+      toast.error(`Failed to save changes: ${err}`);
+    });
 }, 300);
 
 export function useEditorActions() {

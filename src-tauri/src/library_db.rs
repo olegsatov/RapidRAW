@@ -5,7 +5,7 @@ use tauri::{AppHandle, Manager, Runtime};
 
 use crate::file_management::{ImageFile, compute_thumbnail_cache_hash};
 
-const CURRENT_SCHEMA_VERSION: i32 = 4;
+const CURRENT_SCHEMA_VERSION: i32 = 5;
 
 fn db_path<R: Runtime>(app_handle: &AppHandle<R>) -> Result<PathBuf, String> {
     let data_dir = app_handle
@@ -172,6 +172,11 @@ fn migrate(conn: &Connection) -> Result<(), String> {
         }
         backfill_thumbnail_hashes(conn)?;
         conn.pragma_update(None, "user_version", 4)
+            .map_err(|e| e.to_string())?;
+    }
+    if user_version < 5 {
+        conn.execute_batch(SCHEMA_V5).map_err(|e| e.to_string())?;
+        conn.pragma_update(None, "user_version", 5)
             .map_err(|e| e.to_string())?;
     }
     let final_version: i32 = conn
@@ -370,6 +375,17 @@ CREATE INDEX IF NOT EXISTS idx_snapshots_file_idx ON file_adjustment_snapshots(f
 const SCHEMA_V4: &str = r#"
 ALTER TABLE files ADD COLUMN thumbnail_hash TEXT;
 DELETE FROM files WHERE path LIKE '%/.%';
+"#;
+
+const SCHEMA_V5: &str = r#"
+CREATE TABLE IF NOT EXISTS dodge_burn_masks (
+    file_id INTEGER NOT NULL REFERENCES files(id) ON DELETE CASCADE,
+    sub_mask_id TEXT NOT NULL,
+    mask_data_url TEXT NOT NULL,
+    updated_at INTEGER NOT NULL,
+    PRIMARY KEY (file_id, sub_mask_id)
+);
+CREATE INDEX IF NOT EXISTS idx_dodge_burn_masks_file ON dodge_burn_masks(file_id);
 "#;
 
 pub fn init_catalog(app_handle: &AppHandle) -> Result<(), String> {
@@ -841,6 +857,65 @@ pub(crate) fn update_file_metadata_in_conn(
     conn.execute(
         "UPDATE files SET adjustments_json = ?2, metadata_modified = ?3, exif_json = ?4 WHERE id = ?1",
         params![file_id, adjustments_json, now_secs(), exif_json],
+    )
+    .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+/// Persists a dodge/burn mask bitmap separately from the adjustments JSON.
+/// Keeping the large data URL out of `files.adjustments_json` keeps metadata
+/// saves fast and avoids blocking the UI on every slider change.
+pub fn save_dodge_burn_mask<R: Runtime>(
+    app_handle: &AppHandle<R>,
+    file_id: i64,
+    sub_mask_id: &str,
+    mask_data_url: &str,
+) -> Result<(), String> {
+    let conn = open_connection(app_handle)?;
+    conn.execute(
+        "INSERT INTO dodge_burn_masks(file_id, sub_mask_id, mask_data_url, updated_at)
+         VALUES (?1, ?2, ?3, ?4)
+         ON CONFLICT(file_id, sub_mask_id) DO UPDATE SET
+            mask_data_url = excluded.mask_data_url,
+            updated_at = excluded.updated_at",
+        params![file_id, sub_mask_id, mask_data_url, now_secs()],
+    )
+    .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+/// Loads all persisted dodge/burn masks for a file, keyed by sub-mask id.
+pub fn load_dodge_burn_masks<R: Runtime>(
+    app_handle: &AppHandle<R>,
+    file_id: i64,
+) -> Result<HashMap<String, String>, String> {
+    let conn = open_connection(app_handle)?;
+    let mut stmt = conn
+        .prepare("SELECT sub_mask_id, mask_data_url FROM dodge_burn_masks WHERE file_id = ?1")
+        .map_err(|e| e.to_string())?;
+    let rows = stmt
+        .query_map(params![file_id], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+        })
+        .map_err(|e| e.to_string())?;
+    let mut result = HashMap::new();
+    for row in rows {
+        let (sub_mask_id, mask_data_url) = row.map_err(|e| e.to_string())?;
+        result.insert(sub_mask_id, mask_data_url);
+    }
+    Ok(result)
+}
+
+/// Deletes a persisted dodge/burn mask. Called when the sub-mask is removed.
+pub fn delete_dodge_burn_mask<R: Runtime>(
+    app_handle: &AppHandle<R>,
+    file_id: i64,
+    sub_mask_id: &str,
+) -> Result<(), String> {
+    let conn = open_connection(app_handle)?;
+    conn.execute(
+        "DELETE FROM dodge_burn_masks WHERE file_id = ?1 AND sub_mask_id = ?2",
+        params![file_id, sub_mask_id],
     )
     .map_err(|e| e.to_string())?;
     Ok(())

@@ -15,7 +15,9 @@ import CompositionOverlays from './overlays/CompositionOverlays';
 import DodgeBurnLayer, { type DodgeBurnLayerRef } from './DodgeBurnLayer';
 import useDodgeBurnEffectUrl from '../../../hooks/useDodgeBurnEffectUrl';
 import { useEditorStore } from '../../../store/useEditorStore';
-import { debouncedSave } from '../../../hooks/useEditorActions';
+import { useSettingsStore } from '../../../store/useSettingsStore';
+import { invoke } from '@tauri-apps/api/core';
+import { Invokes } from '../../ui/AppProperties';
 
 interface CursorPreview {
   visible: boolean;
@@ -1511,6 +1513,21 @@ const ImageCanvas = memo(
       return { width: w, height: h };
     }, [selectedImage.width, selectedImage.height, adjustments.orientationSteps]);
 
+    // Dodge/burn masks are feathered and don't need full-resolution storage.
+    // Cap them at the editor preview resolution setting to keep WebP encode fast
+    // and the persisted JSON small. The backend upscales the saved mask to the
+    // full image size when rendering in Film/Export.
+    const editorPreviewResolution = useSettingsStore((s) => s.appSettings?.editorPreviewResolution) ?? 1920;
+    const dodgeBurnMaskTargetSize = useMemo(() => {
+      const maxDim = Math.max(effectiveImageDimensions.width, effectiveImageDimensions.height);
+      if (maxDim <= editorPreviewResolution) return effectiveImageDimensions;
+      const scale = editorPreviewResolution / maxDim;
+      return {
+        width: Math.round(effectiveImageDimensions.width * scale),
+        height: Math.round(effectiveImageDimensions.height * scale),
+      };
+    }, [effectiveImageDimensions, editorPreviewResolution]);
+
     const getCropFrameClientRect = useCallback((): DOMRect | null => {
       const inner = cropViewInnerRef.current;
       if (!inner || !crop) {
@@ -1746,7 +1763,17 @@ const ImageCanvas = memo(
             masks: currentAdjustments.masks.map((container) => ({
               ...container,
               subMasks: container.subMasks.map((sm) =>
-                sm.id === subMaskId ? { ...sm, parameters: { ...sm.parameters, maskBitmap: currentMask } } : sm,
+                sm.id === subMaskId
+                  ? {
+                      ...sm,
+                      parameters: {
+                        ...sm.parameters,
+                        maskBitmap: currentMask,
+                        maskWidth: dodgeBurnMaskTargetSize.width,
+                        maskHeight: dodgeBurnMaskTargetSize.height,
+                      },
+                    }
+                  : sm,
               ),
             })),
           };
@@ -1757,9 +1784,9 @@ const ImageCanvas = memo(
           useEditorStore.getState().pushHistory(updatedAdjustments, Panel.Masks);
           dodgeBurnLastSavedMaskRef.current = currentMask;
 
-          if (currentImage?.path) {
-            debouncedSave(currentImage.path, updatedAdjustments);
-          }
+          // debouncedSave is intentionally NOT called here: the setEditor above
+          // triggers useImageProcessing's effect, which saves metadata only
+          // after apply_adjustments finishes, avoiding IPC contention.
         }
         dodgeBurnUndoStackRef.current = [];
       },
@@ -1827,9 +1854,9 @@ const ImageCanvas = memo(
                 useEditorStore.getState().pushHistory(updatedAdjustments, Panel.Masks);
                 dodgeBurnLastSavedMaskRef.current = prevMask;
 
-                if (currentImage?.path) {
-                  debouncedSave(currentImage.path, updatedAdjustments);
-                }
+                // debouncedSave is intentionally NOT called here: the setEditor
+                // above triggers useImageProcessing's effect, which saves
+                // metadata only after apply_adjustments finishes.
               }
             }
           } else {
@@ -2705,6 +2732,8 @@ const ImageCanvas = memo(
     );
 
     const handleUp = useCallback(async () => {
+      const handleUpStart = performance.now();
+      console.log('[perf] handleUp started');
       if (!isDrawing.current) {
         return;
       }
@@ -2717,19 +2746,32 @@ const ImageCanvas = memo(
 
         let maskBitmap: string | null | undefined;
         try {
-          maskBitmap = await dodgeBurnLayerRef.current?.commitMask(effectiveImageDimensions);
+          const t0 = performance.now();
+          maskBitmap = await dodgeBurnLayerRef.current?.commitMask(dodgeBurnMaskTargetSize);
+          console.log('[perf] handleUp commitMask:', (performance.now() - t0).toFixed(1), 'ms');
         } catch (error) {
           console.error('[ImageCanvas] Failed to commit dodge & burn mask:', error);
         }
 
         if (maskBitmap) {
+          const t1 = performance.now();
           const { selectedImage: currentImage, adjustments: currentAdjustments } = useEditorStore.getState();
           const updatedAdjustments = {
             ...currentAdjustments,
             masks: currentAdjustments.masks.map((container) => ({
               ...container,
               subMasks: container.subMasks.map((sm) =>
-                sm.id === activeSubMask.id ? { ...sm, parameters: { ...sm.parameters, maskBitmap } } : sm,
+                sm.id === activeSubMask.id
+                  ? {
+                      ...sm,
+                      parameters: {
+                        ...sm.parameters,
+                        maskBitmap,
+                        maskWidth: dodgeBurnMaskTargetSize.width,
+                        maskHeight: dodgeBurnMaskTargetSize.height,
+                      },
+                    }
+                  : sm,
               ),
             })),
           };
@@ -2738,15 +2780,47 @@ const ImageCanvas = memo(
           setDodgeBurnCurrentMask(maskBitmap);
           dodgeBurnLastSavedMaskRef.current = maskBitmap;
           setEditor({ adjustments: updatedAdjustments });
+          const t2 = performance.now();
           // Keep history in sync with the store: returning to this image restores
           // adjustments from the history cache, so a maskless entry would drop
           // the bitmap and auto-save the stripped state over the saved one.
           useEditorStore.getState().pushHistory(updatedAdjustments, Panel.Masks);
+          console.log(
+            '[perf] handleUp setEditor+pushHistory:',
+            (performance.now() - t2).toFixed(1),
+            'ms, prep:',
+            (t2 - t1).toFixed(1),
+            'ms',
+          );
 
           if (currentImage?.path) {
-            debouncedSave(currentImage.path, updatedAdjustments);
+            // Do NOT call debouncedSave here. The useEffect in useImageProcessing
+            // fires on the same setEditor() and already schedules a save AFTER
+            // the apply_adjustments preview render finishes. Calling it here too
+            // makes the metadata save compete with the large binary preview
+            // response for the same WebKit IPC queue, which stalls the JS event
+            // loop and freezes the cursor.
+            // Persist the bitmap in its own catalog table. Keeping it out of the
+            // adjustments JSON keeps every slider save small and fast.
+            const maskSaveT0 = performance.now();
+            invoke(Invokes.SaveDodgeBurnMask, {
+              path: currentImage.path,
+              subMaskId: activeSubMask.id,
+              maskDataUrl: maskBitmap,
+            })
+              .then(() => {
+                console.log(
+                  '[perf] saveDodgeBurnMask invoke done:',
+                  (performance.now() - maskSaveT0).toFixed(1),
+                  'ms, dataUrl size:',
+                  maskBitmap.length,
+                );
+              })
+              .catch((err) => console.error('[ImageCanvas] Failed to save dodge/burn mask:', err));
           }
+          console.log('[perf] handleUp total after commit:', (performance.now() - t1).toFixed(1), 'ms');
         }
+        console.log('[perf] handleUp dodge-burn branch done:', (performance.now() - handleUpStart).toFixed(1), 'ms');
         return;
       }
 
@@ -3336,6 +3410,7 @@ const ImageCanvas = memo(
               )}
               {isDodgeBurnActive && finalPreviewUrl && dodgeBurnEffectUrl && (
                 <DodgeBurnLayer
+                  key={`db-${selectedImage?.path}-${activeSubMask?.id}`}
                   ref={dodgeBurnLayerRef}
                   baseUrl={finalPreviewUrl}
                   effectUrl={dodgeBurnEffectUrl}
