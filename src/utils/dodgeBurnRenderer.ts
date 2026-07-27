@@ -376,17 +376,13 @@ export class DodgeBurnRenderer {
     const width = canvas.width;
     const height = canvas.height;
     const pixels = new Uint8Array(width * height);
-    let nonZero = 0;
     for (let y = 0; y < height; y++) {
       const srcRow = y * width * 4;
       const dstRow = (height - 1 - y) * width;
       for (let x = 0; x < width; x++) {
-        const v = srcData[srcRow + x * 4];
-        pixels[dstRow + x] = v;
-        if (v > 0) nonZero++;
+        pixels[dstRow + x] = srcData[srcRow + x * 4];
       }
     }
-    console.log('[DB] loadMaskTexture nonZero pixels:', nonZero, 'of', width * height);
 
     gl.bindTexture(gl.TEXTURE_2D, this.currentMaskTexture);
     gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
@@ -534,8 +530,6 @@ export class DodgeBurnRenderer {
     const gl = this.gl;
     if (!gl || !this.compositorProgram || this.contextLost) return;
 
-    console.log('[DB] render called, opacity:', this.opacity, 'overlay:', this.overlayVisible, 'currentMask:', this.currentMaskTexture === this.maskTextureA ? 'A' : 'B');
-
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
     gl.viewport(0, 0, this.canvasSize.width, this.canvasSize.height);
 
@@ -571,7 +565,6 @@ export class DodgeBurnRenderer {
 
     const readWidth = this.imageSize.width;
     const readHeight = this.imageSize.height;
-    console.log('[DB] getMaskBlob readPixels', readWidth, 'x', readHeight, 'imageSize:', this.imageSize);
     const rgba = new Uint8Array(readWidth * readHeight * 4);
     gl.readPixels(0, 0, readWidth, readHeight, gl.RGBA, gl.UNSIGNED_BYTE, rgba);
     const pixels = new Uint8Array(readWidth * readHeight);

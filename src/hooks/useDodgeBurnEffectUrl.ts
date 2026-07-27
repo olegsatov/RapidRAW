@@ -66,12 +66,10 @@ function hideTargetDodgeBurnMask(source: Adjustments, targetId: string | undefin
     if (!container.subMasks) continue;
     const idx = container.subMasks.findIndex((sm: SubMask) => sm.id === targetId && sm.type === Mask.DodgeBurn);
     if (idx !== -1) {
-      console.log('[DB] hideTargetDodgeBurnMask hiding mask', targetId);
       container.subMasks[idx] = { ...container.subMasks[idx], visible: false };
       break;
     }
   }
-  console.log('[DB] hideTargetDodgeBurnMask done, targetId:', targetId);
   return cloned;
 }
 

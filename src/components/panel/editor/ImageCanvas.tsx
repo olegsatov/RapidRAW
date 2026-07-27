@@ -1739,7 +1739,6 @@ const ImageCanvas = memo(
           return;
         }
         const currentMask = dodgeBurnCurrentMaskRef.current;
-        console.log('[DB] flatten called, subMaskId:', subMaskId, 'currentMask:', currentMask ? `${currentMask.slice(0, 80)}...` : currentMask, 'lastSaved:', dodgeBurnLastSavedMaskRef.current ? `${dodgeBurnLastSavedMaskRef.current.slice(0, 80)}...` : dodgeBurnLastSavedMaskRef.current);
         if (currentMask && currentMask !== dodgeBurnLastSavedMaskRef.current) {
           const { selectedImage: currentImage, adjustments: currentAdjustments } = useEditorStore.getState();
           const updatedAdjustments = {
@@ -1757,12 +1756,10 @@ const ImageCanvas = memo(
           // bitmap would overwrite (and auto-save) a maskless state on return.
           useEditorStore.getState().pushHistory(updatedAdjustments, Panel.Masks);
           dodgeBurnLastSavedMaskRef.current = currentMask;
-          console.log('[DB] flatten saved to store, subMaskId:', subMaskId);
 
           if (currentImage?.path) {
             debouncedSave(currentImage.path, updatedAdjustments);
             debouncedSave.flush();
-            console.log('[DB] flatten flushed to disk, path:', currentImage.path);
           }
         }
         dodgeBurnUndoStackRef.current = [];
@@ -1787,7 +1784,6 @@ const ImageCanvas = memo(
     useEffect(() => {
       if (activeSubMask?.type === Mask.DodgeBurn) {
         const savedMask = activeSubMask.parameters?.maskBitmap ?? null;
-        console.log('[DB] select mask load, id:', activeSubMask.id, 'savedMask:', savedMask ? `${savedMask.slice(0, 80)}...` : savedMask);
         setDodgeBurnCurrentMask(savedMask);
         dodgeBurnLastSavedMaskRef.current = savedMask;
         dodgeBurnUndoStackRef.current = [];
@@ -1797,7 +1793,6 @@ const ImageCanvas = memo(
     useEffect(() => {
       if (activeSubMask?.type === Mask.DodgeBurn) {
         const savedMask = activeSubMask.parameters?.maskBitmap ?? null;
-        console.log('[DB] maskBitmap prop changed, id:', activeSubMask.id, 'savedMask:', savedMask ? `${savedMask.slice(0, 80)}...` : savedMask, 'currentRef:', dodgeBurnCurrentMaskRef.current ? `${dodgeBurnCurrentMaskRef.current.slice(0, 80)}...` : dodgeBurnCurrentMaskRef.current);
         if (savedMask !== dodgeBurnCurrentMaskRef.current) {
           setDodgeBurnCurrentMask(savedMask);
           dodgeBurnLastSavedMaskRef.current = savedMask;
@@ -2729,8 +2724,6 @@ const ImageCanvas = memo(
           console.error('[ImageCanvas] Failed to commit dodge & burn mask:', error);
         }
 
-        console.log('[DB] handleUp commitMask result:', maskBitmap ? `${maskBitmap.slice(0, 80)}...` : maskBitmap);
-
         if (maskBitmap) {
           const { selectedImage: currentImage, adjustments: currentAdjustments } = useEditorStore.getState();
           const updatedAdjustments = {
@@ -2751,12 +2744,10 @@ const ImageCanvas = memo(
           // adjustments from the history cache, so a maskless entry would drop
           // the bitmap and auto-save the stripped state over the saved one.
           useEditorStore.getState().pushHistory(updatedAdjustments, Panel.Masks);
-          console.log('[DB] handleUp saved to store, subMaskId:', activeSubMask.id);
 
           if (currentImage?.path) {
             debouncedSave(currentImage.path, updatedAdjustments);
             debouncedSave.flush();
-            console.log('[DB] handleUp flushed to disk, path:', currentImage.path);
           }
         }
         return;
