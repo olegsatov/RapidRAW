@@ -57,10 +57,19 @@ fn main() {
         .nth(2)
         .expect("usage: flim_check <in> <out.png> <preset 0|1|2|agx> [ev] [strength]");
     let preset = std::env::args().nth(3).unwrap_or_else(|| "0".to_string());
-    let ev: f32 = std::env::args().nth(4).and_then(|s| s.parse().ok()).unwrap_or(0.0);
-    let strength: f32 = std::env::args().nth(5).and_then(|s| s.parse().ok()).unwrap_or(100.0);
+    let ev: f32 = std::env::args()
+        .nth(4)
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(0.0);
+    let strength: f32 = std::env::args()
+        .nth(5)
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(100.0);
     let argf = |n: usize, default: f32| {
-        std::env::args().nth(n).and_then(|s| s.parse().ok()).unwrap_or(default)
+        std::env::args()
+            .nth(n)
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(default)
     };
     let contrast = argf(6, 100.0);
     let shoulder = argf(7, 0.0);
@@ -119,7 +128,9 @@ fn main() {
         if let Some(pd) = adv_print_density {
             adv["flimAdvPrintDensity"] = serde_json::json!(pd);
         }
-        let map = adjustments.as_object_mut().expect("adjustments is an object");
+        let map = adjustments
+            .as_object_mut()
+            .expect("adjustments is an object");
         for (k, v) in adv.as_object().expect("adv mirror is an object") {
             map.insert(k.clone(), v.clone());
         }

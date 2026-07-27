@@ -4,12 +4,12 @@ use crate::app_state::{AppState, LoadedImage};
 use crate::exif_processing;
 use crate::file_management::{parse_virtual_path, read_file_bytes};
 use crate::formats::is_raw_file;
-use crate::metadata_store;
 use crate::image_processing::ImageMetadata;
 use crate::image_processing::{
     apply_orientation, apply_srgb_to_linear, remove_raw_artifacts_and_enhance,
 };
 use crate::mask_generation::{MaskDefinition, SubMask, generate_mask_bitmap};
+use crate::metadata_store;
 use anyhow::{Context, Result, anyhow};
 use base64::{Engine as _, engine::general_purpose};
 use exif::{Reader as ExifReader, Tag};

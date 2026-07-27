@@ -1052,6 +1052,7 @@
       "clone": "克隆",
       "color": "颜色",
       "depth": "深度",
+      "dodgeBurn": "减淡和加深",
       "flow": "流线",
       "foreground": "前景",
       "heal": "修复",

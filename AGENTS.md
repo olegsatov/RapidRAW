@@ -167,6 +167,12 @@ explicit user action and keep the catalog-only path as the default.
   PID or port from the current task/session (e.g. `lsof -i :<port>` or the PID
   captured when the process was started).
 
+## Interaction rules
+
+- When the user asks a direct question, answer that question clearly and
+  concisely, then stop and wait for the next instruction. Do not launch
+  into unrelated investigation, tooling, or fixes unless explicitly asked.
+
 ## Verification
 
 - `npm run build` — frontend bundle (the real gate; `tsc` has a pre-existing

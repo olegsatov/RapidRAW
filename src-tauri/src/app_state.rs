@@ -80,6 +80,9 @@ pub struct PreviewJob {
     pub roi: Option<(f32, f32, f32, f32)>,
     pub compute_waveform: bool,
     pub active_waveform_channel: Option<String>,
+    /// Force a software/JPEG render even when the WGPU display renderer is active.
+    /// Used by tools (e.g. dodge/burn) that composite through a DOM overlay.
+    pub force_software_render: bool,
     pub responder: tokio::sync::oneshot::Sender<Vec<u8>>,
 }
 

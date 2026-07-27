@@ -61,7 +61,10 @@ fn apply_g(g: [f32; 3]) -> [u8; 3] {
 fn mean_std(img: &[u8]) -> (f64, f64) {
     // Green channel only (channels are decorrelated but identically distributed).
     let n = (img.len() / 3) as f64;
-    let mean = (0..img.len() / 3).map(|i| img[i * 3 + 1] as f64).sum::<f64>() / n;
+    let mean = (0..img.len() / 3)
+        .map(|i| img[i * 3 + 1] as f64)
+        .sum::<f64>()
+        / n;
     let var = (0..img.len() / 3)
         .map(|i| (img[i * 3 + 1] as f64 - mean).powi(2))
         .sum::<f64>()
@@ -79,7 +82,9 @@ fn save(out_dir: &str, name: &str, w: usize, h: usize, rgb: &[u8]) {
 
 fn main() {
     let mut args = std::env::args().skip(1);
-    let out_dir = args.next().unwrap_or_else(|| "scratch/grain-modes".to_string());
+    let out_dir = args
+        .next()
+        .unwrap_or_else(|| "scratch/grain-modes".to_string());
     let filling: f32 = args.next().and_then(|s| s.parse().ok()).unwrap_or(0.25);
     let size: f32 = args.next().and_then(|s| s.parse().ok()).unwrap_or(5.0);
     let layers: u32 = args.next().and_then(|s| s.parse().ok()).unwrap_or(30);
@@ -168,7 +173,10 @@ fn main() {
                 let i = (y * rw + x) * 3;
                 // Shader coords: (coord + 0.5)·coord_scale, in field texels;
                 // mip-λ texel space divides by 2^λ (= step).
-                let (tx, ty) = ((x as f32 + 0.5) * coord_scale, (y as f32 + 0.5) * coord_scale);
+                let (tx, ty) = (
+                    (x as f32 + 0.5) * coord_scale,
+                    (y as f32 + 0.5) * coord_scale,
+                );
                 let (mx, my) = (tx / step as f32, ty / step as f32);
 
                 let mut g_old = [0f32; 3];

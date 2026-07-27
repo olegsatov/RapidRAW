@@ -1,6 +1,7 @@
 import { v4 as uuidv4 } from 'uuid';
 import { Mask, SubMaskMode, formatMaskTypeName } from '../components/panel/right/Masks';
 import { ImageDimensions } from '../hooks/useImageRenderSize';
+import { getDefaultDodgeBurnAdjustments } from '../types/dodgeBurn';
 
 export const createSubMask = (
   type: Mask,
@@ -40,6 +41,8 @@ export const createSubMask = (
       };
     case Mask.Brush:
       return { ...common, parameters: { lines: [] } };
+    case Mask.DodgeBurn:
+      return { ...common, parameters: { maskBitmap: null, flow: 2.5, adjustments: getDefaultDodgeBurnAdjustments() } };
     case Mask.Flow:
       return { ...common, parameters: { lines: [], flow: 10 } };
     case Mask.AiSubject:

@@ -2,9 +2,9 @@ use crate::app_settings::load_settings;
 use crate::app_state::AppState;
 use crate::file_management::parse_virtual_path;
 use crate::formats::is_raw_file;
-use crate::metadata_store;
 use crate::image_loader::load_base_image_from_bytes;
 use crate::image_processing::apply_cpu_default_raw_processing;
+use crate::metadata_store;
 use base64::{Engine as _, engine::general_purpose};
 use image::{DynamicImage, GenericImageView, ImageFormat, Rgb, Rgb32FImage};
 use rayon::prelude::*;
@@ -160,7 +160,11 @@ pub async fn batch_denoise_images(
                         continue;
                     }
 
-                    let _ = crate::exif_processing::write_rrexif_sidecar(&app_handle, &real_path, &output_path);
+                    let _ = crate::exif_processing::write_rrexif_sidecar(
+                        &app_handle,
+                        &real_path,
+                        &output_path,
+                    );
 
                     if let Some(output_path_str) = output_path.to_str() {
                         if let Ok(source_metadata) =

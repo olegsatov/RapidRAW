@@ -14,6 +14,7 @@ use std::sync::Arc; // Required for parallel rasterization
 
 use crate::app_state::AppState;
 use crate::get_cached_full_warped_image;
+use anyhow::Result;
 
 #[derive(serde::Serialize, serde::Deserialize, Debug, Clone, Copy, PartialEq, Eq)]
 #[serde(crate = "serde")]
@@ -185,6 +186,12 @@ fn default_line_flow() -> f32 {
 struct FlowMaskParameters {
     #[serde(default)]
     lines: Vec<FlowLine>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct DodgeBurnParameters {
+    mask_bitmap: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -868,6 +875,31 @@ fn generate_ai_bitmap_from_base64(data_url: &str, tf: &TransformParams) -> Optio
     Some(generate_ai_bitmap_from_full_mask(&full_mask_image, tf))
 }
 
+fn generate_dodge_burn_bitmap(
+    params: &DodgeBurnParameters,
+    full_width: u32,
+    full_height: u32,
+    crop_offset: (i32, i32),
+    scale: f32,
+    rotation: i32,
+) -> Option<GrayImage> {
+    let tf = TransformParams {
+        rotation: rotation as f32,
+        flip_horizontal: false,
+        flip_vertical: false,
+        orientation_steps: 0,
+        width: full_width,
+        height: full_height,
+        scale,
+        crop_offset: (crop_offset.0 as f32, crop_offset.1 as f32),
+    };
+
+    match params.mask_bitmap.as_deref() {
+        Some(data_url) => generate_ai_bitmap_from_base64(data_url, &tf),
+        None => Some(GrayImage::from_pixel(full_width, full_height, Luma([0]))),
+    }
+}
+
 fn generate_ai_sky_bitmap(
     params_value: &Value,
     width: u32,
@@ -1312,6 +1344,18 @@ fn generate_sub_mask_bitmap(
         "quick-eraser" => {
             generate_ai_subject_bitmap(&sub_mask.parameters, width, height, scale, crop_offset)
         }
+        "dodge-burn" => {
+            let params: DodgeBurnParameters =
+                serde_json::from_value(sub_mask.parameters.clone()).ok()?;
+            generate_dodge_burn_bitmap(
+                &params,
+                width,
+                height,
+                (crop_offset.0 as i32, crop_offset.1 as i32),
+                scale,
+                0,
+            )
+        }
         "all" => Some(generate_all_bitmap(width, height)),
         _ => None,
     }
@@ -1508,4 +1552,96 @@ pub fn get_cached_or_generate_mask(
     }
 
     generated
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::Cursor;
+
+    #[test]
+    fn test_generate_dodge_burn_bitmap_with_data_url() {
+        // Build a 2x2 grayscale image with distinct pixel values.
+        let mut source = GrayImage::new(2, 2);
+        source.put_pixel(0, 0, Luma([50]));
+        source.put_pixel(1, 0, Luma([100]));
+        source.put_pixel(0, 1, Luma([150]));
+        source.put_pixel(1, 1, Luma([200]));
+
+        let mut buf = Cursor::new(Vec::new());
+        DynamicImage::from(source)
+            .write_to(&mut buf, ImageFormat::Png)
+            .expect("failed to encode test PNG");
+
+        let data_url = format!(
+            "data:image/png;base64,{}",
+            general_purpose::STANDARD.encode(buf.into_inner())
+        );
+
+        let params = DodgeBurnParameters {
+            mask_bitmap: Some(data_url),
+        };
+
+        let result = generate_dodge_burn_bitmap(&params, 10, 8, (0, 0), 1.0, 0)
+            .expect("generate_dodge_burn_bitmap should return Some");
+
+        assert_eq!(result.dimensions(), (10, 8));
+
+        // The output should contain non-empty resampled data. With a 2x2 source
+        // scaled up to 10x8, every pixel should fall back to one of the source
+        // values rather than remaining black.
+        assert!(
+            result.pixels().any(|p| p[0] > 0),
+            "resampled dodge/burn mask should contain non-zero pixels"
+        );
+    }
+
+    #[test]
+    fn test_generate_dodge_burn_bitmap_with_none() {
+        let params = DodgeBurnParameters { mask_bitmap: None };
+
+        let result = generate_dodge_burn_bitmap(&params, 10, 8, (0, 0), 1.0, 0)
+            .expect("generate_dodge_burn_bitmap should return Some");
+
+        assert_eq!(result.dimensions(), (10, 8));
+        assert!(
+            result.pixels().all(|p| p[0] == 0),
+            "dodge/burn mask with None bitmap should be all black"
+        );
+    }
+
+    #[test]
+    fn test_generate_mask_bitmap_with_dodge_burn_none_does_not_panic() {
+        let sub_mask = SubMask {
+            id: "db-1".to_string(),
+            mask_type: "dodge-burn".to_string(),
+            visible: true,
+            invert: false,
+            opacity: 100.0,
+            mode: SubMaskMode::Additive,
+            parameters: serde_json::json!({
+                "maskBitmap": null,
+                "adjustments": {},
+            }),
+        };
+
+        let mask_def = MaskDefinition {
+            id: "mask-1".to_string(),
+            name: "Dodge/Burn None".to_string(),
+            visible: true,
+            invert: false,
+            opacity: 100.0,
+            adjustments: serde_json::Value::Object(Default::default()),
+            sub_masks: vec![sub_mask],
+        };
+
+        let result = generate_mask_bitmap(&mask_def, 10, 8, 1.0, (0.0, 0.0), None)
+            .expect("generate_mask_bitmap should return Some");
+
+        assert_eq!(result.dimensions(), (10, 8));
+        assert!(
+            result.pixels().all(|p| p[0] == 0),
+            "mask bitmap with dodge/burn None should be all black"
+        );
+    }
 }

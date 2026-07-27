@@ -1052,6 +1052,7 @@
       "clone": "Cloner",
       "color": "Couleur",
       "depth": "Profondeur",
+      "dodgeBurn": "Dodge et burn",
       "flow": "Flux",
       "foreground": "Premier plan",
       "heal": "Corriger",

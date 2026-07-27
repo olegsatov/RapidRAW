@@ -52,17 +52,6 @@ fn vs_main(@builtin(vertex_index) id: u32) -> VertexOutput {
     return out;
 }
 
-// The main compute pipeline stores sRGB-encoded pixels in an rgba8unorm
-// texture. Convert back to linear so an sRGB swapchain can re-encode them
-// correctly for display, matching the JPEG/export path.
-fn srgb_to_linear(c: vec3<f32>) -> vec3<f32> {
-    let cutoff = vec3<f32>(0.04045);
-    let a = vec3<f32>(0.055);
-    let higher = pow((c + a) / (1.0 + a), vec3<f32>(2.4));
-    let lower = c / 12.92;
-    return select(higher, lower, c <= cutoff);
-}
-
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     if (in.uv.x < 0.0 || in.uv.x > 1.0 || in.uv.y < 0.0 || in.uv.y > 1.0) {
@@ -80,11 +69,9 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         let nearest_uv = (texel_coords + vec2<f32>(0.5, 0.5)) / transform.texture_size;
 
         let clamped_nearest = clamp(nearest_uv, min_uv, max_uv);
-        let srgb = textureSample(tex, samp, clamped_nearest);
-        return vec4<f32>(srgb_to_linear(srgb.rgb), srgb.a);
+        return textureSample(tex, samp, clamped_nearest);
     } else {
         let clamped_uv = clamp(adjusted_uv, min_uv, max_uv);
-        let srgb = textureSample(tex, samp, clamped_uv);
-        return vec4<f32>(srgb_to_linear(srgb.rgb), srgb.a);
+        return textureSample(tex, samp, clamped_uv);
     }
 }

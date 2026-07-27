@@ -13,12 +13,12 @@ mod android_integration;
 mod app_settings;
 mod app_state;
 mod archive_operations;
+mod availability_watch;
 mod bw_decolor;
 mod cache_utils;
 mod catalog_backup;
 pub mod crystal_grain;
 mod culling;
-mod availability_watch;
 mod denoising;
 mod exif_processing;
 mod export_processing;
@@ -335,6 +335,7 @@ fn process_preview_job(
     roi: Option<(f32, f32, f32, f32)>,
     compute_waveform: bool,
     active_waveform_channel: Option<&str>,
+    force_software_render: bool,
 ) -> Result<Vec<u8>, String> {
     let fn_start = std::time::Instant::now();
     let context = get_or_init_gpu_context(&state, app_handle)?;
@@ -358,7 +359,7 @@ fn process_preview_job(
     let default_preview_dim = settings.editor_preview_resolution.unwrap_or(1920);
     let preview_dim = target_resolution.unwrap_or(default_preview_dim);
     #[cfg(not(any(target_os = "linux", target_os = "android")))]
-    let use_wgpu_renderer = settings.use_wgpu_renderer.unwrap_or(true);
+    let use_wgpu_renderer = settings.use_wgpu_renderer.unwrap_or(true) && !force_software_render;
     #[cfg(any(target_os = "linux", target_os = "android"))]
     let use_wgpu_renderer = false;
 
@@ -520,9 +521,8 @@ fn process_preview_job(
     //              std(mip 0)/std(mip λ) ratio as the contrast boost;
     //   accurate — display-matched mip, boost 1: strict WYSIWYG (the export
     //              viewed at the same window size).
-    let base_grain_level = grain_mip_level.unwrap_or_else(|| {
-        crate::image_processing::grain_mip_level_from_scale(effective_scale)
-    });
+    let base_grain_level = grain_mip_level
+        .unwrap_or_else(|| crate::image_processing::grain_mip_level_from_scale(effective_scale));
     let (req_grain_level, req_grain_boost) = match settings.grain_preview_mode.as_deref() {
         Some("accurate") => (base_grain_level, 1.0),
         Some("balanced") => {
@@ -708,6 +708,7 @@ fn start_preview_worker(app_handle: tauri::AppHandle) {
                 job.roi,
                 job.compute_waveform,
                 job.active_waveform_channel.as_deref(),
+                job.force_software_render,
             ) {
                 Ok(bytes) => {
                     let _ = responder.send(bytes);
@@ -729,6 +730,7 @@ async fn apply_adjustments(
     roi: Option<(f32, f32, f32, f32)>,
     compute_waveform: bool,
     active_waveform_channel: Option<String>,
+    force_software_render: bool,
     state: tauri::State<'_, AppState>,
 ) -> Result<Response, String> {
     let (tx, rx) = tokio::sync::oneshot::channel();
@@ -744,6 +746,7 @@ async fn apply_adjustments(
                 roi,
                 compute_waveform,
                 active_waveform_channel,
+                force_software_render,
                 responder: tx,
             };
             worker_tx

@@ -1,6 +1,7 @@
 import { Crop } from 'react-image-crop';
 import { v4 as uuidv4 } from 'uuid';
-import { SubMask, SubMaskMode } from '../components/panel/right/Masks';
+import { Mask, SubMask, SubMaskMode } from '../components/panel/right/Masks';
+import { getDefaultDodgeBurnAdjustments } from '../types/dodgeBurn';
 
 export enum ActiveChannel {
   Blue = 'blue',
@@ -947,13 +948,39 @@ export const normalizeLoadedAdjustments = (loadedAdjustments: Adjustments): any 
   }
 
   const normalizeSubMasks = (subMasks: any[]) => {
-    return (subMasks || []).map((subMask: Partial<SubMask>) => ({
-      visible: true,
-      mode: SubMaskMode.Additive,
-      invert: false,
-      opacity: 100,
-      ...subMask,
-    }));
+    return (subMasks || []).map((subMask: Partial<SubMask>) => {
+      const base = {
+        visible: true,
+        mode: SubMaskMode.Additive,
+        invert: false,
+        opacity: 100,
+        ...subMask,
+      };
+
+      if (base.type === Mask.DodgeBurn) {
+        const loadedParameters = base.parameters || {};
+        const loadedAdjustments = loadedParameters.adjustments || {};
+        const normalizedAdjustments = {
+          ...getDefaultDodgeBurnAdjustments(),
+          ...loadedAdjustments,
+          curves: loadedAdjustments.curves ? deepCloneCurves(loadedAdjustments.curves) : getDefaultCurves(),
+          pointCurves: loadedAdjustments.pointCurves
+            ? deepCloneCurves(loadedAdjustments.pointCurves)
+            : getDefaultCurves(),
+          parametricCurve: loadedAdjustments.parametricCurve
+            ? deepCloneParametric(loadedAdjustments.parametricCurve)
+            : getDefaultParametricCurve(),
+        };
+        base.parameters = {
+          ...loadedParameters,
+          maskBitmap: loadedParameters.maskBitmap ?? null,
+          flow: loadedParameters.flow ?? 10,
+          adjustments: normalizedAdjustments,
+        };
+      }
+
+      return base;
+    });
   };
 
   const normalizedMasks = (loadedAdjustments.masks || []).map((maskContainer: MaskContainer) => {

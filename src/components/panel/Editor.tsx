@@ -615,6 +615,7 @@ export default function Editor({ onBackToLibrary, onContextMenu, transformWrappe
     (isMasking &&
       (activeSubMask?.type === Mask.Brush ||
         activeSubMask?.type === Mask.Flow ||
+        activeSubMask?.type === Mask.DodgeBurn ||
         activeSubMask?.type === Mask.AiSubject ||
         activeSubMask?.type === Mask.Color ||
         activeSubMask?.type === Mask.Luminance ||
@@ -622,6 +623,7 @@ export default function Editor({ onBackToLibrary, onContextMenu, transformWrappe
     (isAiEditing &&
       (activeSubMask?.type === Mask.Brush ||
         activeSubMask?.type === Mask.Flow ||
+        activeSubMask?.type === Mask.DodgeBurn ||
         activeSubMask?.type === Mask.Clone ||
         activeSubMask?.type === Mask.Heal ||
         activeSubMask?.type === Mask.AiSubject ||

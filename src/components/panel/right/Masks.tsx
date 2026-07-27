@@ -1,4 +1,5 @@
 import {
+  Bandage,
   Brush,
   BringToFront,
   Circle,
@@ -9,11 +10,11 @@ import {
   MoreHorizontal,
   RectangleHorizontal,
   Sparkles,
+  Stamp,
+  Sun,
+  SunDim,
   TriangleRight,
   User,
-  Sun,
-  Stamp,
-  Bandage,
 } from 'lucide-react';
 import i18n from 'i18next';
 
@@ -24,6 +25,7 @@ export enum Mask {
   AiSubject = 'ai-subject',
   All = 'all',
   Brush = 'brush',
+  DodgeBurn = 'dodge-burn',
   Flow = 'flow',
   Color = 'color',
   Linear = 'linear',
@@ -77,6 +79,7 @@ export function formatMaskTypeName(type: string) {
   if (type === Mask.All) return i18n.t('masks.types.all');
   if (type === Mask.QuickEraser) return i18n.t('masks.types.quickEraser');
   if (type === Mask.Brush) return i18n.t('masks.types.brush');
+  if (type === Mask.DodgeBurn) return i18n.t('masks.types.dodgeBurn');
   if (type === Mask.Flow) return i18n.t('masks.types.flow');
   if (type === Mask.Color) return i18n.t('masks.types.color');
   if (type === Mask.Linear) return i18n.t('masks.types.linear');
@@ -106,6 +109,7 @@ export const MASK_ICON_MAP: Record<Mask, any> = {
   [Mask.AiSubject]: Sparkles,
   [Mask.All]: RectangleHorizontal,
   [Mask.Brush]: Brush,
+  [Mask.DodgeBurn]: SunDim,
   [Mask.Flow]: Droplets,
   [Mask.Color]: Droplet,
   [Mask.Linear]: TriangleRight,
@@ -146,6 +150,12 @@ export const MASK_PANEL_CREATION_TYPES: Array<MaskType> = [
     icon: Circle,
     name: 'Radial',
     type: Mask.Radial,
+  },
+  {
+    disabled: false,
+    icon: SunDim,
+    name: formatMaskTypeName(Mask.DodgeBurn),
+    type: Mask.DodgeBurn,
   },
   {
     disabled: false,

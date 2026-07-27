@@ -210,21 +210,15 @@ pub async fn preview_negative_conversion(
 
                         let bytes = read_file_bytes(Path::new(&source_path_str))
                             .map_err(|e| e.to_string())?;
-                        load_base_image_from_bytes(
-                            &bytes,
-                            &source_path_str,
-                            false,
-                            &settings,
-                            None,
-                        )
-                        .map_err(|e| e.to_string())?
+                        load_base_image_from_bytes(&bytes, &source_path_str, false, &settings, None)
+                            .map_err(|e| e.to_string())?
                     }
                 } else {
                     drop(original_lock);
                     let settings = load_settings(app_handle.clone()).unwrap_or_default();
 
-                    let bytes = read_file_bytes(Path::new(&source_path_str))
-                        .map_err(|e| e.to_string())?;
+                    let bytes =
+                        read_file_bytes(Path::new(&source_path_str)).map_err(|e| e.to_string())?;
                     load_base_image_from_bytes(&bytes, &source_path_str, false, &settings, None)
                         .map_err(|e| e.to_string())?
                 }
@@ -300,7 +294,8 @@ pub async fn convert_negatives(
                 .save(&out_path)
                 .map_err(|e| format!("Failed to save {}: {}", filename, e))?;
 
-            let _ = crate::exif_processing::write_rrexif_sidecar(&app_handle, &real_path, &out_path);
+            let _ =
+                crate::exif_processing::write_rrexif_sidecar(&app_handle, &real_path, &out_path);
             results.push(out_path.to_string_lossy().to_string());
         }
 

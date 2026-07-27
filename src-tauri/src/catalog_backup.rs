@@ -2,8 +2,8 @@ use std::fs;
 use std::io::{BufReader, BufWriter};
 use std::path::{Path, PathBuf};
 
-use flate2::write::GzEncoder;
 use flate2::Compression;
+use flate2::write::GzEncoder;
 use once_cell::sync::Lazy;
 use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
@@ -11,7 +11,9 @@ use tauri::{AppHandle, Emitter, Manager, Runtime};
 use tokio::sync::Mutex as TokioMutex;
 
 use crate::app_settings::{load_settings, save_settings};
-use crate::library_db::{open_connection, reset_backup_counter_in_conn, touch_backup_banner_in_conn};
+use crate::library_db::{
+    open_connection, reset_backup_counter_in_conn, touch_backup_banner_in_conn,
+};
 
 static BACKUP_LOCK: Lazy<TokioMutex<()>> = Lazy::new(|| TokioMutex::new(()));
 
@@ -43,7 +45,10 @@ pub struct CatalogBackupResult {
 }
 
 fn db_path(app_handle: &AppHandle) -> Result<PathBuf, String> {
-    let data_dir = app_handle.path().app_data_dir().map_err(|e| e.to_string())?;
+    let data_dir = app_handle
+        .path()
+        .app_data_dir()
+        .map_err(|e| e.to_string())?;
     Ok(data_dir.join("library.db"))
 }
 
@@ -51,7 +56,11 @@ fn timestamp_name() -> String {
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default();
-    format!("library-backup-{}-{}.db.gz", now.as_secs(), now.subsec_nanos())
+    format!(
+        "library-backup-{}-{}.db.gz",
+        now.as_secs(),
+        now.subsec_nanos()
+    )
 }
 
 fn ensure_destination_dir(dest: &str) -> Result<PathBuf, String> {
@@ -68,7 +77,8 @@ fn ensure_destination_dir(dest: &str) -> Result<PathBuf, String> {
 fn vacuum_into(source: &Path, target: &Path) -> Result<(), String> {
     let source_str = source.to_str().ok_or("invalid source path")?;
     let target_str = target.to_str().ok_or("invalid target path")?;
-    let conn = Connection::open(source_str).map_err(|e| format!("failed to open source db: {}", e))?;
+    let conn =
+        Connection::open(source_str).map_err(|e| format!("failed to open source db: {}", e))?;
     // VACUUM INTO needs the target path as a literal. Parameter binding is not
     // reliably supported across SQLite versions, so quote it safely.
     let escaped = target_str.replace('\'', "''");
@@ -78,15 +88,22 @@ fn vacuum_into(source: &Path, target: &Path) -> Result<(), String> {
 }
 
 fn gzip_file(source: &Path, target: &Path) -> Result<u64, String> {
-    let input = fs::File::open(source).map_err(|e| format!("failed to open uncompressed backup: {}", e))?;
-    let output = fs::File::create(target).map_err(|e| format!("failed to create compressed backup: {}", e))?;
+    let input =
+        fs::File::open(source).map_err(|e| format!("failed to open uncompressed backup: {}", e))?;
+    let output = fs::File::create(target)
+        .map_err(|e| format!("failed to create compressed backup: {}", e))?;
     let mut reader = BufReader::new(input);
     let mut encoder = GzEncoder::new(BufWriter::new(output), Compression::default());
     std::io::copy(&mut reader, &mut encoder)
         .map_err(|e| format!("gzip compression failed: {}", e))?;
-    let finished = encoder.finish().map_err(|e| format!("failed to finalize gzip: {}", e))?;
-    let metadata = finished.into_inner().map_err(|e| format!("failed to unwrap writer: {}", e))?
-        .metadata().map_err(|e| format!("failed to read compressed metadata: {}", e))?;
+    let finished = encoder
+        .finish()
+        .map_err(|e| format!("failed to finalize gzip: {}", e))?;
+    let metadata = finished
+        .into_inner()
+        .map_err(|e| format!("failed to unwrap writer: {}", e))?
+        .metadata()
+        .map_err(|e| format!("failed to read compressed metadata: {}", e))?;
     Ok(metadata.len())
 }
 
@@ -105,7 +122,11 @@ fn rotate_backups(dest_dir: &Path, keep_count: usize) -> Result<(), String> {
     if backups.len() > keep_count {
         for old in backups.iter().take(backups.len() - keep_count) {
             if let Err(e) = fs::remove_file(old) {
-                log::warn!("[catalog-backup] failed to remove old backup {}: {}", old.display(), e);
+                log::warn!(
+                    "[catalog-backup] failed to remove old backup {}: {}",
+                    old.display(),
+                    e
+                );
             }
         }
     }
@@ -136,7 +157,9 @@ pub async fn create_catalog_backup(
     let settings = load_settings(app_handle.clone())?;
     let dest_dir = match destination {
         Some(d) => d,
-        None => settings.catalog_backup_folder.ok_or("backup destination not set")?,
+        None => settings
+            .catalog_backup_folder
+            .ok_or("backup destination not set")?,
     };
     let dest_path = ensure_destination_dir(&dest_dir)?;
 
@@ -144,7 +167,11 @@ pub async fn create_catalog_backup(
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default();
-    let temp_name = format!("library-backup-{}-{}.db.tmp", now.as_secs(), now.subsec_nanos());
+    let temp_name = format!(
+        "library-backup-{}-{}.db.tmp",
+        now.as_secs(),
+        now.subsec_nanos()
+    );
     let temp_path = dest_path.join(&temp_name);
     let final_path = dest_path.join(timestamp_name());
 
@@ -205,7 +232,9 @@ pub fn cancel_exit_request(app_handle: AppHandle) {
 #[tauri::command]
 pub fn confirm_exit() {
     #[cfg(target_os = "macos")]
-    unsafe { libc::_exit(0); }
+    unsafe {
+        libc::_exit(0);
+    }
     #[cfg(not(target_os = "macos"))]
     std::process::exit(0);
 }
@@ -226,7 +255,11 @@ mod tests {
         }
 
         let result = rotate_backups(dir, 3);
-        assert!(result.is_ok(), "rotate_backups returned an error: {:?}", result);
+        assert!(
+            result.is_ok(),
+            "rotate_backups returned an error: {:?}",
+            result
+        );
 
         let mut remaining: Vec<String> = fs::read_dir(dir)
             .expect("failed to read temp dir")
@@ -234,7 +267,12 @@ mod tests {
             .collect();
         remaining.sort();
 
-        assert_eq!(remaining.len(), 3, "expected 3 backups to remain, got {:?}", remaining);
+        assert_eq!(
+            remaining.len(),
+            3,
+            "expected 3 backups to remain, got {:?}",
+            remaining
+        );
         assert_eq!(
             remaining,
             vec![

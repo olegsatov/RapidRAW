@@ -17,7 +17,10 @@ pub use crate::gpu_processing::{
     RenderRequest, get_or_init_gpu_context, process_and_get_dynamic_image,
     process_and_get_dynamic_image_with_analytics,
 };
-use crate::{AppState, mask_generation::MaskDefinition};
+use crate::{
+    AppState,
+    mask_generation::{MaskDefinition, SubMask},
+};
 use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
 
 pub trait IntoCowImage<'a> {
@@ -1627,10 +1630,79 @@ pub struct MaskAdjustments {
     pub red_curve_count: u32,
     pub green_curve_count: u32,
     pub blue_curve_count: u32,
+
+    pub dodge_burn_flag: u32,
+    pub dodge_burn_flim_ev: f32,
+    pub dodge_burn_flim_contrast: f32,
+    pub dodge_burn_flim_shoulder: f32,
+    pub dodge_burn_flim_toe: f32,
+    pub dodge_burn_flim_warmth: f32,
+    pub dodge_burn_flim_saturation: f32,
+    pub dodge_burn_flim_hi_tint: f32,
+    pub dodge_burn_flim_sh_tint: f32,
+    pub dodge_burn_vibrance: f32,
+    pub dodge_burn_saturation: f32,
+    pub dodge_burn_temperature: f32,
+    pub dodge_burn_tint: f32,
+    pub dodge_burn_highlights: f32,
+    pub dodge_burn_shadows: f32,
+    pub dodge_burn_whites: f32,
+    pub dodge_burn_blacks: f32,
+    pub dodge_burn_clarity: f32,
+    pub dodge_burn_halation_amount: f32,
+    pub dodge_burn_glow_amount: f32,
+    pub dodge_burn_vignette_amount: f32,
+    pub dodge_burn_film_blur_pre_amount: f32,
+    pub dodge_burn_film_blur_pre_compensation: f32,
+    pub dodge_burn_film_blur_pre_radius: f32,
+    pub dodge_burn_film_blur_pre_soft_amount: f32,
+    pub dodge_burn_film_blur_pre_soft_radius: f32,
+    pub dodge_burn_centre: f32,
+
     _pad_end4: f32,
     _pad_end5: f32,
     _pad_end6: f32,
     _pad_end7: f32,
+}
+
+#[derive(Debug, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+#[serde(default)]
+struct DodgeBurnParameters {
+    adjustments: DodgeBurnAdjustments,
+}
+
+#[derive(Debug, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+#[serde(default)]
+struct DodgeBurnAdjustments {
+    flim_ev: f32,
+    flim_contrast: f32,
+    flim_shoulder: f32,
+    flim_toe: f32,
+    flim_warmth: f32,
+    flim_saturation: f32,
+    flim_hi_tint: f32,
+    flim_sh_tint: f32,
+    vibrance: f32,
+    saturation: f32,
+    temperature: f32,
+    tint: f32,
+    highlights: f32,
+    shadows: f32,
+    whites: f32,
+    blacks: f32,
+    clarity: f32,
+    halation_amount: f32,
+    glow_amount: f32,
+    vignette_amount: f32,
+    film_blur_pre_amount: f32,
+    film_blur_pre_compensation: f32,
+    film_blur_pre_radius: f32,
+    film_blur_pre_soft_amount: f32,
+    film_blur_pre_soft_radius: f32,
+    #[serde(rename = "centré")]
+    centre: f32,
 }
 
 pub const MAX_MASKS: usize = 32;
@@ -3045,7 +3117,10 @@ fn get_global_adjustments_from_json(
     }
 }
 
-fn get_mask_adjustments_from_json(adj: &serde_json::Value) -> MaskAdjustments {
+fn get_mask_adjustments_from_json(
+    adj: &serde_json::Value,
+    sub_masks: &[SubMask],
+) -> MaskAdjustments {
     if adj.is_null() {
         return MaskAdjustments::default();
     }
@@ -3089,7 +3164,7 @@ fn get_mask_adjustments_from_json(adj: &serde_json::Value) -> MaskAdjustments {
     };
     let cg_obj = adj.get("colorGrading").cloned().unwrap_or_default();
 
-    MaskAdjustments {
+    let mut mask_adjustments = MaskAdjustments {
         exposure: get_val("basic", "exposure", SCALES.exposure),
         brightness: get_val("basic", "brightness", SCALES.brightness),
         contrast: get_val("basic", "contrast", SCALES.contrast),
@@ -3169,11 +3244,84 @@ fn get_mask_adjustments_from_json(adj: &serde_json::Value) -> MaskAdjustments {
         red_curve_count: red_points.len() as u32,
         green_curve_count: green_points.len() as u32,
         blue_curve_count: blue_points.len() as u32,
+
+        dodge_burn_flag: 0,
+        dodge_burn_flim_ev: 0.0,
+        dodge_burn_flim_contrast: 0.0,
+        dodge_burn_flim_shoulder: 0.0,
+        dodge_burn_flim_toe: 0.0,
+        dodge_burn_flim_warmth: 0.0,
+        dodge_burn_flim_saturation: 0.0,
+        dodge_burn_flim_hi_tint: 0.0,
+        dodge_burn_flim_sh_tint: 0.0,
+        dodge_burn_vibrance: 0.0,
+        dodge_burn_saturation: 0.0,
+        dodge_burn_temperature: 0.0,
+        dodge_burn_tint: 0.0,
+        dodge_burn_highlights: 0.0,
+        dodge_burn_shadows: 0.0,
+        dodge_burn_whites: 0.0,
+        dodge_burn_blacks: 0.0,
+        dodge_burn_clarity: 0.0,
+        dodge_burn_halation_amount: 0.0,
+        dodge_burn_glow_amount: 0.0,
+        dodge_burn_vignette_amount: 0.0,
+        dodge_burn_film_blur_pre_amount: 0.0,
+        dodge_burn_film_blur_pre_compensation: 0.0,
+        dodge_burn_film_blur_pre_radius: 0.0,
+        dodge_burn_film_blur_pre_soft_amount: 0.0,
+        dodge_burn_film_blur_pre_soft_radius: 0.0,
+        dodge_burn_centre: 0.0,
+
         _pad_end4: 0.0,
         _pad_end5: 0.0,
         _pad_end6: 0.0,
         _pad_end7: 0.0,
+    };
+
+    for sub_mask in sub_masks {
+        // Only visible dodge/burn sub-masks contribute; if several exist, the
+        // last one wins by design.
+        if sub_mask.mask_type == "dodge-burn" && sub_mask.visible {
+            if let Ok(params) =
+                serde_json::from_value::<DodgeBurnParameters>(sub_mask.parameters.clone())
+            {
+                let a = params.adjustments;
+                mask_adjustments.dodge_burn_flag = 1;
+                mask_adjustments.dodge_burn_flim_ev = a.flim_ev;
+                mask_adjustments.dodge_burn_flim_contrast = (a.flim_contrast - 100.0) / 100.0;
+                mask_adjustments.dodge_burn_flim_shoulder = a.flim_shoulder / 100.0;
+                mask_adjustments.dodge_burn_flim_toe = a.flim_toe / 100.0;
+                mask_adjustments.dodge_burn_flim_warmth = a.flim_warmth / 100.0 * 0.15;
+                mask_adjustments.dodge_burn_flim_saturation = (a.flim_saturation - 100.0) / 100.0;
+                mask_adjustments.dodge_burn_flim_hi_tint = a.flim_hi_tint / 100.0;
+                mask_adjustments.dodge_burn_flim_sh_tint = a.flim_sh_tint / 100.0;
+                mask_adjustments.dodge_burn_vibrance = a.vibrance / SCALES.vibrance;
+                mask_adjustments.dodge_burn_saturation = a.saturation / SCALES.saturation;
+                mask_adjustments.dodge_burn_temperature = a.temperature / SCALES.temperature;
+                mask_adjustments.dodge_burn_tint = a.tint / SCALES.tint;
+                mask_adjustments.dodge_burn_highlights = a.highlights / SCALES.highlights;
+                mask_adjustments.dodge_burn_shadows = a.shadows / SCALES.shadows;
+                mask_adjustments.dodge_burn_whites = a.whites / SCALES.whites;
+                mask_adjustments.dodge_burn_blacks = a.blacks / SCALES.blacks;
+                mask_adjustments.dodge_burn_clarity = a.clarity / SCALES.clarity;
+                mask_adjustments.dodge_burn_halation_amount = a.halation_amount / SCALES.halation;
+                mask_adjustments.dodge_burn_glow_amount = a.glow_amount / SCALES.glow;
+                mask_adjustments.dodge_burn_vignette_amount =
+                    a.vignette_amount / SCALES.vignette_amount;
+                mask_adjustments.dodge_burn_film_blur_pre_amount = a.film_blur_pre_amount / 100.0;
+                mask_adjustments.dodge_burn_film_blur_pre_compensation =
+                    a.film_blur_pre_compensation / 100.0;
+                mask_adjustments.dodge_burn_film_blur_pre_radius = a.film_blur_pre_radius;
+                mask_adjustments.dodge_burn_film_blur_pre_soft_amount =
+                    a.film_blur_pre_soft_amount / 100.0;
+                mask_adjustments.dodge_burn_film_blur_pre_soft_radius = a.film_blur_pre_soft_radius;
+                mask_adjustments.dodge_burn_centre = a.centre / SCALES.centré;
+            }
+        }
     }
+
+    mask_adjustments
 }
 
 pub fn get_all_adjustments_from_json(
@@ -3196,7 +3344,8 @@ pub fn get_all_adjustments_from_json(
         .enumerate()
         .take(MAX_MASKS)
     {
-        mask_adjustments[i] = get_mask_adjustments_from_json(&mask_def.adjustments);
+        mask_adjustments[i] =
+            get_mask_adjustments_from_json(&mask_def.adjustments, &mask_def.sub_masks);
         mask_count += 1;
     }
 
@@ -4391,6 +4540,177 @@ mod film_layout_tests {
         }
     }
 
+    // MaskAdjustments is uploaded to the GPU with bytemuck; its byte layout
+    // MUST equal the WGSL struct of the same name. The dodge & burn block is
+    // appended at the tail, so this test exercises those fields explicitly.
+    #[test]
+    fn mask_adjustments_layout_matches_wgsl() {
+        let module = parse_main_shader();
+        let mut layouter = naga::proc::Layouter::default();
+        layouter.update(module.to_ctx()).unwrap();
+        let (handle, _) = module
+            .types
+            .iter()
+            .find(|(_, t)| t.name.as_deref() == Some("MaskAdjustments"))
+            .expect("MaskAdjustments struct in WGSL");
+        let wgsl_size = layouter[handle].size as usize;
+        let rust_size = std::mem::size_of::<MaskAdjustments>();
+        assert_eq!(
+            rust_size, wgsl_size,
+            "Rust MaskAdjustments ({rust_size} bytes) != shader.wgsl ({wgsl_size} bytes)"
+        );
+
+        let cg = ColorGradeSettings {
+            hue: 1.0,
+            saturation: 2.0,
+            luminance: 3.0,
+            _pad: 4.0,
+        };
+        let hsl = HslColor {
+            hue: 1.0,
+            saturation: 2.0,
+            luminance: 3.0,
+            _pad: 4.0,
+        };
+        let point = Point {
+            x: 1.0,
+            y: 2.0,
+            _pad1: 3.0,
+            _pad2: 4.0,
+        };
+        let mask_adjustments = MaskAdjustments {
+            exposure: 0.1,
+            brightness: 0.2,
+            contrast: 0.3,
+            highlights: 0.4,
+            shadows: 0.5,
+            whites: 0.6,
+            blacks: 0.7,
+            saturation: 0.8,
+            temperature: 0.9,
+            tint: 1.0,
+            vibrance: 1.1,
+
+            sharpness: 1.2,
+            luma_noise_reduction: 1.3,
+            color_noise_reduction: 1.4,
+            clarity: 1.5,
+            dehaze: 1.6,
+            structure: 1.7,
+
+            glow_amount: 1.8,
+            halation_amount: 1.9,
+            flare_amount: 2.0,
+            sharpness_threshold: 2.1,
+
+            hue: 2.2,
+            _pad_cg1: 2.3,
+            _pad_cg2: 2.4,
+            color_grading_shadows: cg,
+            color_grading_midtones: cg,
+            color_grading_highlights: cg,
+            color_grading_global: cg,
+            color_grading_blending: 2.5,
+            color_grading_balance: 2.6,
+            _pad5: 2.7,
+            _pad6: 2.8,
+
+            hsl: [hsl; 8],
+            luma_curve: [point; 16],
+            red_curve: [point; 16],
+            green_curve: [point; 16],
+            blue_curve: [point; 16],
+            luma_curve_count: 17,
+            red_curve_count: 18,
+            green_curve_count: 19,
+            blue_curve_count: 20,
+
+            dodge_burn_flag: 0x01020304,
+            dodge_burn_flim_ev: 10.0,
+            dodge_burn_flim_contrast: 11.0,
+            dodge_burn_flim_shoulder: 12.0,
+            dodge_burn_flim_toe: 13.0,
+            dodge_burn_flim_warmth: 14.0,
+            dodge_burn_flim_saturation: 15.0,
+            dodge_burn_flim_hi_tint: 16.0,
+            dodge_burn_flim_sh_tint: 17.0,
+            dodge_burn_vibrance: 18.0,
+            dodge_burn_saturation: 19.0,
+            dodge_burn_temperature: 20.0,
+            dodge_burn_tint: 21.0,
+            dodge_burn_highlights: 22.0,
+            dodge_burn_shadows: 23.0,
+            dodge_burn_whites: 24.0,
+            dodge_burn_blacks: 25.0,
+            dodge_burn_clarity: 26.0,
+            dodge_burn_halation_amount: 27.0,
+            dodge_burn_glow_amount: 28.0,
+            dodge_burn_vignette_amount: 29.0,
+            dodge_burn_film_blur_pre_amount: 30.0,
+            dodge_burn_film_blur_pre_compensation: 31.0,
+            dodge_burn_film_blur_pre_radius: 32.0,
+            dodge_burn_film_blur_pre_soft_amount: 33.0,
+            dodge_burn_film_blur_pre_soft_radius: 34.0,
+            dodge_burn_centre: 35.0,
+
+            _pad_end4: 36.0,
+            _pad_end5: 37.0,
+            _pad_end6: 38.0,
+            _pad_end7: 39.0,
+        };
+
+        let bytes = bytemuck::bytes_of(&mask_adjustments);
+        assert_eq!(bytes.len(), rust_size);
+
+        let ty = &module.types[handle];
+        let members = match &ty.inner {
+            naga::TypeInner::Struct { members, .. } => members,
+            _ => panic!("MaskAdjustments is not a struct"),
+        };
+        let mut wgsl_offsets: std::collections::HashMap<String, usize> =
+            std::collections::HashMap::new();
+        let mut offset = 0u32;
+        for m in members {
+            let member_layout = &layouter[m.ty];
+            offset = member_layout.alignment.round_up(offset);
+            wgsl_offsets.insert(m.name.clone().unwrap_or_default(), offset as usize);
+            offset += member_layout.size;
+        }
+
+        let read_f32 = |offset: usize| -> f32 {
+            f32::from_ne_bytes(bytes[offset..offset + 4].try_into().unwrap())
+        };
+        let read_u32 = |offset: usize| -> u32 {
+            u32::from_ne_bytes(bytes[offset..offset + 4].try_into().unwrap())
+        };
+
+        assert_eq!(
+            read_u32(wgsl_offsets["dodge_burn_flag"]),
+            0x01020304,
+            "dodge_burn_flag offset mismatch"
+        );
+        assert_eq!(
+            read_f32(wgsl_offsets["dodge_burn_flim_ev"]),
+            10.0,
+            "dodge_burn_flim_ev offset mismatch"
+        );
+        assert_eq!(
+            read_f32(wgsl_offsets["dodge_burn_flim_contrast"]),
+            11.0,
+            "dodge_burn_flim_contrast offset mismatch"
+        );
+        assert_eq!(
+            read_f32(wgsl_offsets["dodge_burn_vignette_amount"]),
+            29.0,
+            "dodge_burn_vignette_amount offset mismatch"
+        );
+        assert_eq!(
+            read_f32(wgsl_offsets["dodge_burn_centre"]),
+            35.0,
+            "dodge_burn_centre offset mismatch"
+        );
+    }
+
     // Advanced flim panel: absolute preset knobs arrive as flimAdv* JSON keys.
     // A preset built from keys mirroring a builtin must yield render-equivalent
     // uniforms to that builtin.
@@ -4695,6 +5015,53 @@ mod film_layout_tests {
             (adj.flim_black_cap_luma - (-0.015)).abs() < 1e-6,
             "toe must shift the negative cap additively, got {}",
             adj.flim_black_cap_luma
+        );
+    }
+
+    // Export integration for dodge & burn: the export pipeline reuses the same
+    // mask/adjustment parsing as the editor preview. This test verifies that a
+    // visible dodge-burn sub-mask populates MaskAdjustments with the flag set
+    // and at least one non-zero delta field.
+    #[test]
+    fn dodge_burn_sub_mask_populates_mask_adjustments() {
+        let js = serde_json::json!({
+            "masks": [
+                {
+                    "id": "mask-1",
+                    "name": "Dodge/Burn Mask",
+                    "visible": true,
+                    "invert": false,
+                    "opacity": 100,
+                    "adjustments": {},
+                    "subMasks": [
+                        {
+                            "id": "sm-1",
+                            "type": "dodge-burn",
+                            "visible": true,
+                            "invert": false,
+                            "opacity": 100,
+                            "mode": "additive",
+                            "parameters": {
+                                "maskBitmap": "data:image/png;base64,placeholder",
+                                "adjustments": {
+                                    "flimEv": 1.5
+                                }
+                            }
+                        }
+                    ]
+                }
+            ]
+        });
+
+        let all = get_all_adjustments_from_json(&js, false, None);
+        assert_eq!(all.mask_count, 1, "one visible mask should be parsed");
+
+        let mask = &all.mask_adjustments[0];
+        assert_eq!(mask.dodge_burn_flag, 1, "dodge-burn flag must be set");
+        assert!(
+            (mask.dodge_burn_flim_ev - 1.5).abs() < 1e-6,
+            "dodge-burn flim EV delta should be non-zero, got {}",
+            mask.dodge_burn_flim_ev
         );
     }
 }

@@ -23,7 +23,10 @@ impl AvailabilityWatchers {
     /// Replace the watched set with `paths`. Paths that disappeared are
     /// un-watched; new paths get a non-recursive watcher.
     pub fn update(&self, app_handle: &AppHandle, paths: Vec<String>) -> Result<(), String> {
-        log::info!("[availability] updating watchers for {} root path(s)", paths.len());
+        log::info!(
+            "[availability] updating watchers for {} root path(s)",
+            paths.len()
+        );
         let mut watchers = self.watchers.lock().map_err(|e| e.to_string())?;
 
         // Stop watching paths that are no longer root folders.
@@ -40,7 +43,11 @@ impl AvailabilityWatchers {
             let mut watcher = RecommendedWatcher::new(
                 move |res: Result<Event, notify::Error>| {
                     if let Ok(event) = res {
-                        log::info!("[availability] watcher event for {}: {:?}", watched_path, event.kind);
+                        log::info!(
+                            "[availability] watcher event for {}: {:?}",
+                            watched_path,
+                            event.kind
+                        );
                         // Filter out noisy events. We care about the root path
                         // itself being removed, renamed, or otherwise changed.
                         let root_path = Path::new(&watched_path);

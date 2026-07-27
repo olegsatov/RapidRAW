@@ -373,20 +373,23 @@ pub fn render_crystal_grain_channel(
 
         // Plant seeds (parallel per row; deterministic per-(layer,row) PRNG).
         let mut seeds = vec![0.0f32; pixels];
-        seeds.par_chunks_mut(width).enumerate().for_each(|(y, row)| {
-            let mut rng = Prng::new(
-                opts.seed
-                    .wrapping_add((layer_idx as u32).wrapping_mul(1_664_525))
-                    .wrapping_add((y as u32).wrapping_mul(1_013_904_223)),
-            );
-            let base = y * width;
-            for (x, s) in row.iter_mut().enumerate() {
-                let g = n_a + sqrt_na * rng.gaussian_0_1();
-                if g < threshold {
-                    *s = layer[base + x];
+        seeds
+            .par_chunks_mut(width)
+            .enumerate()
+            .for_each(|(y, row)| {
+                let mut rng = Prng::new(
+                    opts.seed
+                        .wrapping_add((layer_idx as u32).wrapping_mul(1_664_525))
+                        .wrapping_add((y as u32).wrapping_mul(1_013_904_223)),
+                );
+                let base = y * width;
+                for (x, s) in row.iter_mut().enumerate() {
+                    let g = n_a + sqrt_na * rng.gaussian_0_1();
+                    if g < threshold {
+                        *s = layer[base + x];
+                    }
                 }
-            }
-        });
+            });
 
         // Grow the crystals, then enforce energy conservation where
         // crystals overlap (the kernel is not normalized).
@@ -410,7 +413,11 @@ pub fn render_crystal_grain_channel(
     // must show no grain (alpha compositing with mask = 1 - I).
     let mean_img = img.iter().sum::<f32>() / pixels as f32;
     let mean_res = result.iter().sum::<f32>() / pixels as f32;
-    let coef = if mean_res > 1e-8 { mean_img / mean_res } else { 1.0 };
+    let coef = if mean_res > 1e-8 {
+        mean_img / mean_res
+    } else {
+        1.0
+    };
     for i in 0..pixels {
         let grainy = (result[i] * coef).clamp(0.0, 1.0);
         let mask = 1.0 - img[i];
@@ -583,7 +590,9 @@ pub async fn render_crystal_grain(
         mix_grain_amount(&rgb, &mut grained, opts.amount.clamp(0.0, 1.0));
 
         let source_str = source_path.to_string_lossy().to_string();
-        let parent_dir = source_path.parent().unwrap_or_else(|| std::path::Path::new(""));
+        let parent_dir = source_path
+            .parent()
+            .unwrap_or_else(|| std::path::Path::new(""));
         let stem = source_path
             .file_stem()
             .unwrap_or_default()
@@ -595,7 +604,8 @@ pub async fn render_crystal_grain(
             .save(&output_path)
             .map_err(|e| format!("Failed to save image: {e}"))?;
 
-        let _ = crate::exif_processing::write_rrexif_sidecar(&app_handle, &source_str, &output_path);
+        let _ =
+            crate::exif_processing::write_rrexif_sidecar(&app_handle, &source_str, &output_path);
         crate::film_grain::reveal_in_file_manager(&output_path);
 
         let out_str = output_path.to_string_lossy().to_string();
@@ -861,12 +871,7 @@ mod tests {
         ];
         let kernel = create_crystal(11, 5.0, 0.0);
         for (i, (&got, &want)) in kernel.iter().zip(expected.iter()).enumerate() {
-            assert_eq!(
-                got, want as f32,
-                "pixel ({}, {}) mismatch",
-                i / 11,
-                i % 11
-            );
+            assert_eq!(got, want as f32, "pixel ({}, {}) mismatch", i / 11, i % 11);
         }
     }
 
@@ -1025,20 +1030,33 @@ mod tests {
 
         let level_mean_var = |buf: &[half::f16], c: usize| {
             let n = (buf.len() / 4) as f32;
-            let mean = (0..buf.len() / 4).map(|i| buf[i * 4 + c].to_f32()).sum::<f32>() / n;
-            let var =
-                (0..buf.len() / 4).map(|i| (buf[i * 4 + c].to_f32() - mean).powi(2)).sum::<f32>()
-                    / n;
+            let mean = (0..buf.len() / 4)
+                .map(|i| buf[i * 4 + c].to_f32())
+                .sum::<f32>()
+                / n;
+            let var = (0..buf.len() / 4)
+                .map(|i| (buf[i * 4 + c].to_f32() - mean).powi(2))
+                .sum::<f32>()
+                / n;
             (mean, var)
         };
 
         for c in 0..3 {
             let (mean0, var0) = level_mean_var(&a[0], c);
-            assert!((mean0 - 1.0).abs() < 0.05, "channel {c}: mean {mean0} (expected ~1)");
+            assert!(
+                (mean0 - 1.0).abs() < 0.05,
+                "channel {c}: mean {mean0} (expected ~1)"
+            );
             // The 1x1 last mip is the global mean: box averaging preserves it.
             let (mean_last, var_last) = level_mean_var(a.last().unwrap(), c);
-            assert!((mean_last - 1.0).abs() < 0.02, "channel {c}: last mip {mean_last}");
-            assert!(var_last < var0, "channel {c}: variance must shrink with mips");
+            assert!(
+                (mean_last - 1.0).abs() < 0.02,
+                "channel {c}: last mip {mean_last}"
+            );
+            assert!(
+                var_last < var0,
+                "channel {c}: variance must shrink with mips"
+            );
         }
         for buf in &a {
             for &v in buf {
@@ -1062,7 +1080,10 @@ mod tests {
         assert_eq!(ratios.len(), 64usize.ilog2() as usize + 1);
         assert!((ratios[0] - 1.0).abs() < 1e-6, "level 0 maps to 1.0");
         for w in ratios.windows(2) {
-            assert!(w[1] >= w[0] - 1e-3, "ratios must be non-decreasing: {ratios:?}");
+            assert!(
+                w[1] >= w[0] - 1e-3,
+                "ratios must be non-decreasing: {ratios:?}"
+            );
         }
         for &r in &ratios {
             assert!((1.0..=3.0).contains(&r), "ratio out of clamp range: {r}");

@@ -7,8 +7,8 @@ use std::sync::{
     atomic::{AtomicBool, AtomicUsize, Ordering},
 };
 
-use tauri::{AppHandle, Emitter, Manager, State};
 use tauri::async_runtime::JoinHandle;
+use tauri::{AppHandle, Emitter, Manager, State};
 use tokio::sync::Semaphore;
 use walkdir::WalkDir;
 
@@ -148,11 +148,17 @@ fn start_job(
     {
         let jobs = state.folder_import_jobs.lock().map_err(|e| e.to_string())?;
         if jobs.contains_key(&key) {
-            log::info!("[sync] start_job check: key={} already in map, reusing", key);
+            log::info!(
+                "[sync] start_job check: key={} already in map, reusing",
+                key
+            );
             return Ok(key);
         }
     }
-    log::info!("[sync] start_job check: key={} not in map, spawning new", key);
+    log::info!(
+        "[sync] start_job check: key={} not in map, spawning new",
+        key
+    );
 
     let cancel = Arc::new(AtomicBool::new(false));
     let processed = Arc::new(AtomicUsize::new(0));
@@ -337,7 +343,10 @@ pub async fn is_folder_cataloged(app_handle: AppHandle, path: String) -> Result<
     {
         Ok(Ok(result)) => Ok(result),
         Ok(Err(e)) => Err(e),
-        Err(e) => Err(format!("Failed to execute folder catalog check task: {}", e)),
+        Err(e) => Err(format!(
+            "Failed to execute folder catalog check task: {}",
+            e
+        )),
     }
 }
 
@@ -587,10 +596,8 @@ async fn process_scan_chunk(
     let cancel = cancel.clone();
 
     // Size lookup is built before the chunk is moved into the blocking closure.
-    let size_by_base_path: HashMap<String, u64> = chunk
-        .iter()
-        .map(|e| (e.path_str.clone(), e.size))
-        .collect();
+    let size_by_base_path: HashMap<String, u64> =
+        chunk.iter().map(|e| (e.path_str.clone(), e.size)).collect();
 
     let (image_files, entries_processed) = tauri::async_runtime::spawn_blocking(move || {
         let settings = load_settings(app_handle_clone.clone()).unwrap_or_default();
@@ -1183,7 +1190,11 @@ async fn run_sync_job(
     cancel: Arc<AtomicBool>,
 ) {
     let key = folder_key(&path, recursive);
-    log::info!("[sync] run_sync_job starting for {} (recursive={})", path, recursive);
+    log::info!(
+        "[sync] run_sync_job starting for {} (recursive={})",
+        path,
+        recursive
+    );
 
     // A missing root (e.g. an unplugged external drive) must never reach the
     // delta: the recursive walk silently yields an empty set for a
@@ -1292,7 +1303,11 @@ async fn run_sync_job(
 
     // The delta stats every file and sidecar; run it off the async executor
     // like the walk itself.
-    log::info!("[sync] computing delta for {} ({} catalog rows)", path, cataloged_count);
+    log::info!(
+        "[sync] computing delta for {} ({} catalog rows)",
+        path,
+        cataloged_count
+    );
     let delta = tauri::async_runtime::spawn_blocking({
         let cancel = cancel.clone();
         move || compute_sync_delta(entries, &fingerprints, &cancel)
@@ -1328,7 +1343,11 @@ async fn run_sync_job(
     // entries to (re-)process — not the whole folder — so batch progress
     // still runs 0 → 100%.
     let upsert_total = to_upsert.len();
-    log::info!("[sync] starting upsert phase for {}: {} entries", path, upsert_total);
+    log::info!(
+        "[sync] starting upsert phase for {}: {} entries",
+        path,
+        upsert_total
+    );
     let mut scanned = 0usize;
     for chunk in to_upsert.chunks(SCAN_CHUNK_SIZE) {
         if cancel.load(Ordering::SeqCst) {

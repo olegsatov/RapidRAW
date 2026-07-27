@@ -314,7 +314,8 @@ pub async fn start_background_indexing(
 
         println!(
             "Found {} images to process in {}",
-            image_paths.len(), folder_path
+            image_paths.len(),
+            folder_path
         );
         let total_images = image_paths.len();
         let processed_count = Arc::new(Mutex::new(0));
@@ -387,7 +388,8 @@ pub async fn start_background_indexing(
                                     ) {
                                         log::warn!(
                                             "failed to save AI tags for {}: {}",
-                                            path_str, e
+                                            path_str,
+                                            e
                                         );
                                     }
                                 }

@@ -277,16 +277,11 @@ pub fn get_or_init_gpu_context(
             .ok_or("Failed to get main window")?;
 
         let swapchain_caps = surface.get_capabilities(&adapter);
-        // The main compute shader writes sRGB-encoded values into an rgba8unorm
-        // texture. The JPEG/export path saves those values directly as sRGB.
-        // To make the WGPU surface preview match, we use an sRGB swapchain and
-        // convert the sampled sRGB data back to linear in the display shader so
-        // the swapchain can re-encode it to sRGB for display.
         let swapchain_format = swapchain_caps
             .formats
             .iter()
             .copied()
-            .find(|f| f.is_srgb())
+            .find(|f| !f.is_srgb())
             .unwrap_or(swapchain_caps.formats[0]);
 
         let alpha_mode = if cfg!(target_os = "windows")

@@ -8,13 +8,13 @@ use crate::image_processing::ImageMetadata;
 use crate::library_db;
 use crate::metadata_store;
 use chrono::{DateTime, NaiveDateTime, Utc};
-use tauri::AppHandle;
 use exif::{Exif, In, Value};
 use little_exif::exif_tag::ExifTag;
 use little_exif::filetype::FileExtension;
 use little_exif::metadata::Metadata;
 use little_exif::rational::{iR64, uR64};
 use rawler::decoders::RawMetadata;
+use tauri::AppHandle;
 
 pub fn truncate_large_exif(value: &str) -> String {
     if value.len() <= 500 {
@@ -1137,7 +1137,10 @@ pub(crate) fn persist_structured_exif(
     source_path_str: &str,
     exif_map: &HashMap<String, String>,
 ) {
-    let Some(file_id) = library_db::get_file_id_by_path(app_handle, source_path_str).ok().flatten() else {
+    let Some(file_id) = library_db::get_file_id_by_path(app_handle, source_path_str)
+        .ok()
+        .flatten()
+    else {
         return;
     };
 
@@ -1165,18 +1168,18 @@ pub fn persist_exif_if_missing(
     source_path_str: &str,
     file_bytes: &[u8],
 ) {
-    let mut metadata =
-        match metadata_store::load_image_metadata(app_handle, None, source_path_str) {
-            Ok(m) => m,
-            Err(e) => {
-                log::warn!(
-                    "failed to load metadata while caching EXIF for {}: {}",
-                    source_path_str,
-                    e
-                );
-                ImageMetadata::default()
-            }
-        };
+    let mut metadata = match metadata_store::load_image_metadata(app_handle, None, source_path_str)
+    {
+        Ok(m) => m,
+        Err(e) => {
+            log::warn!(
+                "failed to load metadata while caching EXIF for {}: {}",
+                source_path_str,
+                e
+            );
+            ImageMetadata::default()
+        }
+    };
 
     if metadata.exif.is_some() {
         return;
@@ -1201,13 +1204,14 @@ pub fn persist_exif_if_missing(
         && let Ok(map) = serde_json::from_str::<HashMap<String, String>>(&content)
     {
         metadata.exif = Some(map);
-        if let Err(e) = metadata_store::save_image_metadata(
-            app_handle,
-            None,
-            source_path_str,
-            &metadata,
-        ) {
-            log::warn!("failed to save migrated EXIF for {}: {}", source_path_str, e);
+        if let Err(e) =
+            metadata_store::save_image_metadata(app_handle, None, source_path_str, &metadata)
+        {
+            log::warn!(
+                "failed to save migrated EXIF for {}: {}",
+                source_path_str,
+                e
+            );
             return;
         }
         persist_structured_exif(app_handle, source_path_str, metadata.exif.as_ref().unwrap());
@@ -1258,7 +1262,11 @@ pub fn write_rrexif_sidecar(
 
     metadata_store::save_image_metadata(app_handle, None, &target_path_str, &metadata)
         .map_err(|e| format!("Failed to write EXIF to catalog: {}", e))?;
-    persist_structured_exif(app_handle, &target_path_str, metadata.exif.as_ref().unwrap());
+    persist_structured_exif(
+        app_handle,
+        &target_path_str,
+        metadata.exif.as_ref().unwrap(),
+    );
 
     Ok(())
 }

@@ -64,7 +64,10 @@ fn set_meta_i64(conn: &Connection, key: &str, value: i64) -> Result<(), String> 
 
 /// Increments the pending-backup counter by `delta`. Non-positive values are ignored.
 #[allow(dead_code)] // consumed by catalog backup tasks 4-7
-pub(crate) fn increment_backup_counter_in_conn(conn: &Connection, delta: i64) -> Result<(), String> {
+pub(crate) fn increment_backup_counter_in_conn(
+    conn: &Connection,
+    delta: i64,
+) -> Result<(), String> {
     if delta <= 0 {
         return Ok(());
     }

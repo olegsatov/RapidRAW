@@ -15,6 +15,7 @@ import CompositionOverlays from './overlays/CompositionOverlays';
 import DodgeBurnLayer, { type DodgeBurnLayerRef } from './DodgeBurnLayer';
 import useDodgeBurnEffectUrl from '../../../hooks/useDodgeBurnEffectUrl';
 import { useEditorStore } from '../../../store/useEditorStore';
+import { debouncedSave } from '../../../hooks/useEditorActions';
 
 interface CursorPreview {
   visible: boolean;
@@ -1716,29 +1717,20 @@ const ImageCanvas = memo(
         activeSubMask?.type === Mask.Clone ||
         activeSubMask?.type === Mask.Heal);
     const isDodgeBurnActive = isMasking && activeSubMask?.type === Mask.DodgeBurn;
+    const dodgeBurnTargetSubMask = useMemo(() => {
+      if (activeSubMask?.type === Mask.DodgeBurn) return activeSubMask;
+      for (const container of adjustments.masks) {
+        const sm = container.subMasks.find((m: SubMask) => m.type === Mask.DodgeBurn && m.visible);
+        if (sm) return sm;
+      }
+      return null;
+    }, [activeSubMask, adjustments.masks]);
     const { effectUrl: dodgeBurnEffectUrl, isLoading: isDodgeBurnEffectLoading } = useDodgeBurnEffectUrl(
-      activeSubMask ?? null,
+      dodgeBurnTargetSubMask,
       adjustments,
     );
     const isManualCleanupActive =
       isAiEditing && (activeSubMask?.type === Mask.Clone || activeSubMask?.type === Mask.Heal);
-
-    const persistDodgeBurnMask = useCallback(
-      (subMaskId: string, maskBitmap: string | null) => {
-        setEditor((state) => ({
-          adjustments: {
-            ...state.adjustments,
-            masks: state.adjustments.masks.map((container) => ({
-              ...container,
-              subMasks: container.subMasks.map((sm) =>
-                sm.id === subMaskId ? { ...sm, parameters: { ...sm.parameters, maskBitmap } } : sm,
-              ),
-            })),
-          },
-        }));
-      },
-      [setEditor],
-    );
 
     const flattenDodgeBurnMask = useCallback(
       (subMaskId: string | null) => {
@@ -1748,12 +1740,27 @@ const ImageCanvas = memo(
         }
         const currentMask = dodgeBurnCurrentMaskRef.current;
         if (currentMask && currentMask !== dodgeBurnLastSavedMaskRef.current) {
-          persistDodgeBurnMask(subMaskId, currentMask);
+          const { selectedImage: currentImage, adjustments: currentAdjustments } = useEditorStore.getState();
+          const updatedAdjustments = {
+            ...currentAdjustments,
+            masks: currentAdjustments.masks.map((container) => ({
+              ...container,
+              subMasks: container.subMasks.map((sm) =>
+                sm.id === subMaskId ? { ...sm, parameters: { ...sm.parameters, maskBitmap: currentMask } } : sm,
+              ),
+            })),
+          };
+          setEditor({ adjustments: updatedAdjustments });
           dodgeBurnLastSavedMaskRef.current = currentMask;
+
+          if (currentImage?.path) {
+            debouncedSave(currentImage.path, updatedAdjustments);
+            debouncedSave.flush();
+          }
         }
         dodgeBurnUndoStackRef.current = [];
       },
-      [persistDodgeBurnMask],
+      [setEditor],
     );
 
     useEffect(() => {
@@ -1803,8 +1810,23 @@ const ImageCanvas = memo(
               setDodgeBurnCurrentMask(prevMask);
               const subMaskId = activeSubMaskIdRef.current;
               if (subMaskId) {
+                const { selectedImage: currentImage, adjustments: currentAdjustments } = useEditorStore.getState();
+                const updatedAdjustments = {
+                  ...currentAdjustments,
+                  masks: currentAdjustments.masks.map((container) => ({
+                    ...container,
+                    subMasks: container.subMasks.map((sm) =>
+                      sm.id === subMaskId ? { ...sm, parameters: { ...sm.parameters, maskBitmap: prevMask } } : sm,
+                    ),
+                  })),
+                };
+                setEditor({ adjustments: updatedAdjustments });
                 dodgeBurnLastSavedMaskRef.current = prevMask;
-                persistDodgeBurnMask(subMaskId, prevMask);
+
+                if (currentImage?.path) {
+                  debouncedSave(currentImage.path, updatedAdjustments);
+                  debouncedSave.flush();
+                }
               }
             }
           } else {
@@ -1814,7 +1836,7 @@ const ImageCanvas = memo(
       };
       window.addEventListener('keydown', onKeyDown, true);
       return () => window.removeEventListener('keydown', onKeyDown, true);
-    }, [isDodgeBurnActive, undo, persistDodgeBurnMask]);
+    }, [isDodgeBurnActive, undo, setEditor]);
 
     useEffect(() => {
       return () => {
@@ -2692,16 +2714,32 @@ const ImageCanvas = memo(
 
         let maskBitmap: string | null | undefined;
         try {
-          maskBitmap = await dodgeBurnLayerRef.current?.commitMask();
+          maskBitmap = await dodgeBurnLayerRef.current?.commitMask(effectiveImageDimensions);
         } catch (error) {
           console.error('[ImageCanvas] Failed to commit dodge & burn mask:', error);
         }
 
         if (maskBitmap) {
+          const { selectedImage: currentImage, adjustments: currentAdjustments } = useEditorStore.getState();
+          const updatedAdjustments = {
+            ...currentAdjustments,
+            masks: currentAdjustments.masks.map((container) => ({
+              ...container,
+              subMasks: container.subMasks.map((sm) =>
+                sm.id === activeSubMask.id ? { ...sm, parameters: { ...sm.parameters, maskBitmap } } : sm,
+              ),
+            })),
+          };
+
           dodgeBurnCurrentMaskRef.current = maskBitmap;
           setDodgeBurnCurrentMask(maskBitmap);
           dodgeBurnLastSavedMaskRef.current = maskBitmap;
-          persistDodgeBurnMask(activeSubMask.id, maskBitmap);
+          setEditor({ adjustments: updatedAdjustments });
+
+          if (currentImage?.path) {
+            debouncedSave(currentImage.path, updatedAdjustments);
+            debouncedSave.flush();
+          }
         }
         return;
       }
@@ -2863,7 +2901,8 @@ const ImageCanvas = memo(
       brushStageSize,
       baseTool,
       isDodgeBurnActive,
-      persistDodgeBurnMask,
+      setEditor,
+      effectiveImageDimensions,
     ]);
 
     const handleMouseEnter = useCallback(() => {
@@ -3299,6 +3338,7 @@ const ImageCanvas = memo(
                   isActive={isDodgeBurnActive}
                   opacity={dodgeBurnOpacity}
                   imageRenderSize={imageRenderSize}
+                  originalSize={effectiveImageDimensions}
                 />
               )}
             </div>

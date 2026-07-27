@@ -1052,6 +1052,7 @@
       "clone": "仿製",
       "color": "顏色",
       "depth": "深度",
+      "dodgeBurn": "減淡和加深",
       "flow": "流線",
       "foreground": "前景",
       "heal": "修復",

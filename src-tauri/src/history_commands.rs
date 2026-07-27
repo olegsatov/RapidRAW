@@ -173,11 +173,18 @@ pub async fn save_edit_history<R: Runtime>(
 
     match result {
         Ok(Ok(Ok(()))) => {
-            log::info!("[history-persistence] save_edit_history succeeded for {}", payload.path);
+            log::info!(
+                "[history-persistence] save_edit_history succeeded for {}",
+                payload.path
+            );
             Ok(())
         }
         Ok(Ok(Err(e))) => {
-            log::error!("[history-persistence] save_edit_history failed for {}: {}", payload.path, e);
+            log::error!(
+                "[history-persistence] save_edit_history failed for {}: {}",
+                payload.path,
+                e
+            );
             Err(e)
         }
         Ok(Err(join_err)) => {
@@ -189,7 +196,10 @@ pub async fn save_edit_history<R: Runtime>(
             Err(join_err.to_string())
         }
         Err(_) => {
-            log::error!("[history-persistence] save_edit_history timed out for {}", payload.path);
+            log::error!(
+                "[history-persistence] save_edit_history timed out for {}",
+                payload.path
+            );
             Err("save_edit_history timed out".to_string())
         }
     }
@@ -199,8 +209,8 @@ pub async fn save_edit_history<R: Runtime>(
 mod tests {
     use super::*;
     use rusqlite::Connection;
-    use tauri::test::mock_app;
     use tauri::Manager;
+    use tauri::test::mock_app;
 
     #[tokio::test]
     async fn test_save_edit_history_command_completes() {
@@ -234,7 +244,11 @@ mod tests {
         };
 
         let result = save_edit_history(handle.clone(), payload).await;
-        assert!(result.is_ok(), "save_edit_history failed: {:?}", result.err());
+        assert!(
+            result.is_ok(),
+            "save_edit_history failed: {:?}",
+            result.err()
+        );
 
         let db_path = handle.path().app_data_dir().unwrap().join("library.db");
         let conn = Connection::open(&db_path).unwrap();

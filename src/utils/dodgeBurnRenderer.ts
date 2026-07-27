@@ -554,7 +554,7 @@ export class DodgeBurnRenderer {
     gl.drawArrays(gl.TRIANGLES, 0, 3);
   }
 
-  getMaskBlob(): Promise<Blob> {
+  getMaskBlob(targetSize?: { width: number; height: number }): Promise<Blob> {
     const gl = this.gl;
     if (!gl || !this.imageSize.width || !this.imageSize.height) {
       return Promise.reject(new Error('Renderer not initialized'));
@@ -568,28 +568,28 @@ export class DodgeBurnRenderer {
     gl.bindFramebuffer(gl.FRAMEBUFFER, framebuffer);
     gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, this.getReadMask(), 0);
 
-    const width = this.imageSize.width;
-    const height = this.imageSize.height;
-    const pixels = new Uint8Array(width * height);
-    gl.readPixels(0, 0, width, height, gl.RED, gl.UNSIGNED_BYTE, pixels);
+    const readWidth = this.imageSize.width;
+    const readHeight = this.imageSize.height;
+    const pixels = new Uint8Array(readWidth * readHeight);
+    gl.readPixels(0, 0, readWidth, readHeight, gl.RED, gl.UNSIGNED_BYTE, pixels);
 
     gl.deleteFramebuffer(framebuffer);
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
 
-    const canvas = document.createElement('canvas');
-    canvas.width = width;
-    canvas.height = height;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) {
+    const sourceCanvas = document.createElement('canvas');
+    sourceCanvas.width = readWidth;
+    sourceCanvas.height = readHeight;
+    const sourceCtx = sourceCanvas.getContext('2d');
+    if (!sourceCtx) {
       return Promise.reject(new Error('Failed to create 2D context'));
     }
 
-    const imageData = ctx.createImageData(width, height);
-    for (let y = 0; y < height; y++) {
-      const srcY = height - 1 - y;
-      for (let x = 0; x < width; x++) {
-        const srcIndex = srcY * width + x;
-        const dstIndex = y * width + x;
+    const imageData = sourceCtx.createImageData(readWidth, readHeight);
+    for (let y = 0; y < readHeight; y++) {
+      const srcY = readHeight - 1 - y;
+      for (let x = 0; x < readWidth; x++) {
+        const srcIndex = srcY * readWidth + x;
+        const dstIndex = y * readWidth + x;
         const value = pixels[srcIndex];
         imageData.data[dstIndex * 4] = value;
         imageData.data[dstIndex * 4 + 1] = value;
@@ -597,11 +597,27 @@ export class DodgeBurnRenderer {
         imageData.data[dstIndex * 4 + 3] = 255;
       }
     }
-    ctx.putImageData(imageData, 0, 0);
+    sourceCtx.putImageData(imageData, 0, 0);
+
+    const outputWidth = targetSize?.width ?? readWidth;
+    const outputHeight = targetSize?.height ?? readHeight;
+
+    const outputCanvas = document.createElement('canvas');
+    outputCanvas.width = outputWidth;
+    outputCanvas.height = outputHeight;
+    const outputCtx = outputCanvas.getContext('2d');
+    if (!outputCtx) {
+      return Promise.reject(new Error('Failed to create output canvas context'));
+    }
+    if (outputWidth !== readWidth || outputHeight !== readHeight) {
+      outputCtx.imageSmoothingEnabled = true;
+      outputCtx.imageSmoothingQuality = 'high';
+    }
+    outputCtx.drawImage(sourceCanvas, 0, 0, outputWidth, outputHeight);
 
     return new Promise((resolve, reject) => {
       const tryToBlob = (type: string, quality?: number) => {
-        canvas.toBlob(
+        outputCanvas.toBlob(
           (blob) => {
             if (blob) {
               resolve(blob);

@@ -336,7 +336,7 @@ export default function AIPanel() {
   const selectBrushToolForNewMask = useCallback(() => {
     setEditor((state) => ({
       brushSettings: {
-        ...(state.brushSettings ?? { size: 50, feather: 50, tool: ToolType.Brush }),
+        ...(state.brushSettings ?? { size: 250, feather: 100, tool: ToolType.Brush }),
         tool: ToolType.Brush,
       },
     }));

@@ -15,7 +15,11 @@ pub fn load_image_metadata<R: Runtime>(
     file_id: Option<i64>,
     path: &str,
 ) -> Result<ImageMetadata, String> {
-    log::debug!("[metadata] load_image_metadata file_id={:?} path={}", file_id, path);
+    log::debug!(
+        "[metadata] load_image_metadata file_id={:?} path={}",
+        file_id,
+        path
+    );
     let file_id = match file_id {
         Some(id) => id,
         None => match library_db::get_file_id_by_path(app_handle, path)? {
@@ -109,7 +113,10 @@ pub fn resolve_file_id<R: Runtime>(
     // have a target. Folder import will flesh out the remaining columns later.
     // Virtual-copy paths carry a `?vc=<id>` query suffix; strip it before
     // deriving file-level attributes, but keep the full path in the catalog.
-    let base_path = path.split_once("?vc=").map(|(base, _)| base).unwrap_or(path);
+    let base_path = path
+        .split_once("?vc=")
+        .map(|(base, _)| base)
+        .unwrap_or(path);
     let path_obj = Path::new(base_path);
     let folder_path = path_obj
         .parent()
@@ -338,7 +345,10 @@ mod tests {
         std::fs::write(&sidecar, serde_json::to_string(&legacy).unwrap()).unwrap();
 
         let meta = load_image_metadata(handle, None, path_str).unwrap();
-        assert_eq!(meta.rating, 0, "runtime load should not import legacy rrdata");
+        assert_eq!(
+            meta.rating, 0,
+            "runtime load should not import legacy rrdata"
+        );
         assert_eq!(meta.adjustments, Value::Null);
     }
 

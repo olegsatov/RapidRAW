@@ -1007,22 +1007,13 @@ pub fn generate_lut_previews(
                     "lutFlimContrast".to_string(),
                     serde_json::json!(flim_contrast),
                 );
-                obj.insert(
-                    "lutFlimLights".to_string(),
-                    serde_json::json!(flim_lights),
-                );
+                obj.insert("lutFlimLights".to_string(), serde_json::json!(flim_lights));
                 obj.insert(
                     "lutFlimShadows".to_string(),
                     serde_json::json!(flim_shadows),
                 );
-                obj.insert(
-                    "lutSaturation".to_string(),
-                    serde_json::json!(saturation),
-                );
-                obj.insert(
-                    "lutVibrance".to_string(),
-                    serde_json::json!(vibrance),
-                );
+                obj.insert("lutSaturation".to_string(), serde_json::json!(saturation));
+                obj.insert("lutVibrance".to_string(), serde_json::json!(vibrance));
                 let section_visibility = obj
                     .entry("sectionVisibility")
                     .or_insert_with(|| serde_json::json!({}));

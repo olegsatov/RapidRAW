@@ -219,6 +219,35 @@ struct MaskAdjustments {
     red_curve_count: u32,
     green_curve_count: u32,
     blue_curve_count: u32,
+
+    dodge_burn_flag: u32,
+    dodge_burn_flim_ev: f32,
+    dodge_burn_flim_contrast: f32,
+    dodge_burn_flim_shoulder: f32,
+    dodge_burn_flim_toe: f32,
+    dodge_burn_flim_warmth: f32,
+    dodge_burn_flim_saturation: f32,
+    dodge_burn_flim_hi_tint: f32,
+    dodge_burn_flim_sh_tint: f32,
+    dodge_burn_vibrance: f32,
+    dodge_burn_saturation: f32,
+    dodge_burn_temperature: f32,
+    dodge_burn_tint: f32,
+    dodge_burn_highlights: f32,
+    dodge_burn_shadows: f32,
+    dodge_burn_whites: f32,
+    dodge_burn_blacks: f32,
+    dodge_burn_clarity: f32,
+    dodge_burn_halation_amount: f32,
+    dodge_burn_glow_amount: f32,
+    dodge_burn_vignette_amount: f32,
+    dodge_burn_film_blur_pre_amount: f32,
+    dodge_burn_film_blur_pre_compensation: f32,
+    dodge_burn_film_blur_pre_radius: f32,
+    dodge_burn_film_blur_pre_soft_amount: f32,
+    dodge_burn_film_blur_pre_soft_radius: f32,
+    dodge_burn_centre: f32,
+
     _pad_end4: f32,
     _pad_end5: f32,
     _pad_end6: f32,
@@ -1243,6 +1272,8 @@ fn pre_tone(@builtin(global_invocation_id) id: vec3<u32>) {
     var t_flare = adjustments.global.flare_amount;
     var t_sharpness = adjustments.global.sharpness;
     var t_hue = adjustments.global.hue;
+    var t_centre = adjustments.global.centre;
+    var t_vignette_amount = adjustments.global.vignette_amount;
 
     var h0_h = adjustments.global.hsl[0].hue; var h0_s = adjustments.global.hsl[0].saturation; var h0_l = adjustments.global.hsl[0].luminance;
     var h1_h = adjustments.global.hsl[1].hue; var h1_s = adjustments.global.hsl[1].saturation; var h1_l = adjustments.global.hsl[1].luminance;
@@ -1281,6 +1312,27 @@ fn pre_tone(@builtin(global_invocation_id) id: vec3<u32>) {
             t_halation += m.halation_amount * influence;
             t_flare += m.flare_amount * influence;
             t_hue += m.hue * influence;
+
+            // Brush deltas are additive on top of the regular mask adjustments;
+            // for a dodge/burn mask the normal adjustment fields are normally zero.
+            if (m.dodge_burn_flag != 0u) {
+                t_centre += m.dodge_burn_centre * influence;
+                t_vignette_amount += m.dodge_burn_vignette_amount * influence;
+
+                t_saturation += m.dodge_burn_saturation * influence;
+                t_temperature += m.dodge_burn_temperature * influence;
+                t_tint += m.dodge_burn_tint * influence;
+                t_vibrance += m.dodge_burn_vibrance * influence;
+
+                t_highlights += m.dodge_burn_highlights * influence;
+                t_shadows += m.dodge_burn_shadows * influence;
+                t_whites += m.dodge_burn_whites * influence;
+                t_blacks += m.dodge_burn_blacks * influence;
+
+                t_clarity += m.dodge_burn_clarity * influence;
+                t_glow += m.dodge_burn_glow_amount * influence;
+                t_halation += m.dodge_burn_halation_amount * influence;
+            }
 
             h0_h += m.hsl[0].hue * influence; h0_s += m.hsl[0].saturation * influence; h0_l += m.hsl[0].luminance * influence;
             h1_h += m.hsl[1].hue * influence; h1_s += m.hsl[1].saturation * influence; h1_l += m.hsl[1].luminance * influence;
@@ -1335,7 +1387,7 @@ fn pre_tone(@builtin(global_invocation_id) id: vec3<u32>) {
 
     locally_contrasted_rgb = apply_local_contrast(locally_contrasted_rgb, clarity_blurred, t_clarity, is_raw, 1u, 0.0);
     locally_contrasted_rgb = apply_local_contrast(locally_contrasted_rgb, structure_blurred, t_structure, is_raw, 1u, 0.0);
-    locally_contrasted_rgb = apply_centre_local_contrast(locally_contrasted_rgb, adjustments.global.centre, absolute_coord_i, clarity_blurred, is_raw);
+    locally_contrasted_rgb = apply_centre_local_contrast(locally_contrasted_rgb, t_centre, absolute_coord_i, clarity_blurred, is_raw);
 
     var processed_rgb = apply_linear_exposure(locally_contrasted_rgb, t_exposure);
 
@@ -1368,7 +1420,7 @@ fn pre_tone(@builtin(global_invocation_id) id: vec3<u32>) {
     }
 
     var composite_rgb_linear = apply_dehaze(processed_rgb, structure_blurred, is_raw, t_dehaze);
-    composite_rgb_linear = apply_centre_tonal_and_color(composite_rgb_linear, adjustments.global.centre, absolute_coord_i);
+    composite_rgb_linear = apply_centre_tonal_and_color(composite_rgb_linear, t_centre, absolute_coord_i);
     composite_rgb_linear = apply_white_balance(composite_rgb_linear, t_temperature, t_tint);
     composite_rgb_linear = apply_filmic_exposure(composite_rgb_linear, t_brightness);
     composite_rgb_linear = apply_tonal_adjustments(composite_rgb_linear, tonal_blurred, is_raw, t_contrast, t_shadows, t_whites, t_blacks);
@@ -1400,10 +1452,10 @@ fn pre_tone(@builtin(global_invocation_id) id: vec3<u32>) {
         }
     }
 
-    if (adjustments.global.vignette_amount != 0.0) {
+    if (t_vignette_amount != 0.0) {
         let full_dims_f = vec2<f32>(textureDimensions(input_texture));
         let coord_f = vec2<f32>(absolute_coord);
-        let v_amount = adjustments.global.vignette_amount;
+        let v_amount = t_vignette_amount;
         let v_mid = adjustments.global.vignette_midpoint;
         let v_round = 1.0 - adjustments.global.vignette_roundness;
         let v_feather = adjustments.global.vignette_feather * 0.5;

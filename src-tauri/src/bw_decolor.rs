@@ -329,10 +329,7 @@ mod tests {
         // The solution must not collapse to plain luminance on this
         // isoluminant input.
         let drift = (w[0] - REC709[0]).abs() + (w[1] - REC709[1]).abs() + (w[2] - REC709[2]).abs();
-        assert!(
-            drift > 0.1,
-            "weights {w:?} collapsed to Rec.709 luminance"
-        );
+        assert!(drift > 0.1, "weights {w:?} collapsed to Rec.709 luminance");
         // Weights stay a valid convex combination.
         let sum: f64 = w.iter().sum();
         assert!(

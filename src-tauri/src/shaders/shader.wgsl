@@ -219,6 +219,35 @@ struct MaskAdjustments {
     red_curve_count: u32,
     green_curve_count: u32,
     blue_curve_count: u32,
+
+    dodge_burn_flag: u32,
+    dodge_burn_flim_ev: f32,
+    dodge_burn_flim_contrast: f32,
+    dodge_burn_flim_shoulder: f32,
+    dodge_burn_flim_toe: f32,
+    dodge_burn_flim_warmth: f32,
+    dodge_burn_flim_saturation: f32,
+    dodge_burn_flim_hi_tint: f32,
+    dodge_burn_flim_sh_tint: f32,
+    dodge_burn_vibrance: f32,
+    dodge_burn_saturation: f32,
+    dodge_burn_temperature: f32,
+    dodge_burn_tint: f32,
+    dodge_burn_highlights: f32,
+    dodge_burn_shadows: f32,
+    dodge_burn_whites: f32,
+    dodge_burn_blacks: f32,
+    dodge_burn_clarity: f32,
+    dodge_burn_halation_amount: f32,
+    dodge_burn_glow_amount: f32,
+    dodge_burn_vignette_amount: f32,
+    dodge_burn_film_blur_pre_amount: f32,
+    dodge_burn_film_blur_pre_compensation: f32,
+    dodge_burn_film_blur_pre_radius: f32,
+    dodge_burn_film_blur_pre_soft_amount: f32,
+    dodge_burn_film_blur_pre_soft_radius: f32,
+    dodge_burn_centre: f32,
+
     _pad_end4: f32,
     _pad_end5: f32,
     _pad_end6: f32,
@@ -989,10 +1018,10 @@ fn flim_develop(inp_in: vec3<f32>, exposure: f32, log2_max: f32, density: f32) -
     return out;
 }
 
-fn flim_negative_and_print(inp: vec3<f32>) -> vec3<f32> {
+fn flim_negative_and_print(inp: vec3<f32>, sigmoid_log2_max: f32, neg_density: f32, print_density: f32) -> vec3<f32> {
     let g = adjustments.global;
-    let negative = flim_develop(inp, g.flim_neg_exposure, g.flim_sigmoid_log2_max, g.flim_neg_density);
-    return flim_develop(negative * g.flim_backlight, g.flim_print_exposure, g.flim_sigmoid_log2_max, g.flim_print_density);
+    let negative = flim_develop(inp, g.flim_neg_exposure, sigmoid_log2_max, neg_density);
+    return flim_develop(negative * g.flim_backlight, g.flim_print_exposure, sigmoid_log2_max, print_density);
 }
 
 fn flim_rgb_to_hsv(inp: vec3<f32>) -> vec3<f32> {
@@ -1045,15 +1074,24 @@ fn flim_hsv_to_rgb(inp: vec3<f32>) -> vec3<f32> {
     return vec3<f32>(v, p, q);
 }
 
-fn flim_transform(color_in: vec3<f32>, blur_in: vec3<f32>, exp: f32, bright: f32, is_raw: u32) -> vec3<f32> {
+fn flim_transform(color_in: vec3<f32>, blur_in: vec3<f32>, exp: f32, bright: f32, is_raw: u32,
+                  db_flim_ev: f32, db_flim_warmth: f32, db_flim_shoulder: f32, db_flim_contrast: f32,
+                  db_flim_toe: f32, db_flim_saturation: f32, db_flim_hi_tint: f32, db_flim_sh_tint: f32) -> vec3<f32> {
     let g = adjustments.global;
     let white = vec3<f32>(1.0);
+    let local_flim_ev = g.flim_ev + db_flim_ev;
+    let local_flim_warmth = g.flim_warmth * vec3<f32>(1.0 + db_flim_warmth, 1.0, 1.0 - db_flim_warmth);
+    let local_flim_sigmoid_log2_max = g.flim_sigmoid_log2_max + db_flim_shoulder * 4.0;
+    let local_flim_neg_density = g.flim_neg_density * (1.0 + db_flim_contrast);
+    let local_flim_print_density = g.flim_print_density * (1.0 + db_flim_contrast);
+    let local_flim_black_cap_luma = g.flim_black_cap_luma + db_flim_toe * 0.01;
+    let local_flim_midtone_saturation = g.flim_midtone_saturation * (1.0 + db_flim_saturation);
     // exposure pivot (preset pre-exposure folded with the user EV at parse time)
-    var inp = color_in * exp2(g.flim_ev);
+    var inp = color_in * exp2(local_flim_ev);
     // pre-formation filter
     inp = inp * mix(white, g.flim_pre_filter, g.flim_pre_filter_strength);
     // warmth — per-channel gain along the daylight locus (pre-sigmoid, can't clip)
-    inp = inp * g.flim_warmth;
+    inp = inp * local_flim_warmth;
     // adjacency: steady-state approximation of Filmulator's developer
     // depletion + diffusion (CarVac, GPLv3 — model only). Developer flows from
     // low-development (dark) areas into high-development (bright) ones, so the
@@ -1063,7 +1101,7 @@ fn flim_transform(color_in: vec3<f32>, blur_in: vec3<f32>, exp: f32, bright: f32
         var blur_lin = blur_in;
         if (is_raw == 0u) { blur_lin = srgb_to_linear(blur_lin); }
         blur_lin = apply_filmic_exposure(apply_linear_exposure(blur_lin, exp), bright);
-        blur_lin = blur_lin * exp2(g.flim_ev) * mix(white, g.flim_pre_filter, g.flim_pre_filter_strength) * g.flim_warmth;
+        blur_lin = blur_lin * exp2(local_flim_ev) * mix(white, g.flim_pre_filter, g.flim_pre_filter_strength) * local_flim_warmth;
         let log_hi = log2(max(inp, vec3<f32>(1e-6)));
         let log_lo = log2(max(blur_lin, vec3<f32>(1e-6)));
         // Weight grows toward highlights (developer flows into bright areas),
@@ -1079,13 +1117,13 @@ fn flim_transform(color_in: vec3<f32>, blur_in: vec3<f32>, exp: f32, bright: f32
     // extended gamut
     inp = g.flim_extend_mat * inp;
     // develop negative and print
-    inp = flim_negative_and_print(inp);
+    inp = flim_negative_and_print(inp, local_flim_sigmoid_log2_max, local_flim_neg_density, local_flim_print_density);
     // white cap
     inp = inp / g.flim_white_cap;
     // black-cap offset (rgb_uniform_offset with white_point = 0)
     let mono_bc = dot(inp, FLIM_LUMA);
     if (abs(mono_bc) >= 0.0001) {
-        let bp = min(g.flim_black_cap_luma, 0.999);
+        let bp = min(local_flim_black_cap_luma, 0.999);
         inp = inp * (clamp((mono_bc - bp) / (1.0 - bp), 0.0, 1.0) / mono_bc);
     }
     // back from the extended gamut
@@ -1096,13 +1134,15 @@ fn flim_transform(color_in: vec3<f32>, blur_in: vec3<f32>, exp: f32, bright: f32
     // split-tone: tone-keyed warm/cool tinting (tints baked at parse time)
     let mono_st = dot(inp, FLIM_LUMA);
     inp = inp * mix(white, g.flim_hi_tint, smoothstep(0.5, 0.9, mono_st));
+    inp = inp * mix(white, vec3<f32>(1.0 + 0.25 * db_flim_hi_tint, 1.0, 1.0 - 0.25 * db_flim_hi_tint), smoothstep(0.5, 0.9, mono_st));
     inp = inp * mix(white, g.flim_sh_tint, 1.0 - smoothstep(0.1, 0.5, mono_st));
+    inp = inp * mix(white, vec3<f32>(1.0 + 0.25 * db_flim_sh_tint, 1.0, 1.0 - 0.25 * db_flim_sh_tint), 1.0 - smoothstep(0.1, 0.5, mono_st));
     inp = clamp(inp, vec3<f32>(0.0), vec3<f32>(1.0));
     // midtone-keyed saturation (flim's hue offset +0.5 + 0.5 is a no-op)
     let mono = dot(inp, FLIM_LUMA);
     let midtone_fac = max(1.0 - abs(mono - 0.5) / 0.45, 0.0);
     var hsv = flim_rgb_to_hsv(inp);
-    hsv.y = clamp(hsv.y * g.flim_midtone_saturation, 0.0, 1.0);
+    hsv.y = clamp(hsv.y * local_flim_midtone_saturation, 0.0, 1.0);
     inp = mix(inp, flim_hsv_to_rgb(hsv), midtone_fac);
     return clamp(inp, vec3<f32>(0.0), vec3<f32>(1.0));
 }
@@ -1330,9 +1370,45 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
 
     let clarity_blurred = textureLoad(clarity_blur_texture, id.xy, 0).rgb;
 
+    // Dodge/burn deltas for the pre-tone film blur and flim tone curve.
+    var db_flim_ev = 0.0;
+    var db_flim_contrast = 0.0;
+    var db_flim_shoulder = 0.0;
+    var db_flim_toe = 0.0;
+    var db_flim_warmth = 0.0;
+    var db_flim_saturation = 0.0;
+    var db_flim_hi_tint = 0.0;
+    var db_flim_sh_tint = 0.0;
+    var db_film_blur_pre_amount = 0.0;
+    var db_film_blur_pre_compensation = 0.0;
+    var db_film_blur_pre_soft_amount = 0.0;
+    // Blur radius is baked into the pre-pass blur textures and cannot be
+    // changed per-pixel, so only the amount/compensation/soft-amount deltas
+    // are accumulated here.
+
+    for (var i = 0u; i < adjustments.mask_count; i = i + 1u) {
+        let m = adjustments.mask_adjustments[i];
+        if (m.dodge_burn_flag != 0u) {
+            let influence = get_mask_influence(i, absolute_coord);
+            if (influence > 0.001) {
+                db_flim_ev += m.dodge_burn_flim_ev * influence;
+                db_flim_contrast += m.dodge_burn_flim_contrast * influence;
+                db_flim_shoulder += m.dodge_burn_flim_shoulder * influence;
+                db_flim_toe += m.dodge_burn_flim_toe * influence;
+                db_flim_warmth += m.dodge_burn_flim_warmth * influence;
+                db_flim_saturation += m.dodge_burn_flim_saturation * influence;
+                db_flim_hi_tint += m.dodge_burn_flim_hi_tint * influence;
+                db_flim_sh_tint += m.dodge_burn_flim_sh_tint * influence;
+                db_film_blur_pre_amount += m.dodge_burn_film_blur_pre_amount * influence;
+                db_film_blur_pre_compensation += m.dodge_burn_film_blur_pre_compensation * influence;
+                db_film_blur_pre_soft_amount += m.dodge_burn_film_blur_pre_soft_amount * influence;
+            }
+        }
+    }
+
     // Pre-tone soft blur: linear mix between the sharp linear image and a
     // separately-blurred copy, performed before tonemapping. Values stay HDR.
-    let pre_soft_amount = adjustments.global.film_blur_pre_soft_amount;
+    let pre_soft_amount = clamp(adjustments.global.film_blur_pre_soft_amount + db_film_blur_pre_soft_amount, 0.0, 1.0);
     if (pre_soft_amount > 0.0) {
         let soft_blurred = textureLoad(pre_soft_blur_texture, id.xy, 0).rgb;
         composite_rgb_linear = mix(composite_rgb_linear, soft_blurred, pre_soft_amount);
@@ -1344,8 +1420,8 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
     // in the soft-normalized domain n(x) = x/(1+x): a hard clamp(0,1) here
     // would destroy the scene-referred range before the flim shoulder gets to
     // roll it off.
-    let pre_amount = adjustments.global.film_blur_pre_amount;
-    let pre_compensation = adjustments.global.film_blur_pre_compensation;
+    let pre_amount = clamp(adjustments.global.film_blur_pre_amount + db_film_blur_pre_amount, 0.0, 1.0);
+    let pre_compensation = clamp(adjustments.global.film_blur_pre_compensation + db_film_blur_pre_compensation, 0.0, 1.0);
     if (pre_amount > 0.0) {
         let blurred = max(pre_blur_sample.rgb, vec3<f32>(0.0));
         let s = max(sharp, vec3<f32>(0.0));
@@ -1402,7 +1478,11 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
         if (flim_strength <= 0.0) {
             base_srgb = flim_base;
         } else {
-            let flim_srgb = linear_to_srgb(flim_transform(composite_rgb_linear, clarity_blurred, t_exposure, t_brightness, is_raw));
+            let flim_srgb = linear_to_srgb(flim_transform(
+                composite_rgb_linear, clarity_blurred, t_exposure, t_brightness, is_raw,
+                db_flim_ev, db_flim_warmth, db_flim_shoulder, db_flim_contrast,
+                db_flim_toe, db_flim_saturation, db_flim_hi_tint, db_flim_sh_tint
+            ));
             base_srgb = mix(flim_base, flim_srgb, flim_strength);
         }
     } else if (is_raw == 1u) {

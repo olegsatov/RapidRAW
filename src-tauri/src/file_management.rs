@@ -92,9 +92,14 @@ fn resolve_image_metadata(
         metadata_store::load_image_metadata(app_handle, None, virtual_path).unwrap_or_default();
 
     if enable_xmp_sync && sync_metadata_from_xmp(image_path, &mut metadata) {
-        if let Err(e) = metadata_store::save_image_metadata(app_handle, None, virtual_path, &metadata)
+        if let Err(e) =
+            metadata_store::save_image_metadata(app_handle, None, virtual_path, &metadata)
         {
-            log::warn!("failed to persist XMP-synced metadata for {}: {}", virtual_path, e);
+            log::warn!(
+                "failed to persist XMP-synced metadata for {}: {}",
+                virtual_path,
+                e
+            );
         }
     }
 
@@ -390,12 +395,19 @@ pub async fn update_exif_fields(
             let mut metadata = match metadata_store::load_image_metadata(&app_handle, None, path) {
                 Ok(m) => m,
                 Err(e) => {
-                    log::warn!("failed to load metadata while updating EXIF for {}: {}", path, e);
+                    log::warn!(
+                        "failed to load metadata while updating EXIF for {}: {}",
+                        path,
+                        e
+                    );
                     ImageMetadata::default()
                 }
             };
 
-            let source_path_str = path.split_once("?vc=").map(|(base, _)| base).unwrap_or(path);
+            let source_path_str = path
+                .split_once("?vc=")
+                .map(|(base, _)| base)
+                .unwrap_or(path);
             let source_path = Path::new(source_path_str);
 
             let mut exif_data = metadata.exif.unwrap_or_else(|| {
@@ -419,7 +431,8 @@ pub async fn update_exif_fields(
 
             metadata.exif = Some(exif_data);
 
-            if let Err(e) = metadata_store::save_image_metadata(&app_handle, None, path, &metadata) {
+            if let Err(e) = metadata_store::save_image_metadata(&app_handle, None, path, &metadata)
+            {
                 log::warn!("failed to save EXIF update for {}: {}", path, e);
                 return;
             }
@@ -449,7 +462,6 @@ pub(crate) fn build_image_files(
     settings: &AppSettings,
     modified: u64,
 ) -> Vec<ImageFile> {
-
     let is_cloud_placeholder = is_cloud_placeholder(path_buf);
 
     let mut file_results = Vec::with_capacity(sidecars.len());
@@ -480,7 +492,13 @@ pub(crate) fn build_image_files(
                 );
                 (false, None, 0, 0)
             } else {
-                resolve_image_metadata(app_handle, path_buf, &virtual_path, enable_xmp_sync, settings)
+                resolve_image_metadata(
+                    app_handle,
+                    path_buf,
+                    &virtual_path,
+                    enable_xmp_sync,
+                    settings,
+                )
             };
 
         file_results.push(ImageFile {
@@ -741,7 +759,13 @@ pub fn get_album_images(
                 );
                 (false, None, 0, 0)
             } else {
-                resolve_image_metadata(&app_handle, &source_path, &virtual_path, enable_xmp_sync, &settings)
+                resolve_image_metadata(
+                    &app_handle,
+                    &source_path,
+                    &virtual_path,
+                    enable_xmp_sync,
+                    &settings,
+                )
             };
 
             Some(ImageFile {
@@ -801,7 +825,9 @@ fn build_folder_tree_from_rows(
         return None;
     }
 
-    let root_normalized = root_path.trim_end_matches(|c| c == '/' || c == '\\').to_string();
+    let root_normalized = root_path
+        .trim_end_matches(|c| c == '/' || c == '\\')
+        .to_string();
     let mut nodes: BTreeMap<String, CatalogFolderNode> = BTreeMap::new();
 
     let node_name = |path: &str| {
@@ -814,23 +840,27 @@ fn build_folder_tree_from_rows(
     // 1. Create a node for every explicitly cataloged folder in the subtree,
     //    aggregating duplicate paths (e.g. recursive + non-recursive rows).
     for (path, _id, _recursive) in folder_rows {
-        nodes.entry(path.clone()).or_insert_with(|| CatalogFolderNode {
-            name: node_name(&path),
-            path,
+        nodes
+            .entry(path.clone())
+            .or_insert_with(|| CatalogFolderNode {
+                name: node_name(&path),
+                path,
+                modified: 0,
+                image_count: 0,
+                children: BTreeMap::new(),
+            });
+    }
+
+    // Ensure the requested root always exists, even if it has no direct files.
+    nodes
+        .entry(root_normalized.clone())
+        .or_insert_with(|| CatalogFolderNode {
+            name: node_name(&root_normalized),
+            path: root_normalized.clone(),
             modified: 0,
             image_count: 0,
             children: BTreeMap::new(),
         });
-    }
-
-    // Ensure the requested root always exists, even if it has no direct files.
-    nodes.entry(root_normalized.clone()).or_insert_with(|| CatalogFolderNode {
-        name: node_name(&root_normalized),
-        path: root_normalized.clone(),
-        modified: 0,
-        image_count: 0,
-        children: BTreeMap::new(),
-    });
 
     // 2. Derive directory nodes and direct file counts from the actual file
     //    paths stored in the catalog under this subtree.
@@ -848,13 +878,15 @@ fn build_folder_tree_from_rows(
         // the root. These derived nodes make subfolders visible even when only
         // the root was explicitly imported.
         loop {
-            nodes.entry(ancestor.clone()).or_insert_with(|| CatalogFolderNode {
-                name: node_name(&ancestor),
-                path: ancestor.clone(),
-                modified: 0,
-                image_count: 0,
-                children: BTreeMap::new(),
-            });
+            nodes
+                .entry(ancestor.clone())
+                .or_insert_with(|| CatalogFolderNode {
+                    name: node_name(&ancestor),
+                    path: ancestor.clone(),
+                    modified: 0,
+                    image_count: 0,
+                    children: BTreeMap::new(),
+                });
             if ancestor == root_normalized {
                 break;
             }
@@ -942,7 +974,11 @@ fn build_folder_tree_from_catalog(
     );
 
     let file_rows = crate::library_db::get_files_under_folder_subtree(app_handle, root_path)?;
-    Ok(build_folder_tree_from_rows(root_path, folder_rows, file_rows))
+    Ok(build_folder_tree_from_rows(
+        root_path,
+        folder_rows,
+        file_rows,
+    ))
 }
 
 fn get_folder_tree_sync(
@@ -1006,7 +1042,12 @@ pub async fn get_pinned_folder_trees(
         let results: Vec<Result<FolderNode, String>> = paths
             .iter()
             .map(|path| {
-                get_folder_tree_sync(&app_handle, path.clone(), expanded_folders.clone(), show_image_counts)
+                get_folder_tree_sync(
+                    &app_handle,
+                    path.clone(),
+                    expanded_folders.clone(),
+                    show_image_counts,
+                )
             })
             .collect();
 
@@ -1138,9 +1179,8 @@ pub fn generate_thumbnail_data(
             let composite_image = if let Some(img) = preloaded_image {
                 image_loader::composite_patches_on_image(img, &adjustments)?
             } else {
-                let file_data = read_file_bytes(&source_path).map_err(|e| {
-                    anyhow::anyhow!("Failed to read {}: {}", source_path_str, e)
-                })?;
+                let file_data = read_file_bytes(&source_path)
+                    .map_err(|e| anyhow::anyhow!("Failed to read {}: {}", source_path_str, e))?;
                 let file_slice: &[u8] = &file_data;
 
                 let img = image_loader::load_and_composite(
@@ -1162,10 +1202,8 @@ pub fn generate_thumbnail_data(
                 img
             };
 
-            let warped_image =
-                apply_geometry_warp(Cow::Borrowed(&composite_image), &adjustments);
-            let orientation_steps =
-                adjustments["orientationSteps"].as_u64().unwrap_or(0) as u8;
+            let warped_image = apply_geometry_warp(Cow::Borrowed(&composite_image), &adjustments);
+            let orientation_steps = adjustments["orientationSteps"].as_u64().unwrap_or(0) as u8;
             let coarse_rotated_image = apply_coarse_rotation(warped_image, orientation_steps);
 
             let (full_w, full_h) = coarse_rotated_image.dimensions();
@@ -1215,9 +1253,7 @@ pub fn generate_thumbnail_data(
         };
 
         let rotation_degrees = adjustments["rotation"].as_f64().unwrap_or(0.0) as f32;
-        let flip_horizontal = adjustments["flipHorizontal"]
-            .as_bool()
-            .unwrap_or(false);
+        let flip_horizontal = adjustments["flipHorizontal"].as_bool().unwrap_or(false);
         let flip_vertical = adjustments["flipVertical"].as_bool().unwrap_or(false);
 
         let flipped_image = apply_flip(Cow::Owned(processing_base), flip_horizontal, flip_vertical);
@@ -1297,7 +1333,11 @@ pub fn generate_thumbnail_data(
                 // size — anchored full-res coords + downscale-matched mip
                 // (at ~720px this averages fine grain out, as it should).
                 grain_mip_level: crate::image_processing::grain_mip_level_from_scale(total_scale),
-                grain_coord_scale: if total_scale > 0.0 { 1.0 / total_scale } else { 1.0 },
+                grain_coord_scale: if total_scale > 0.0 {
+                    1.0 / total_scale
+                } else {
+                    1.0
+                },
                 grain_boost: 1.0,
                 grain_view: None,
             },
@@ -1592,7 +1632,11 @@ pub fn start_thumbnail_workers(app_handle: tauri::AppHandle) {
 
                 if let Ok(cache_dir) = get_thumb_cache_dir(&app_clone) {
                     let file_id = lookup_catalog_file_id(&app_clone, &path_to_process);
-                    log::debug!("[thumb-worker] processing {} file_id={:?}", path_to_process, file_id);
+                    log::debug!(
+                        "[thumb-worker] processing {} file_id={:?}",
+                        path_to_process,
+                        file_id
+                    );
                     let modified = file_id
                         .and_then(|id| library_db::get_file_modified_by_id(&app_clone, id).ok())
                         .flatten()
@@ -2082,11 +2126,7 @@ pub fn copy_files(
                     dest_str,
                     &source_metadata,
                 ) {
-                    log::warn!(
-                        "failed to copy metadata to {}: {}",
-                        dest_str,
-                        e
-                    );
+                    log::warn!("failed to copy metadata to {}: {}", dest_str, e);
                 }
             }
         }
@@ -2210,8 +2250,8 @@ pub fn save_metadata_and_update_thumbnail(
 ) -> Result<(), String> {
     let (source_path, _) = parse_virtual_path(&path);
 
-    let mut metadata = metadata_store::load_image_metadata(&app_handle, None, &path)
-        .map_err(|e| e.to_string())?;
+    let mut metadata =
+        metadata_store::load_image_metadata(&app_handle, None, &path).map_err(|e| e.to_string())?;
 
     let mut final_adjustments = adjustments;
     {
@@ -2624,27 +2664,29 @@ pub fn set_color_label_for_paths(
     let create_xmp_if_missing = settings.create_xmp_if_missing.unwrap_or(false);
     let color_label = color.as_deref().filter(|c| !c.is_empty());
 
-    paths.par_iter().try_for_each(|path| -> Result<(), String> {
-        metadata_store::set_color(&app_handle, None, path, color_label)?;
+    paths
+        .par_iter()
+        .try_for_each(|path| -> Result<(), String> {
+            metadata_store::set_color(&app_handle, None, path, color_label)?;
 
-        if enable_xmp_sync {
-            let source_path = parse_virtual_path(path).0;
-            let mut metadata = metadata_store::load_image_metadata(&app_handle, None, path)?;
+            if enable_xmp_sync {
+                let source_path = parse_virtual_path(path).0;
+                let mut metadata = metadata_store::load_image_metadata(&app_handle, None, path)?;
 
-            let mut tags = metadata.tags.unwrap_or_default();
-            tags.retain(|tag| !tag.starts_with(COLOR_TAG_PREFIX));
-            if let Some(c) = color_label {
-                tags.push(format!("{}{}", COLOR_TAG_PREFIX, c));
+                let mut tags = metadata.tags.unwrap_or_default();
+                tags.retain(|tag| !tag.starts_with(COLOR_TAG_PREFIX));
+                if let Some(c) = color_label {
+                    tags.push(format!("{}{}", COLOR_TAG_PREFIX, c));
+                }
+                tags.sort_unstable();
+                tags.dedup();
+                metadata.tags = if tags.is_empty() { None } else { Some(tags) };
+
+                sync_metadata_to_xmp(&source_path, &metadata, create_xmp_if_missing);
             }
-            tags.sort_unstable();
-            tags.dedup();
-            metadata.tags = if tags.is_empty() { None } else { Some(tags) };
 
-            sync_metadata_to_xmp(&source_path, &metadata, create_xmp_if_missing);
-        }
-
-        Ok(())
-    })?;
+            Ok(())
+        })?;
 
     Ok(())
 }
@@ -2659,17 +2701,19 @@ pub fn set_rating_for_paths(
     let enable_xmp_sync = settings.enable_xmp_sync.unwrap_or(false);
     let create_xmp_if_missing = settings.create_xmp_if_missing.unwrap_or(false);
 
-    paths.par_iter().try_for_each(|path| -> Result<(), String> {
-        metadata_store::set_rating(&app_handle, None, path, rating)?;
+    paths
+        .par_iter()
+        .try_for_each(|path| -> Result<(), String> {
+            metadata_store::set_rating(&app_handle, None, path, rating)?;
 
-        if enable_xmp_sync {
-            let source_path = parse_virtual_path(path).0;
-            let metadata = metadata_store::load_image_metadata(&app_handle, None, path)?;
-            sync_metadata_to_xmp(&source_path, &metadata, create_xmp_if_missing);
-        }
+            if enable_xmp_sync {
+                let source_path = parse_virtual_path(path).0;
+                let metadata = metadata_store::load_image_metadata(&app_handle, None, path)?;
+                sync_metadata_to_xmp(&source_path, &metadata, create_xmp_if_missing);
+            }
 
-        Ok(())
-    })?;
+            Ok(())
+        })?;
 
     Ok(())
 }
@@ -2684,9 +2728,9 @@ pub fn set_flag_for_paths(
         return Err(format!("Invalid flag value: {flag}"));
     }
 
-    paths.par_iter().try_for_each(|path| {
-        metadata_store::set_flag(&app_handle, None, path, flag)
-    })?;
+    paths
+        .par_iter()
+        .try_for_each(|path| metadata_store::set_flag(&app_handle, None, path, flag))?;
 
     Ok(())
 }
@@ -3048,7 +3092,11 @@ pub fn cleanup_orphaned_thumbnails(app_handle: AppHandle) -> Result<(usize, usiz
             .to_string();
         if !valid_hashes.contains(&hash) {
             if let Err(e) = fs::remove_file(&path) {
-                log::warn!("Failed to remove orphaned thumbnail {}: {}", path.display(), e);
+                log::warn!(
+                    "Failed to remove orphaned thumbnail {}: {}",
+                    path.display(),
+                    e
+                );
             } else {
                 removed += 1;
             }
@@ -3327,13 +3375,8 @@ pub fn get_cached_or_generate_thumbnail_image(
             );
         }
 
-        let thumb_image = generate_thumbnail_data(
-            path_str,
-            gpu_context,
-            None,
-            app_handle,
-            Some(&adjustments),
-        )?;
+        let thumb_image =
+            generate_thumbnail_data(path_str, gpu_context, None, app_handle, Some(&adjustments))?;
         let thumb_data = encode_thumbnail(&thumb_image, target_width)?;
         fs::write(&cache_path, &thumb_data)?;
 
@@ -3462,12 +3505,9 @@ pub async fn import_files(
 
                 fs::copy(&source_path, &dest_file_path).map_err(|e| e.to_string())?;
 
-                let source_metadata = metadata_store::load_image_metadata(
-                    &app_handle,
-                    None,
-                    source_path_str,
-                )
-                .map_err(|e| format!("Failed to load source metadata: {}", e))?;
+                let source_metadata =
+                    metadata_store::load_image_metadata(&app_handle, None, source_path_str)
+                        .map_err(|e| format!("Failed to load source metadata: {}", e))?;
                 if let Some(dest_str) = dest_file_path.to_str() {
                     metadata_store::save_image_metadata(
                         &app_handle,
@@ -3969,7 +4009,11 @@ mod folder_tree_tests {
         let month_names: Vec<&str> = year_2026.children.iter().map(|c| c.name.as_str()).collect();
         assert_eq!(month_names, vec!["july", "june"]);
 
-        let july = year_2026.children.iter().find(|c| c.name == "july").unwrap();
+        let july = year_2026
+            .children
+            .iter()
+            .find(|c| c.name == "july")
+            .unwrap();
         assert_eq!(july.children.len(), 0);
         assert_eq!(july.image_count, 1);
 

@@ -28,8 +28,8 @@
 use crate::app_state::AppState;
 use crate::file_management::parse_virtual_path;
 use crate::formats::is_raw_file;
-use crate::metadata_store;
 use crate::image_loader::load_and_composite;
+use crate::metadata_store;
 use base64::{Engine as _, engine::general_purpose};
 use image::{DynamicImage, ImageFormat, Rgb, Rgb32FImage};
 use rayon::prelude::*;
@@ -260,12 +260,8 @@ fn render_pixel(
                 let mut p = Prng::new(seed);
 
                 // Poisson intensity from the input grey level at the cell corner.
-                let row = cell_corner_y
-                    .floor()
-                    .clamp(0.0, (m_in - 1) as f32) as usize;
-                let col = cell_corner_x
-                    .floor()
-                    .clamp(0.0, (n_in - 1) as f32) as usize;
+                let row = cell_corner_y.floor().clamp(0.0, (m_in - 1) as f32) as usize;
+                let col = cell_corner_x.floor().clamp(0.0, (n_in - 1) as f32) as usize;
                 let u = img_in[row * n_in + col];
                 let u_ind = ((u * (MAX_GREY_LEVEL as f32 + EPSILON_GREY_LEVEL)).floor() as usize)
                     .min(MAX_GREY_LEVEL);
@@ -370,11 +366,7 @@ pub(crate) fn luma_plane(img: &Rgb32FImage) -> Vec<f32> {
 
 /// Apply a monochrome grain field (rendered from the luma plane) to a color
 /// image as a hue-preserving luminance gain: `out_ch = in_ch · L'/L`.
-pub(crate) fn apply_mono_grain(
-    img: &Rgb32FImage,
-    luma: &[f32],
-    grained: &[f32],
-) -> Rgb32FImage {
+pub(crate) fn apply_mono_grain(img: &Rgb32FImage, luma: &[f32], grained: &[f32]) -> Rgb32FImage {
     let (w, h) = img.dimensions();
     let mut out = Rgb32FImage::new(w, h);
     for (i, (src, dst)) in img.pixels().zip(out.pixels_mut()).enumerate() {
@@ -408,14 +400,8 @@ pub fn apply_film_grain_rgb(
             let _ = app.emit("film-grain-progress", "Rendering grain: monochrome field");
         }
         let counter = AtomicUsize::new(0);
-        let grained = render_film_grain_channel(
-            &luma,
-            w,
-            h,
-            opts,
-            app.map(|a| (a, &counter, size)),
-            cancel,
-        );
+        let grained =
+            render_film_grain_channel(&luma, w, h, opts, app.map(|a| (a, &counter, size)), cancel);
         return apply_mono_grain(img, &luma, &grained);
     }
 
@@ -502,8 +488,9 @@ pub(crate) fn load_processed_for_grain(
 
     let settings = crate::app_settings::load_settings(app_handle.clone()).unwrap_or_default();
     let bytes = fs::read(&source_str).map_err(|e| e.to_string())?;
-    let base_image = load_and_composite(&bytes, &source_str, &js_adjustments, false, &settings, None)
-        .map_err(|e| format!("Failed to load image: {e}"))?;
+    let base_image =
+        load_and_composite(&bytes, &source_str, &js_adjustments, false, &settings, None)
+            .map_err(|e| format!("Failed to load image: {e}"))?;
 
     let _ = app_handle.emit(progress_event, "Processing image...");
     let is_raw = is_raw_file(&source_str);
@@ -529,7 +516,10 @@ pub(crate) fn load_processed_for_grain(
 pub(crate) fn reveal_in_file_manager(path: &std::path::Path) {
     #[cfg(target_os = "macos")]
     {
-        let _ = std::process::Command::new("open").arg("-R").arg(path).spawn();
+        let _ = std::process::Command::new("open")
+            .arg("-R")
+            .arg(path)
+            .spawn();
     }
     #[cfg(target_os = "windows")]
     {
@@ -607,7 +597,9 @@ pub async fn render_film_grain(
         }
 
         let source_str = source_path.to_string_lossy().to_string();
-        let parent_dir = source_path.parent().unwrap_or_else(|| std::path::Path::new(""));
+        let parent_dir = source_path
+            .parent()
+            .unwrap_or_else(|| std::path::Path::new(""));
         let stem = source_path
             .file_stem()
             .unwrap_or_default()
@@ -619,7 +611,8 @@ pub async fn render_film_grain(
             .save(&output_path)
             .map_err(|e| format!("Failed to save image: {e}"))?;
 
-        let _ = crate::exif_processing::write_rrexif_sidecar(&app_handle, &source_str, &output_path);
+        let _ =
+            crate::exif_processing::write_rrexif_sidecar(&app_handle, &source_str, &output_path);
         reveal_in_file_manager(&output_path);
 
         let out_str = output_path.to_string_lossy().to_string();

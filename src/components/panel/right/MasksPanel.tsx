@@ -47,9 +47,10 @@ import CollapsibleSection from '../../ui/CollapsibleSection';
 import Switch from '../../ui/Switch';
 import Slider from '../../ui/Slider';
 import BasicAdjustments from '../../adjustments/Basic';
-import CurveGraph from '../../adjustments/Curves';
 import ColorPanel from '../../adjustments/Color';
+import CurveGraph from '../../adjustments/Curves';
 import DetailsPanel from '../../adjustments/Details';
+import DodgeBurnPanel from '../../adjustments/DodgeBurn';
 import EffectsPanel from '../../adjustments/Effects';
 import Waveform from '../editor/Waveform';
 import Resizer from '../../ui/Resizer';
@@ -100,6 +101,7 @@ const SUB_MASK_CONFIG: Record<Mask, any> = {
     parameters: [{ key: 'feather', min: 0, max: 100, step: 1, multiplier: 100, defaultValue: 50 }],
   },
   [Mask.Brush]: { showBrushTools: true },
+  [Mask.DodgeBurn]: { showBrushTools: true },
   [Mask.Flow]: { showBrushTools: true, showFlowControl: true },
   [Mask.Linear]: { parameters: [] },
   [Mask.Color]: {
@@ -139,6 +141,8 @@ const SUB_MASK_CONFIG: Record<Mask, any> = {
     ],
   },
   [Mask.QuickEraser]: { parameters: [] },
+  [Mask.Clone]: { parameters: [] },
+  [Mask.Heal]: { parameters: [] },
 };
 
 const BrushTools = ({
@@ -155,9 +159,9 @@ const BrushTools = ({
   return (
     <div>
       <Slider
-        defaultValue={100}
+        defaultValue={250}
         label={t('editor.masks.brush.size')}
-        max={200}
+        max={500}
         min={1}
         onChange={(e: any) => onSettingsChange((s: any) => ({ ...s, size: Number(e.target.value) }))}
         step={1}
@@ -166,7 +170,7 @@ const BrushTools = ({
         onDragStateChange={onDragStateChange}
       />
       <Slider
-        defaultValue={50}
+        defaultValue={100}
         label={t('editor.masks.brush.feather')}
         max={100}
         min={0}
@@ -561,9 +565,10 @@ export default function MasksPanel() {
   const { setAdjustments } = useEditorActions();
   const { handleGenerateAiDepthMask, handleGenerateAiForegroundMask, handleGenerateAiSkyMask } = useAiMasking();
   const setCustomEscapeHandler = useUIStore((s) => s.setCustomEscapeHandler);
-  const { appSettings } = useSettingsStore(
+  const { appSettings, theme } = useSettingsStore(
     useShallow((state) => ({
       appSettings: state.appSettings,
+      theme: state.theme,
     })),
   );
 
@@ -617,7 +622,7 @@ export default function MasksPanel() {
   const selectBrushToolForNewMask = useCallback(() => {
     setEditor((state) => ({
       brushSettings: {
-        ...(state.brushSettings ?? { size: 50, feather: 50, tool: ToolType.Brush }),
+        ...(state.brushSettings ?? { size: 250, feather: 100, tool: ToolType.Brush }),
         tool: ToolType.Brush,
       },
     }));
@@ -661,6 +666,7 @@ export default function MasksPanel() {
 
   const activeContainer = adjustments.masks?.find((m) => m.id === activeMaskContainerId);
   const activeSubMaskData = activeContainer?.subMasks?.find((sm) => sm.id === activeMaskId);
+  const isDodgeBurn = activeSubMaskData?.type === Mask.DodgeBurn;
   const isAiMask =
     activeSubMaskData && [Mask.AiSubject, Mask.AiForeground, Mask.AiSky, Mask.AiDepth].includes(activeSubMaskData.type);
 
@@ -806,7 +812,7 @@ export default function MasksPanel() {
     onSelectContainer(newContainer.id);
     onSelectMask(subMask.id);
     setExpandedContainers((prev) => new Set(prev).add(newContainer.id));
-    if (type === Mask.Brush || type === Mask.Flow) selectBrushToolForNewMask();
+    if (type === Mask.Brush || type === Mask.Flow || type === Mask.DodgeBurn) selectBrushToolForNewMask();
     if (type === Mask.AiForeground) handleGenerateAiForegroundMask(subMask.id);
     else if (type === Mask.AiSky) handleGenerateAiSkyMask(subMask.id);
     else if (type === Mask.AiDepth) handleGenerateAiDepthMask(subMask.id, subMask.parameters);
@@ -837,7 +843,7 @@ export default function MasksPanel() {
     onSelectContainer(containerId);
     onSelectMask(subMask.id);
     setExpandedContainers((prev) => new Set(prev).add(containerId));
-    if (type === Mask.Brush || type === Mask.Flow) selectBrushToolForNewMask();
+    if (type === Mask.Brush || type === Mask.Flow || type === Mask.DodgeBurn) selectBrushToolForNewMask();
     if (type === Mask.AiForeground) handleGenerateAiForegroundMask(subMask.id);
     else if (type === Mask.AiSky) handleGenerateAiSkyMask(subMask.id);
     else if (type === Mask.AiDepth) handleGenerateAiDepthMask(subMask.id, subMask.parameters);
@@ -1480,6 +1486,8 @@ export default function MasksPanel() {
                   setSettingsSectionOpen={setSettingsSectionOpen}
                   presets={presets}
                   handleGenerateAiDepthMask={handleGenerateAiDepthMask}
+                  isDodgeBurn={isDodgeBurn}
+                  theme={theme}
                 />
               </motion.div>
             )}
@@ -2185,6 +2193,8 @@ function SettingsPanel({
   setSettingsSectionOpen,
   presets,
   handleGenerateAiDepthMask,
+  isDodgeBurn,
+  theme,
 }: any) {
   const { t } = useTranslation();
   const { showContextMenu } = useContextMenu();
@@ -2463,6 +2473,24 @@ function SettingsPanel({
             onDragStateChange={onDragStateChange}
           />
 
+          {isDodgeBurn && activeSubMask && (
+            <Slider
+              defaultValue={2.5}
+              label={t('editor.masks.brush.flow')}
+              max={10}
+              min={0.1}
+              value={activeSubMask.parameters?.flow ?? 2.5}
+              onChange={(e: any) =>
+                updateSubMask(activeSubMask.id, {
+                  parameters: { ...activeSubMask.parameters, flow: Number(e.target.value) },
+                })
+              }
+              step={0.1}
+              fillOrigin="min"
+              onDragStateChange={onDragStateChange}
+            />
+          )}
+
           {isComponentMode && (
             <>
               {isAiMask && aiModelDownloadStatus && (
@@ -2540,38 +2568,71 @@ function SettingsPanel({
         onMouseLeave={() => setIsMaskControlHovered(false)}
         className="flex flex-col gap-2"
       >
-        {Object.keys(ADJUSTMENT_SECTIONS)
-          .filter((sectionName) => sectionName !== 'film' && sectionName !== 'blackAndWhite') // film sim and B&W are global-only
-          .map((sectionName) => {
-          const SectionComponent: any = {
-            basic: BasicAdjustments,
-            curves: CurveGraph,
-            color: ColorPanel,
-            details: DetailsPanel,
-            effects: EffectsPanel,
-          }[sectionName];
-          const title = sectionName.charAt(0).toUpperCase() + sectionName.slice(1);
-          return (
-            <CollapsibleSection
-              key={sectionName}
-              title={title}
-              isOpen={collapsibleState[sectionName]}
-              isContentVisible={sectionVisibility[sectionName]}
-              onToggle={() => handleToggleSection(sectionName)}
-              onToggleVisibility={() => handleToggleVisibility(sectionName)}
-              onContextMenu={(e: any) => handleSectionContextMenu(e, sectionName)}
-            >
-              <SectionComponent
-                adjustments={displayContainer.adjustments}
-                setAdjustments={setMaskContainerAdjustments}
-                histogram={histogram}
-                isForMask={true}
-                appSettings={appSettings}
-                onDragStateChange={onDragStateChange}
-              />
-            </CollapsibleSection>
-          );
-        })}
+        {isDodgeBurn && activeSubMask ? (
+          <DodgeBurnPanel
+            adjustments={activeSubMask.parameters.adjustments}
+            onScalarChange={(key, value) =>
+              updateSubMask(activeSubMask.id, {
+                parameters: {
+                  ...activeSubMask.parameters,
+                  adjustments: { ...activeSubMask.parameters.adjustments, [key]: value },
+                },
+              })
+            }
+            onCurvesChange={(updates) =>
+              updateSubMask(activeSubMask.id, {
+                parameters: {
+                  ...activeSubMask.parameters,
+                  adjustments: { ...activeSubMask.parameters.adjustments, ...updates },
+                },
+              })
+            }
+            onDetailsChange={(updates) =>
+              updateSubMask(activeSubMask.id, {
+                parameters: {
+                  ...activeSubMask.parameters,
+                  adjustments: { ...activeSubMask.parameters.adjustments, ...updates },
+                },
+              })
+            }
+            onDragStateChange={onDragStateChange}
+            histogram={histogram}
+            theme={theme}
+          />
+        ) : (
+          Object.keys(ADJUSTMENT_SECTIONS)
+            .filter((sectionName) => sectionName !== 'film' && sectionName !== 'blackAndWhite')
+            .map((sectionName) => {
+              const SectionComponent: any = {
+                basic: BasicAdjustments,
+                curves: CurveGraph,
+                color: ColorPanel,
+                details: DetailsPanel,
+                effects: EffectsPanel,
+              }[sectionName];
+              const title = sectionName.charAt(0).toUpperCase() + sectionName.slice(1);
+              return (
+                <CollapsibleSection
+                  key={sectionName}
+                  title={title}
+                  isOpen={collapsibleState[sectionName]}
+                  isContentVisible={sectionVisibility[sectionName]}
+                  onToggle={() => handleToggleSection(sectionName)}
+                  onToggleVisibility={() => handleToggleVisibility(sectionName)}
+                  onContextMenu={(e: any) => handleSectionContextMenu(e, sectionName)}
+                >
+                  <SectionComponent
+                    adjustments={displayContainer.adjustments}
+                    setAdjustments={setMaskContainerAdjustments}
+                    histogram={histogram}
+                    isForMask={true}
+                    appSettings={appSettings}
+                    onDragStateChange={onDragStateChange}
+                  />
+                </CollapsibleSection>
+              );
+            })
+        )}
       </div>
     </div>
   );

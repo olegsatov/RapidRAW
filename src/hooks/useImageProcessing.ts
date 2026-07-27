@@ -27,6 +27,8 @@ export function useImageProcessing(
   const previewOverride = useEditorStore((state) => state.previewOverride);
   const isWaveformVisible = useEditorStore((state) => state.isWaveformVisible);
   const activeWaveformChannel = useEditorStore((state) => state.activeWaveformChannel);
+  const activeMaskId = useEditorStore((state) => state.activeMaskId);
+  const activeAiSubMaskId = useEditorStore((state) => state.activeAiSubMaskId);
   const displaySize = useEditorStore((state) => state.displaySize);
   const baseRenderSize = useEditorStore((state) => state.baseRenderSize);
   const originalSize = useEditorStore((state) => state.originalSize);
@@ -170,6 +172,29 @@ export function useImageProcessing(
         });
       }
 
+      // The active dodge/burn sub-mask is previewed through the dedicated
+      // overlay layer; rendering it in the base preview as well would double
+      // the effect and make the brush mask invisible.
+      const activeDodgeBurnId =
+        activeRightPanel === Panel.Masks ? activeMaskId : activeRightPanel === Panel.Ai ? activeAiSubMaskId : null;
+      let forceSoftwareRender = false;
+      if (activeDodgeBurnId) {
+        const containers = activeRightPanel === Panel.Masks ? payload.masks : payload.aiPatches;
+        if (Array.isArray(containers)) {
+          for (const container of containers) {
+            if (!Array.isArray(container.subMasks)) continue;
+            const idx = container.subMasks.findIndex(
+              (sm: any) => sm.id === activeDodgeBurnId && sm.type === 'dodge-burn',
+            );
+            if (idx !== -1) {
+              container.subMasks[idx] = { ...container.subMasks[idx], visible: false };
+              forceSoftwareRender = true;
+              break;
+            }
+          }
+        }
+      }
+
       const jobId = ++previewJobIdRef.current;
       const roi = calculateROI();
 
@@ -197,6 +222,7 @@ export function useImageProcessing(
           roi: roi || null,
           computeWaveform: !!isWaveformVisible,
           activeWaveformChannel: activeWaveformChannelRef.current || null,
+          forceSoftwareRender,
         });
 
         if (newlySentPatches.size > 0) {
@@ -285,7 +311,17 @@ export function useImageProcessing(
         }
       }
     },
-    [selectedImage?.path, calculateROI, isWaveformVisible, setEditor, previewJobIdRef, latestRenderedJobIdRef],
+    [
+      selectedImage?.path,
+      calculateROI,
+      isWaveformVisible,
+      setEditor,
+      previewJobIdRef,
+      latestRenderedJobIdRef,
+      activeRightPanel,
+      activeMaskId,
+      activeAiSubMaskId,
+    ],
   );
 
   const flushPipeline = useCallback(() => {
@@ -506,6 +542,8 @@ export function useImageProcessing(
     appSettings?.enableLivePreviews,
     appSettings?.copyPasteSettings?.includedAdjustments,
     isWaveformVisible,
+    activeMaskId,
+    activeAiSubMaskId,
   ]);
 
   // Zoom/display changes alter the screen-space grain scale: force a re-render

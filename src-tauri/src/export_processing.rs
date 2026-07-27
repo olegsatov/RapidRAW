@@ -7,7 +7,9 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use image::codecs::jpeg::JpegEncoder;
-use image::{DynamicImage, GenericImageView, GrayImage, ImageBuffer, ImageFormat, Luma, Rgba, imageops};
+use image::{
+    DynamicImage, GenericImageView, GrayImage, ImageBuffer, ImageFormat, Luma, Rgba, imageops,
+};
 use jxl_encoder::{LosslessConfig, LossyConfig, PixelLayout};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -348,7 +350,8 @@ pub(crate) fn process_image_for_export_pipeline(
     let mut adjustments_with_norm = js_adjustments.clone();
     let norm_factor = crate::app_state::compute_lut_input_norm_factor(base_image);
     adjustments_with_norm["lutInputNormFactor"] = serde_json::json!(norm_factor);
-    let mut all_adjustments = get_all_adjustments_from_json(&adjustments_with_norm, is_raw, tm_override);
+    let mut all_adjustments =
+        get_all_adjustments_from_json(&adjustments_with_norm, is_raw, tm_override);
     all_adjustments.global.show_clipping = 0;
 
     // Grain routing. Only the "fast" mode grains on the GPU; the CPU modes
@@ -868,7 +871,8 @@ fn export_masks_for_image(
         adjustments_with_norm["lutInputNormFactor"] = serde_json::json!(norm_factor);
 
         let tm_override = resolve_tonemapper_override_from_handle(app_handle, is_raw);
-        let mut all_adjustments = get_all_adjustments_from_json(&adjustments_with_norm, is_raw, tm_override);
+        let mut all_adjustments =
+            get_all_adjustments_from_json(&adjustments_with_norm, is_raw, tm_override);
         // Grain is an image-finishing effect; mask exports stay clean.
         all_adjustments.global.crystal_grain_amount = 0.0;
         let lut_path = js_adjustments["lutPath"].as_str();
@@ -1128,8 +1132,12 @@ pub async fn export_images(
                 let mut js_adjustments = match (is_current_edit, current_edit_adjustments) {
                     (true, Some(adjustments)) => adjustments,
                     _ => {
-                        metadata_store::load_image_metadata(&app_handle_clone, None, &image_path_str)
-                            ?.adjustments
+                        metadata_store::load_image_metadata(
+                            &app_handle_clone,
+                            None,
+                            &image_path_str,
+                        )?
+                        .adjustments
                     }
                 };
 
@@ -1517,8 +1525,7 @@ pub async fn estimate_export_sizes(
 
         const ESTIMATE_DIM: u32 = 1280;
 
-        let file_bytes =
-            read_file_bytes(Path::new(&source_path_str)).map_err(|e| e.to_string())?;
+        let file_bytes = read_file_bytes(Path::new(&source_path_str)).map_err(|e| e.to_string())?;
         let file_data: &[u8] = &file_bytes;
 
         let original_image =
