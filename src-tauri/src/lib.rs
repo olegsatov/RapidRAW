@@ -1039,6 +1039,8 @@ async fn preview_geometry_transform(
             }
 
             let tm_override = resolve_tonemapper_override_from_handle(&app_handle, is_raw);
+            let norm_factor = crate::app_state::compute_lut_input_norm_factor(&preview_base, is_raw);
+            temp_adjustments["lutInputNormFactor"] = serde_json::json!(norm_factor);
             let all_adjustments =
                 get_all_adjustments_from_json(&temp_adjustments, is_raw, tm_override);
             let lut_path = temp_adjustments["lutPath"].as_str();
@@ -1227,8 +1229,13 @@ fn generate_preset_preview(
         .collect();
 
     let tm_override = resolve_tonemapper_override_from_handle(&app_handle, is_raw);
-    let all_adjustments = get_all_adjustments_from_json(&js_adjustments, is_raw, tm_override);
-    let lut_path = js_adjustments["lutPath"].as_str();
+    let mut adjustments_with_norm = js_adjustments.clone();
+    let norm_factor =
+        crate::app_state::compute_lut_input_norm_factor(&preview_image, is_raw);
+    adjustments_with_norm["lutInputNormFactor"] = serde_json::json!(norm_factor);
+    let all_adjustments =
+        get_all_adjustments_from_json(&adjustments_with_norm, is_raw, tm_override);
+    let lut_path = adjustments_with_norm["lutPath"].as_str();
     let lut = lut_path.and_then(|p| lut_processing::get_or_load_lut(&state, p).ok());
 
     let processed_image = process_and_get_dynamic_image(
@@ -1326,6 +1333,9 @@ fn compute_bw_weights(
         .collect();
 
     let tm_override = resolve_tonemapper_override_from_handle(&app_handle, is_raw);
+    let norm_factor =
+        crate::app_state::compute_lut_input_norm_factor(&preview_image, is_raw);
+    color_adjustments["lutInputNormFactor"] = serde_json::json!(norm_factor);
     let all_adjustments = get_all_adjustments_from_json(&color_adjustments, is_raw, tm_override);
     let lut_path = color_adjustments["lutPath"].as_str();
     let lut = lut_path.and_then(|p| lut_processing::get_or_load_lut(&state, p).ok());
@@ -1477,9 +1487,12 @@ async fn generate_all_community_previews(
                 .collect();
 
             let tm_override = resolve_tonemapper_override_from_handle(&app_handle, *is_raw);
+            let norm_factor =
+                crate::app_state::compute_lut_input_norm_factor(&transformed_image, *is_raw);
+            scaled_adjustments["lutInputNormFactor"] = serde_json::json!(norm_factor);
             let all_adjustments =
                 get_all_adjustments_from_json(&scaled_adjustments, *is_raw, tm_override);
-            let lut_path = js_adjustments["lutPath"].as_str();
+            let lut_path = scaled_adjustments["lutPath"].as_str();
             let lut = lut_path.and_then(|p| lut_processing::get_or_load_lut(&state, p).ok());
 
             let unique_hash = preset_hash.wrapping_add(i as u64);
@@ -1749,8 +1762,13 @@ fn generate_preview_for_path(
         .collect();
 
     let tm_override = resolve_tonemapper_override(&settings, is_raw);
-    let all_adjustments = get_all_adjustments_from_json(&js_adjustments, is_raw, tm_override);
-    let lut_path = js_adjustments["lutPath"].as_str();
+    let mut adjustments_with_norm = js_adjustments.clone();
+    let norm_factor =
+        crate::app_state::compute_lut_input_norm_factor(&transformed_image, is_raw);
+    adjustments_with_norm["lutInputNormFactor"] = serde_json::json!(norm_factor);
+    let all_adjustments =
+        get_all_adjustments_from_json(&adjustments_with_norm, is_raw, tm_override);
+    let lut_path = adjustments_with_norm["lutPath"].as_str();
     let lut = lut_path.and_then(|p| lut_processing::get_or_load_lut(&state, p).ok());
     let unique_hash = calculate_full_job_hash(&source_path_str, &js_adjustments);
     let final_image = process_and_get_dynamic_image(

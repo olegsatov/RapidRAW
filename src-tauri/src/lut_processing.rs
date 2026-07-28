@@ -1051,3 +1051,280 @@ pub fn load_and_parse_lut(path: String, state: State<AppState>) -> Result<LutPar
 
     Ok(LutParseResult { size: lut_size })
 }
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Arc;
+
+    use image::{DynamicImage, GenericImage, GenericImageView, Rgba};
+    use wgpu::util::DeviceExt;
+
+    use crate::gpu_processing::{to_rgba_f16, GpuProcessor, RenderRequest};
+    use crate::image_processing::{AllAdjustments, GlobalAdjustments};
+    use crate::lut_processing::Lut;
+
+    fn brightening_lut(size: u32) -> Arc<Lut> {
+        let mut data = Vec::with_capacity((size * size * size * 3) as usize);
+        for b in 0..size {
+            let bv = b as f32 / (size - 1) as f32;
+            for g in 0..size {
+                let gv = g as f32 / (size - 1) as f32;
+                for r in 0..size {
+                    let rv = r as f32 / (size - 1) as f32;
+                    data.push((rv * 1.5).min(1.0));
+                    data.push((gv * 1.5).min(1.0));
+                    data.push((bv * 1.5).min(1.0));
+                }
+            }
+        }
+        Arc::new(Lut {
+            size,
+            data,
+            hdr_size: 0,
+            hdr_data: Vec::new(),
+        })
+    }
+
+    fn gray_image(width: u32, height: u32, value: u8) -> DynamicImage {
+        let mut img = DynamicImage::new_rgba8(width, height);
+        for y in 0..height {
+            for x in 0..width {
+                img.put_pixel(x, y, Rgba([value, value, value, 255]));
+            }
+        }
+        img
+    }
+
+    fn render_with_lut(
+        timing: u32,
+        normalize_mode: u32,
+        norm_factor: f32,
+    ) -> Result<Vec<u8>, String> {
+        let context = crate::gpu_processing::init_headless_gpu_context()?;
+        let device = &context.device;
+        let queue = &context.queue;
+
+        let img = gray_image(64, 64, 128);
+        let (width, height) = img.dimensions();
+        let rgba_f16 = to_rgba_f16(&img);
+
+        let texture_size = wgpu::Extent3d {
+            width,
+            height,
+            depth_or_array_layers: 1,
+        };
+        let texture = device.create_texture_with_data(
+            queue,
+            &wgpu::TextureDescriptor {
+                label: Some("LUT Test Input"),
+                size: texture_size,
+                mip_level_count: 1,
+                sample_count: 1,
+                dimension: wgpu::TextureDimension::D2,
+                format: wgpu::TextureFormat::Rgba16Float,
+                usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+                view_formats: &[],
+            },
+            wgpu::util::TextureDataOrder::MipMajor,
+            bytemuck::cast_slice(&rgba_f16),
+        );
+        let view = texture.create_view(&Default::default());
+
+        let mut global = GlobalAdjustments::default();
+        global.has_lut = 1;
+        global.lut_intensity = 1.0;
+        global.lut_timing = timing;
+        global.lut_normalize_mode = normalize_mode;
+        global.lut_input_range = 6.0;
+        global.lut_input_offset = 0.0;
+        global.lut_offset_compensation = 0;
+        global.lut_input_norm_factor = norm_factor;
+        global.tonemapper_mode = 0;
+        global.is_raw_image = 0;
+
+        let adjustments = AllAdjustments {
+            global,
+            ..Default::default()
+        };
+
+        let processor = GpuProcessor::new(context.clone(), width, height)?;
+        let request = RenderRequest {
+            adjustments,
+            mask_bitmaps: &[],
+            lut: Some(brightening_lut(17)),
+            roi: None,
+            grain_mip_level: 0.0,
+            grain_coord_scale: 1.0,
+            grain_boost: 1.0,
+            grain_view: None,
+        };
+
+        let (pixels, out_w, out_h, _, _) =
+            processor.run(&view, width, height, request, false, false)?;
+        assert_eq!(out_w, width);
+        assert_eq!(out_h, height);
+        assert_eq!(pixels.len(), (width * height * 4) as usize);
+        Ok(pixels)
+    }
+
+    fn mean_rgb(pixels: &[u8]) -> f32 {
+        let mut sum = 0u64;
+        let mut count = 0u64;
+        for chunk in pixels.chunks_exact(4) {
+            sum += chunk[0] as u64 + chunk[1] as u64 + chunk[2] as u64;
+            count += 3;
+        }
+        sum as f32 / count as f32
+    }
+
+    #[test]
+    fn lut_before_tonemap_hdr_is_not_dark() {
+        let pixels = render_with_lut(1, 3, 1.0).expect("render failed");
+        let mean = mean_rgb(&pixels);
+        println!("before-tone HDR mean = {}", mean);
+        // A brightening LUT should raise a 128-gray image well above 128.
+        assert!(
+            mean > 150.0,
+            "expected brightened output, got mean {} (almost black)",
+            mean
+        );
+    }
+
+    #[test]
+    fn lut_after_tonemap_clamp_is_not_dark() {
+        let pixels = render_with_lut(0, 0, 1.0).expect("render failed");
+        let mean = mean_rgb(&pixels);
+        println!("after-tone clamp mean = {}", mean);
+        assert!(
+            mean > 150.0,
+            "expected brightened output, got mean {} (almost black)",
+            mean
+        );
+    }
+
+    #[test]
+    fn lut_after_tonemap_hdr_is_not_dark() {
+        // UI sometimes requests HDR normalization even after the tone mapper.
+        let pixels = render_with_lut(0, 3, 1.0).expect("render failed");
+        let mean = mean_rgb(&pixels);
+        println!("after-tone HDR mean = {}", mean);
+        assert!(
+            mean > 150.0,
+            "expected brightened output, got mean {} (almost black)",
+            mean
+        );
+    }
+
+    #[test]
+    fn lut_before_tonemap_hdr_with_missing_norm_factor_darkens() {
+        // Simulate the gallery/preset-preview path that forgets lutInputNormFactor:
+        // for a dark image, the default factor 1.0 maps the image into the dark
+        // end of the HDR LUT and the result is much darker than with the proper
+        // per-image normalization factor.
+        let identity = Arc::new(Lut {
+            size: 17,
+            data: {
+                let mut d = Vec::with_capacity(17 * 17 * 17 * 3);
+                for b in 0..17 {
+                    let bv = b as f32 / 16.0;
+                    for g in 0..17 {
+                        let gv = g as f32 / 16.0;
+                        for r in 0..17 {
+                            let rv = r as f32 / 16.0;
+                            d.push(rv);
+                            d.push(gv);
+                            d.push(bv);
+                        }
+                    }
+                }
+                d
+            },
+            hdr_size: 0,
+            hdr_data: Vec::new(),
+        });
+
+        let context = crate::gpu_processing::init_headless_gpu_context().expect("gpu context");
+        let device = &context.device;
+        let queue = &context.queue;
+
+        // Dark underexposed image: mean sRGB ~32 (linear ~0.03).
+        let img = gray_image(64, 64, 32);
+        let (width, height) = img.dimensions();
+        let rgba_f16 = to_rgba_f16(&img);
+        let texture = device.create_texture_with_data(
+            queue,
+            &wgpu::TextureDescriptor {
+                label: Some("LUT Norm Test Input"),
+                size: wgpu::Extent3d { width, height, depth_or_array_layers: 1 },
+                mip_level_count: 1,
+                sample_count: 1,
+                dimension: wgpu::TextureDimension::D2,
+                format: wgpu::TextureFormat::Rgba16Float,
+                usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+                view_formats: &[],
+            },
+            wgpu::util::TextureDataOrder::MipMajor,
+            bytemuck::cast_slice(&rgba_f16),
+        );
+        let view = texture.create_view(&Default::default());
+
+        let mut global = GlobalAdjustments::default();
+        global.has_lut = 1;
+        global.lut_intensity = 1.0;
+        global.lut_timing = 1;
+        global.lut_normalize_mode = 3;
+        global.lut_input_range = 6.0;
+        global.lut_input_offset = 0.0;
+        global.lut_offset_compensation = 0;
+        global.tonemapper_mode = 0;
+        global.is_raw_image = 0;
+
+        let processor = GpuProcessor::new(context.clone(), width, height).expect("processor");
+
+        let render = |norm_factor: f32| {
+            let mut g = global;
+            g.lut_input_norm_factor = norm_factor;
+            let adjustments = AllAdjustments { global: g, ..Default::default() };
+            let request = RenderRequest {
+                adjustments,
+                mask_bitmaps: &[],
+                lut: Some(identity.clone()),
+                roi: None,
+                grain_mip_level: 0.0,
+                grain_coord_scale: 1.0,
+                grain_boost: 1.0,
+                grain_view: None,
+            };
+            processor.run(&view, width, height, request, false, false)
+                .map(|(pixels, _, _, _, _)| pixels)
+        };
+
+        let wrong_pixels = render(1.0).expect("render with default norm");
+        let wrong_mean = mean_rgb(&wrong_pixels);
+        println!("dark image identity LUT norm=1.0 mean = {}", wrong_mean);
+
+        // Proper normalization factor for this image (mean linear luma ~0.03).
+        let right_pixels = render(0.03).expect("render with proper norm");
+        let right_mean = mean_rgb(&right_pixels);
+        println!("dark image identity LUT norm=0.03 mean = {}", right_mean);
+
+        assert!(
+            right_mean > wrong_mean + 20.0,
+            "proper lut_input_norm_factor should brighten dark image; got wrong={}, right={}",
+            wrong_mean, right_mean
+        );
+    }
+
+    #[test]
+    fn lut_before_tonemap_hdr_with_norm_factor_is_not_dark() {
+        // Simulate a typical non-raw mean-luma normalization factor (~0.2).
+        let pixels = render_with_lut(1, 3, 0.2).expect("render failed");
+        let mean = mean_rgb(&pixels);
+        println!("before-tone HDR norm=0.2 mean = {}", mean);
+        assert!(
+            mean > 150.0,
+            "expected brightened output, got mean {} (almost black)",
+            mean
+        );
+    }
+}

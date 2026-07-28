@@ -348,7 +348,7 @@ pub(crate) fn process_image_for_export_pipeline(
 
     let tm_override = resolve_tonemapper_override_from_handle(app_handle, is_raw);
     let mut adjustments_with_norm = js_adjustments.clone();
-    let norm_factor = crate::app_state::compute_lut_input_norm_factor(base_image);
+    let norm_factor = crate::app_state::compute_lut_input_norm_factor(base_image, is_raw);
     adjustments_with_norm["lutInputNormFactor"] = serde_json::json!(norm_factor);
     let mut all_adjustments =
         get_all_adjustments_from_json(&adjustments_with_norm, is_raw, tm_override);
@@ -483,12 +483,12 @@ pub fn render_image_headless(
         _ => base_image,
     };
 
+    let is_raw = is_raw_file(path);
     let (transformed_image, _) =
         apply_all_transformations(Cow::Borrowed(&base_image), js_adjustments);
     let (width, height) = transformed_image.dimensions();
-    let is_raw = is_raw_file(path);
     let mut adjustments_with_norm = js_adjustments.clone();
-    let norm_factor = crate::app_state::compute_lut_input_norm_factor(&base_image);
+    let norm_factor = crate::app_state::compute_lut_input_norm_factor(&base_image, is_raw);
     adjustments_with_norm["lutInputNormFactor"] = serde_json::json!(norm_factor);
     let mut all_adjustments = get_all_adjustments_from_json(&adjustments_with_norm, is_raw, None);
     all_adjustments.global.show_clipping = 0;
@@ -867,7 +867,7 @@ fn export_masks_for_image(
 
     if !mask_bitmaps.is_empty() {
         let mut adjustments_with_norm = js_adjustments.clone();
-        let norm_factor = crate::app_state::compute_lut_input_norm_factor(base_image);
+        let norm_factor = crate::app_state::compute_lut_input_norm_factor(base_image, is_raw);
         adjustments_with_norm["lutInputNormFactor"] = serde_json::json!(norm_factor);
 
         let tm_override = resolve_tonemapper_override_from_handle(app_handle, is_raw);
@@ -1596,7 +1596,8 @@ pub async fn estimate_export_sizes(
             })
             .collect();
 
-        let norm_factor = crate::app_state::compute_lut_input_norm_factor(&original_image);
+        let norm_factor =
+            crate::app_state::compute_lut_input_norm_factor(&original_image, is_raw);
         js_adjustments["lutInputNormFactor"] = serde_json::json!(norm_factor);
 
         let tm_override = resolve_tonemapper_override_from_handle(&app_handle, is_raw);

@@ -1630,6 +1630,8 @@ mod tests {
 
         let params = DodgeBurnParameters {
             mask_bitmap: Some(data_url),
+            mask_width: None,
+            mask_height: None,
         };
 
         let result = generate_dodge_burn_bitmap(&params, 10, 8, (0, 0), 1.0, 0)
@@ -1648,7 +1650,11 @@ mod tests {
 
     #[test]
     fn test_generate_dodge_burn_bitmap_with_none() {
-        let params = DodgeBurnParameters { mask_bitmap: None };
+        let params = DodgeBurnParameters {
+            mask_bitmap: None,
+            mask_width: None,
+            mask_height: None,
+        };
 
         let result = generate_dodge_burn_bitmap(&params, 10, 8, (0, 0), 1.0, 0)
             .expect("generate_dodge_burn_bitmap should return Some");

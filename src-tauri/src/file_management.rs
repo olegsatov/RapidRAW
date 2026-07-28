@@ -1299,7 +1299,12 @@ pub fn generate_thumbnail_data(
             .collect();
 
         let tm_override = crate::image_processing::resolve_tonemapper_override(&settings, is_raw);
-        let gpu_adjustments = get_all_adjustments_from_json(&adjustments, is_raw, tm_override);
+        let mut adjustments_with_norm = adjustments.clone();
+        let norm_factor =
+            crate::app_state::compute_lut_input_norm_factor(&cropped_preview, is_raw);
+        adjustments_with_norm["lutInputNormFactor"] = serde_json::json!(norm_factor);
+        let gpu_adjustments =
+            get_all_adjustments_from_json(&adjustments_with_norm, is_raw, tm_override);
         let lut_path = adjustments["lutPath"].as_str();
         let lut = lut_path.and_then(|p| {
             let mut cache = state.lut_cache.lock().unwrap();

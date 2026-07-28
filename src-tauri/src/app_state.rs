@@ -221,7 +221,7 @@ impl AppState {
             }
         }
 
-        let factor = compute_lut_input_norm_factor(&loaded_image.image);
+        let factor = compute_lut_input_norm_factor(&loaded_image.image, loaded_image.is_raw);
         let mut cache = self.lut_input_norm_cache.lock().unwrap();
         *cache = Some((current_gen, factor));
         factor
@@ -234,7 +234,11 @@ impl AppState {
 /// arithmetic mean of Rec. 709 linear luminance is returned, clamped to a
 /// sane range so near-black or extremely bright images do not destabilize
 /// the LUT math.
-pub fn compute_lut_input_norm_factor(image: &DynamicImage) -> f32 {
+///
+/// For non-RAW images the input is assumed to be in sRGB gamma space, so each
+/// channel is converted to linear before the luma is computed. RAW images are
+/// already scene-linear and are averaged directly.
+pub fn compute_lut_input_norm_factor(image: &DynamicImage, is_raw: bool) -> f32 {
     let (width, height) = image.dimensions();
     let max_dim = width.max(height);
     let ratio = if max_dim > 256 {
@@ -252,13 +256,78 @@ pub fn compute_lut_input_norm_factor(image: &DynamicImage) -> f32 {
         return 1.0;
     }
 
+    fn srgb_to_linear(v: f32) -> f32 {
+        if v <= 0.04045 {
+            v / 12.92
+        } else {
+            ((v + 0.055) / 1.055).powf(2.4)
+        }
+    }
+
     let mut sum = 0.0f64;
     for chunk in raw.chunks_exact(3) {
-        let luma = 0.2126 * chunk[0].max(0.0) as f64
-            + 0.7152 * chunk[1].max(0.0) as f64
-            + 0.0722 * chunk[2].max(0.0) as f64;
+        let (r, g, b) = if is_raw {
+            (chunk[0].max(0.0), chunk[1].max(0.0), chunk[2].max(0.0))
+        } else {
+            (
+                srgb_to_linear(chunk[0].max(0.0)),
+                srgb_to_linear(chunk[1].max(0.0)),
+                srgb_to_linear(chunk[2].max(0.0)),
+            )
+        };
+        let luma = 0.2126 * r as f64 + 0.7152 * g as f64 + 0.0722 * b as f64;
         sum += luma;
     }
     let mean = sum / (raw.len() / 3) as f64;
     (mean as f32).clamp(1e-4, 1e4)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use image::Rgb;
+
+    #[test]
+    fn lut_norm_factor_uses_linear_values_for_raw() {
+        // RAW images are scene-linear; the factor should equal the mean luma directly.
+        let img = DynamicImage::ImageRgb32F(
+            image::Rgb32FImage::from_pixel(2, 2, Rgb([0.1f32, 0.2, 0.3])),
+        );
+        let factor = compute_lut_input_norm_factor(&img, true);
+        let expected_luma = 0.2126 * 0.1 + 0.7152 * 0.2 + 0.0722 * 0.3;
+        assert!((factor - expected_luma).abs() < 1e-4);
+    }
+
+    #[test]
+    fn lut_norm_factor_converts_srgb_for_non_raw() {
+        // A middle-gray sRGB value has a much lower linear luminance.
+        let gray: u8 = 128;
+        let encoded = gray as f32 / 255.0;
+        let img = DynamicImage::ImageRgb8(image::RgbImage::from_pixel(2, 2, Rgb([gray, gray, gray])));
+        let factor = compute_lut_input_norm_factor(&img, false);
+        let linear_gray = ((encoded + 0.055) / 1.055).powf(2.4);
+        let expected_luma = linear_gray; // R=G=B
+        assert!((factor - expected_luma).abs() < 1e-3);
+    }
+
+    #[test]
+    fn lut_norm_factor_differs_between_raw_and_non_raw() {
+        // Same encoded pixel values: for RAW they are linear, for non-RAW they are sRGB.
+        let encoded = 0.5f32;
+        let rgb32 = DynamicImage::ImageRgb32F(
+            image::Rgb32FImage::from_pixel(2, 2, Rgb([encoded, encoded, encoded])),
+        );
+        let raw_factor = compute_lut_input_norm_factor(&rgb32, true);
+
+        let gray = (encoded * 255.0) as u8;
+        let rgb8 = DynamicImage::ImageRgb8(image::RgbImage::from_pixel(2, 2, Rgb([gray, gray, gray])));
+        let non_raw_factor = compute_lut_input_norm_factor(&rgb8, false);
+
+        assert!(
+            (raw_factor - non_raw_factor).abs() > 0.05,
+            "raw factor {} should differ from non-raw factor {}",
+            raw_factor,
+            non_raw_factor
+        );
+    }
 }
